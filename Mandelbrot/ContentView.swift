@@ -26,15 +26,42 @@ struct ContentView: View {
     @State private var previewMagnification: CGFloat = 1.0
     @State private var renderDuration: Double = 0.0
     @State private var renderResolution: CGSize = .zero
-    @State private var activeMode: Mode = .benchmark
+    @State private var activeMode: Mode = .viewer
     @State private var benchmarkRows: [BenchmarkRow] = []
     @State private var benchmarkSizes: [(Int, Int)] = [(128, 64), (256, 128), (512, 256), (1024, 512)]
     @State private var isBenchmarkRunning = false
     @State private var hasRunBenchmarks = false
+    @State private var benchmarkPhase: BenchmarkPhase = .phase2
 
     private enum Mode {
         case viewer
         case benchmark
+    }
+
+    private enum BenchmarkPhase {
+        case phase1
+        case phase2
+
+        var variants: [String] {
+            switch self {
+            case .phase1:
+                return [
+                    "baseline",
+                    "scalar-tight",
+                    "coord-precompute",
+                    "unsafe-buffer",
+                    "float-math",
+                    "parallel",
+                    "simd4-float"
+                ]
+            case .phase2:
+                return [
+                    "baseline",
+                    "parallel",
+                    "metal"
+                ]
+            }
+        }
     }
 
     private struct BenchmarkCell {
@@ -322,16 +349,14 @@ struct ContentView: View {
         }
 
         for (index, blockSize) in blockSizes.enumerated() {
-            let image = await Task.detached(priority: .userInitiated) {
-                let iterations = MandelbrotRenderer.iterations(
-                    width: pixelWidth,
-                    height: pixelHeight,
-                    center: center,
-                    scale: scale,
-                    blockSize: blockSize
-                )
-                return MandelbrotColorizer.image(from: iterations)
-            }.value
+            let image = await RenderWorker.shared.renderImage(
+                variant: "metal",
+                width: pixelWidth,
+                height: pixelHeight,
+                center: center,
+                scale: scale,
+                blockSize: blockSize
+            )
 
             await MainActor.run {
                 if let image {
@@ -357,32 +382,13 @@ struct ContentView: View {
             benchmarkRows = initialBenchmarkRows()
         }
 
-        let variants = [
-            "baseline",
-            "scalar-tight",
-            "coord-precompute",
-            "unsafe-buffer",
-            "float-math",
-            "parallel",
-            "simd4-float"
-        ]
+        let variants = benchmarkPhase.variants
 
         var baselineRuns: [(Int, Int, Double)] = []
         var width = 128
         var height = 64
         while true {
-            let seconds = await Task.detached(priority: .userInitiated) {
-                let start = Date()
-                let iterations = MandelbrotRenderer.iterations(
-                    width: width,
-                    height: height,
-                    center: CGPoint(x: -0.5, y: 0.0),
-                    scale: 1.0,
-                    blockSize: 1
-                )
-                _ = MandelbrotColorizer.image(from: iterations)
-                return Date().timeIntervalSince(start)
-            }.value
+            let seconds = await benchmarkVariant("baseline", width: width, height: height)
             baselineRuns.append((width, height, seconds))
             if seconds > 2.0 {
                 break
@@ -400,13 +406,14 @@ struct ContentView: View {
 
         if let previewSize = selectedSizes.first {
             for variant in variants {
-                let image = await Task.detached(priority: .userInitiated) {
-                    ContentView.renderPreviewImage(
-                        variant: variant,
-                        width: previewSize.0,
-                        height: previewSize.1
-                    )
-                }.value
+                let image = await RenderWorker.shared.renderImage(
+                    variant: variant,
+                    width: previewSize.0,
+                    height: previewSize.1,
+                    center: CGPoint(x: -0.5, y: 0.0),
+                    scale: 1.0,
+                    blockSize: 1
+                )
                 await MainActor.run {
                     updateBenchmarkPreview(variant: variant, image: image)
                 }
@@ -419,7 +426,7 @@ struct ContentView: View {
             let baselineRate = seconds > 0 ? pixels / seconds : 0
             await MainActor.run {
                 updateBenchmarkRow(
-                    variant: variants[0],
+                    variant: "baseline",
                     key: key,
                     seconds: seconds,
                     pixelsPerSecond: baselineRate
@@ -431,136 +438,95 @@ struct ContentView: View {
             let key = "\(width)x\(height)"
             let pixels = Double(width * height)
 
-            let tightenedSeconds = await Task.detached(priority: .userInitiated) {
-                let start = Date()
-                let iterations = MandelbrotRenderer.iterationsScalarTightened(
-                    width: width,
-                    height: height,
-                    center: CGPoint(x: -0.5, y: 0.0),
-                    scale: 1.0,
-                    blockSize: 1
-                )
-                _ = MandelbrotColorizer.image(from: iterations)
-                return Date().timeIntervalSince(start)
-            }.value
+            if variants.contains("scalar-tight") {
+            let tightenedSeconds = await benchmarkVariant("scalar-tight", width: width, height: height)
             let tightenedRate = tightenedSeconds > 0 ? pixels / tightenedSeconds : 0
             await MainActor.run {
                 updateBenchmarkRow(
-                    variant: variants[1],
+                    variant: "scalar-tight",
                     key: key,
                     seconds: tightenedSeconds,
                     pixelsPerSecond: tightenedRate
                 )
             }
+            }
 
-            let coordSeconds = await Task.detached(priority: .userInitiated) {
-                let start = Date()
-                let iterations = MandelbrotRenderer.iterationsCoordPrecompute(
-                    width: width,
-                    height: height,
-                    center: CGPoint(x: -0.5, y: 0.0),
-                    scale: 1.0,
-                    blockSize: 1
-                )
-                _ = MandelbrotColorizer.image(from: iterations)
-                return Date().timeIntervalSince(start)
-            }.value
+            if variants.contains("coord-precompute") {
+            let coordSeconds = await benchmarkVariant("coord-precompute", width: width, height: height)
             let coordRate = coordSeconds > 0 ? pixels / coordSeconds : 0
             await MainActor.run {
                 updateBenchmarkRow(
-                    variant: variants[2],
+                    variant: "coord-precompute",
                     key: key,
                     seconds: coordSeconds,
                     pixelsPerSecond: coordRate
                 )
             }
+            }
 
-            let unsafeSeconds = await Task.detached(priority: .userInitiated) {
-                let start = Date()
-                let iterations = MandelbrotRenderer.iterationsUnsafeBuffer(
-                    width: width,
-                    height: height,
-                    center: CGPoint(x: -0.5, y: 0.0),
-                    scale: 1.0,
-                    blockSize: 1
-                )
-                _ = MandelbrotColorizer.image(from: iterations)
-                return Date().timeIntervalSince(start)
-            }.value
+            if variants.contains("unsafe-buffer") {
+            let unsafeSeconds = await benchmarkVariant("unsafe-buffer", width: width, height: height)
             let unsafeRate = unsafeSeconds > 0 ? pixels / unsafeSeconds : 0
             await MainActor.run {
                 updateBenchmarkRow(
-                    variant: variants[3],
+                    variant: "unsafe-buffer",
                     key: key,
                     seconds: unsafeSeconds,
                     pixelsPerSecond: unsafeRate
                 )
             }
+            }
 
-            let floatSeconds = await Task.detached(priority: .userInitiated) {
-                let start = Date()
-                let iterations = MandelbrotRenderer.iterationsFloatMath(
-                    width: width,
-                    height: height,
-                    center: CGPoint(x: -0.5, y: 0.0),
-                    scale: 1.0,
-                    blockSize: 1
-                )
-                _ = MandelbrotColorizer.image(from: iterations)
-                return Date().timeIntervalSince(start)
-            }.value
+            if variants.contains("float-math") {
+            let floatSeconds = await benchmarkVariant("float-math", width: width, height: height)
             let floatRate = floatSeconds > 0 ? pixels / floatSeconds : 0
             await MainActor.run {
                 updateBenchmarkRow(
-                    variant: variants[4],
+                    variant: "float-math",
                     key: key,
                     seconds: floatSeconds,
                     pixelsPerSecond: floatRate
                 )
             }
+            }
 
-            let parallelSeconds = await Task.detached(priority: .userInitiated) {
-                let start = Date()
-                let iterations = MandelbrotRenderer.iterationsParallel(
-                    width: width,
-                    height: height,
-                    center: CGPoint(x: -0.5, y: 0.0),
-                    scale: 1.0,
-                    blockSize: 1
-                )
-                _ = MandelbrotColorizer.image(from: iterations)
-                return Date().timeIntervalSince(start)
-            }.value
+            if variants.contains("parallel") {
+            let parallelSeconds = await benchmarkVariant("parallel", width: width, height: height)
             let parallelRate = parallelSeconds > 0 ? pixels / parallelSeconds : 0
             await MainActor.run {
                 updateBenchmarkRow(
-                    variant: variants[5],
+                    variant: "parallel",
                     key: key,
                     seconds: parallelSeconds,
                     pixelsPerSecond: parallelRate
                 )
             }
+            }
 
-            let simdSeconds = await Task.detached(priority: .userInitiated) {
-                let start = Date()
-                let iterations = MandelbrotRenderer.iterationsSIMD4Float(
-                    width: width,
-                    height: height,
-                    center: CGPoint(x: -0.5, y: 0.0),
-                    scale: 1.0,
-                    blockSize: 1
-                )
-                _ = MandelbrotColorizer.image(from: iterations)
-                return Date().timeIntervalSince(start)
-            }.value
+            if variants.contains("simd4-float") {
+            let simdSeconds = await benchmarkVariant("simd4-float", width: width, height: height)
             let simdRate = simdSeconds > 0 ? pixels / simdSeconds : 0
             await MainActor.run {
                 updateBenchmarkRow(
-                    variant: variants[6],
+                    variant: "simd4-float",
                     key: key,
                     seconds: simdSeconds,
                     pixelsPerSecond: simdRate
                 )
+            }
+            }
+
+            if variants.contains("metal") {
+                let metalSeconds = await benchmarkVariant("metal", width: width, height: height)
+                let metalRate = metalSeconds > 0 ? pixels / metalSeconds : 0
+                await MainActor.run {
+                    updateBenchmarkRow(
+                        variant: "metal",
+                        key: key,
+                        seconds: metalSeconds,
+                        pixelsPerSecond: metalRate
+                    )
+                }
             }
         }
 
@@ -571,16 +537,7 @@ struct ContentView: View {
     }
 
     private func initialBenchmarkRows() -> [BenchmarkRow] {
-        let variants = [
-            "baseline",
-            "scalar-tight",
-            "coord-precompute",
-            "unsafe-buffer",
-            "float-math",
-            "parallel",
-            "simd4-float"
-        ]
-        return variants.map { BenchmarkRow(variant: $0, results: [:], previewImage: nil) }
+        return benchmarkPhase.variants.map { BenchmarkRow(variant: $0, results: [:], previewImage: nil) }
     }
 
     private func ensureBenchmarkRows() {
@@ -611,69 +568,17 @@ struct ContentView: View {
         benchmarkRows[index].previewImage = image
     }
 
-    private static func renderPreviewImage(variant: String, width: Int, height: Int) -> CGImage? {
-        let iterations: MandelbrotIterations
-        switch variant {
-        case "baseline":
-            iterations = MandelbrotRenderer.iterations(
-                width: width,
-                height: height,
-                center: CGPoint(x: -0.5, y: 0.0),
-                scale: 1.0,
-                blockSize: 1
-            )
-        case "scalar-tight":
-            iterations = MandelbrotRenderer.iterationsScalarTightened(
-                width: width,
-                height: height,
-                center: CGPoint(x: -0.5, y: 0.0),
-                scale: 1.0,
-                blockSize: 1
-            )
-        case "coord-precompute":
-            iterations = MandelbrotRenderer.iterationsCoordPrecompute(
-                width: width,
-                height: height,
-                center: CGPoint(x: -0.5, y: 0.0),
-                scale: 1.0,
-                blockSize: 1
-            )
-        case "unsafe-buffer":
-            iterations = MandelbrotRenderer.iterationsUnsafeBuffer(
-                width: width,
-                height: height,
-                center: CGPoint(x: -0.5, y: 0.0),
-                scale: 1.0,
-                blockSize: 1
-            )
-        case "float-math":
-            iterations = MandelbrotRenderer.iterationsFloatMath(
-                width: width,
-                height: height,
-                center: CGPoint(x: -0.5, y: 0.0),
-                scale: 1.0,
-                blockSize: 1
-            )
-        case "parallel":
-            iterations = MandelbrotRenderer.iterationsParallel(
-                width: width,
-                height: height,
-                center: CGPoint(x: -0.5, y: 0.0),
-                scale: 1.0,
-                blockSize: 1
-            )
-        case "simd4-float":
-            iterations = MandelbrotRenderer.iterationsSIMD4Float(
-                width: width,
-                height: height,
-                center: CGPoint(x: -0.5, y: 0.0),
-                scale: 1.0,
-                blockSize: 1
-            )
-        default:
-            return nil
-        }
-        return MandelbrotColorizer.image(from: iterations)
+    private func benchmarkVariant(_ variant: String, width: Int, height: Int) async -> Double {
+        let start = Date()
+        _ = await RenderWorker.shared.renderImage(
+            variant: variant,
+            width: width,
+            height: height,
+            center: CGPoint(x: -0.5, y: 0.0),
+            scale: 1.0,
+            blockSize: 1
+        )
+        return Date().timeIntervalSince(start)
     }
 
     private func copyBenchmarksAsMarkdown() {

@@ -262,9 +262,13 @@ struct MandelbrotRenderer {
                     }
 
                     for yy in y..<yEnd {
-                        let rowBase = base.advanced(by: yy * width)
+                        let rowStart = yy * width
+                        let rowBase = base.advanced(by: rowStart)
                         for xx in x..<xEnd {
-                            rowBase[xx] = iteration
+                            let offset = rowStart + xx
+                            if offset < buffer.count {
+                                rowBase[xx] = iteration
+                            }
                         }
                     }
                 }
@@ -353,44 +357,52 @@ struct MandelbrotRenderer {
         let imagMin = center.y - imagSpan / 2.0
         let imagMax = center.y + imagSpan / 2.0
 
-        var values = [Int](repeating: 0, count: width * height)
+        let count = width * height
         let heightDenominator = Double(max(1, height - 1))
         let widthDenominator = Double(max(1, width - 1))
         let blockCount = Int(ceil(Double(height) / Double(blockSize)))
 
-        values.withUnsafeMutableBufferPointer { buffer in
-            guard let base = buffer.baseAddress else { return }
-            DispatchQueue.concurrentPerform(iterations: blockCount) { blockIndex in
-                let y = blockIndex * blockSize
-                if y >= height { return }
-                let yEnd = min(height, y + blockSize)
-                let ySample = min(height - 1, y + blockSize / 2)
-                let imag = imagMax - (Double(ySample) / heightDenominator) * imagSpan
+        let buffer = UnsafeMutablePointer<Int>.allocate(capacity: count)
+        buffer.initialize(repeating: 0, count: count)
+        let bufferCount = count
 
-                for x in stride(from: 0, to: width, by: blockSize) {
-                    let xEnd = min(width, x + blockSize)
-                    let xSample = min(width - 1, x + blockSize / 2)
-                    let real = realMin + (Double(xSample) / widthDenominator) * realSpan
-                    var zr = 0.0
-                    var zi = 0.0
-                    var iteration = 0
+        DispatchQueue.concurrentPerform(iterations: blockCount) { blockIndex in
+            let y = blockIndex * blockSize
+            if y >= height { return }
+            let yEnd = min(height, y + blockSize)
+            let ySample = min(height - 1, y + blockSize / 2)
+            let imag = imagMax - (Double(ySample) / heightDenominator) * imagSpan
 
-                    while zr * zr + zi * zi <= 4.0 && iteration < maxIterations {
-                        let temp = zr * zr - zi * zi + real
-                        zi = 2.0 * zr * zi + imag
-                        zr = temp
-                        iteration += 1
-                    }
+            for x in stride(from: 0, to: width, by: blockSize) {
+                let xEnd = min(width, x + blockSize)
+                let xSample = min(width - 1, x + blockSize / 2)
+                let real = realMin + (Double(xSample) / widthDenominator) * realSpan
+                var zr = 0.0
+                var zi = 0.0
+                var iteration = 0
 
-                    for yy in y..<yEnd {
-                        let rowBase = base.advanced(by: yy * width)
-                        for xx in x..<xEnd {
-                            rowBase[xx] = iteration
+                while zr * zr + zi * zi <= 4.0 && iteration < maxIterations {
+                    let temp = zr * zr - zi * zi + real
+                    zi = 2.0 * zr * zi + imag
+                    zr = temp
+                    iteration += 1
+                }
+
+                for yy in y..<yEnd {
+                    let rowStart = yy * width
+                    for xx in x..<xEnd {
+                        let offset = rowStart + xx
+                        if offset < bufferCount {
+                            buffer[offset] = iteration
                         }
                     }
                 }
             }
         }
+
+        let values = Array(UnsafeBufferPointer(start: buffer, count: bufferCount))
+        buffer.deinitialize(count: bufferCount)
+        buffer.deallocate()
 
         return MandelbrotIterations(
             width: width,
