@@ -62,6 +62,15 @@ struct ContentView: View {
                 ]
             }
         }
+
+        var label: String {
+            switch self {
+            case .phase1:
+                return "Phase 1"
+            case .phase2:
+                return "Phase 2"
+            }
+        }
     }
 
     private struct BenchmarkCell {
@@ -144,6 +153,15 @@ struct ContentView: View {
                     }
                 }
             }
+            .onChange(of: benchmarkPhase) { _, _ in
+                hasRunBenchmarks = false
+                benchmarkRows = initialBenchmarkRows()
+                if activeMode == .benchmark {
+                    Task {
+                        await runBenchmarks()
+                    }
+                }
+            }
             .background(keyCaptureView)
         }
         .ignoresSafeArea()
@@ -183,9 +201,18 @@ struct ContentView: View {
     private var benchmarkPane: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
-                Text("Benchmark Mode")
-                    .font(.title2.bold())
-                    .foregroundStyle(.white)
+                HStack {
+                    Text("Benchmark Mode")
+                        .font(.title2.bold())
+                        .foregroundStyle(.white)
+                    Spacer()
+                    Picker("Phase", selection: $benchmarkPhase) {
+                        Text(BenchmarkPhase.phase1.label).tag(BenchmarkPhase.phase1)
+                        Text(BenchmarkPhase.phase2.label).tag(BenchmarkPhase.phase2)
+                    }
+                    .pickerStyle(.menu)
+                    .tint(.white)
+                }
                 if isBenchmarkRunning {
                     ProgressView("Running benchmarks...")
                         .foregroundStyle(.white)
@@ -438,93 +465,15 @@ struct ContentView: View {
             let key = "\(width)x\(height)"
             let pixels = Double(width * height)
 
-            if variants.contains("scalar-tight") {
-            let tightenedSeconds = await benchmarkVariant("scalar-tight", width: width, height: height)
-            let tightenedRate = tightenedSeconds > 0 ? pixels / tightenedSeconds : 0
-            await MainActor.run {
-                updateBenchmarkRow(
-                    variant: "scalar-tight",
-                    key: key,
-                    seconds: tightenedSeconds,
-                    pixelsPerSecond: tightenedRate
-                )
-            }
-            }
-
-            if variants.contains("coord-precompute") {
-            let coordSeconds = await benchmarkVariant("coord-precompute", width: width, height: height)
-            let coordRate = coordSeconds > 0 ? pixels / coordSeconds : 0
-            await MainActor.run {
-                updateBenchmarkRow(
-                    variant: "coord-precompute",
-                    key: key,
-                    seconds: coordSeconds,
-                    pixelsPerSecond: coordRate
-                )
-            }
-            }
-
-            if variants.contains("unsafe-buffer") {
-            let unsafeSeconds = await benchmarkVariant("unsafe-buffer", width: width, height: height)
-            let unsafeRate = unsafeSeconds > 0 ? pixels / unsafeSeconds : 0
-            await MainActor.run {
-                updateBenchmarkRow(
-                    variant: "unsafe-buffer",
-                    key: key,
-                    seconds: unsafeSeconds,
-                    pixelsPerSecond: unsafeRate
-                )
-            }
-            }
-
-            if variants.contains("float-math") {
-            let floatSeconds = await benchmarkVariant("float-math", width: width, height: height)
-            let floatRate = floatSeconds > 0 ? pixels / floatSeconds : 0
-            await MainActor.run {
-                updateBenchmarkRow(
-                    variant: "float-math",
-                    key: key,
-                    seconds: floatSeconds,
-                    pixelsPerSecond: floatRate
-                )
-            }
-            }
-
-            if variants.contains("parallel") {
-            let parallelSeconds = await benchmarkVariant("parallel", width: width, height: height)
-            let parallelRate = parallelSeconds > 0 ? pixels / parallelSeconds : 0
-            await MainActor.run {
-                updateBenchmarkRow(
-                    variant: "parallel",
-                    key: key,
-                    seconds: parallelSeconds,
-                    pixelsPerSecond: parallelRate
-                )
-            }
-            }
-
-            if variants.contains("simd4-float") {
-            let simdSeconds = await benchmarkVariant("simd4-float", width: width, height: height)
-            let simdRate = simdSeconds > 0 ? pixels / simdSeconds : 0
-            await MainActor.run {
-                updateBenchmarkRow(
-                    variant: "simd4-float",
-                    key: key,
-                    seconds: simdSeconds,
-                    pixelsPerSecond: simdRate
-                )
-            }
-            }
-
-            if variants.contains("metal") {
-                let metalSeconds = await benchmarkVariant("metal", width: width, height: height)
-                let metalRate = metalSeconds > 0 ? pixels / metalSeconds : 0
+            for variant in variants where variant != "baseline" {
+                let seconds = await benchmarkVariant(variant, width: width, height: height)
+                let rate = seconds > 0 ? pixels / seconds : 0
                 await MainActor.run {
                     updateBenchmarkRow(
-                        variant: "metal",
+                        variant: variant,
                         key: key,
-                        seconds: metalSeconds,
-                        pixelsPerSecond: metalRate
+                        seconds: seconds,
+                        pixelsPerSecond: rate
                     )
                 }
             }
