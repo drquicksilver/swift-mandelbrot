@@ -22,10 +22,13 @@ struct ContentView: View {
     @State private var scale: Double = 1.0
     @GestureState private var gestureOffset: CGSize = .zero
     @GestureState private var gestureMagnification: CGFloat = 1.0
+    @GestureState private var gestureZoomAnchor: UnitPoint = .center
     @State private var previewOffset: CGSize = .zero
     @State private var previewMagnification: CGFloat = 1.0
     @State private var renderDuration: Double = 0.0
     @State private var renderResolution: CGSize = .zero
+    @State private var showRenderProgress = false
+    @State private var maxIterations: Int = 200
     @State private var activeMode: Mode = .viewer
     @State private var benchmarkRows: [BenchmarkRow] = []
     @State private var benchmarkSizes: [(Int, Int)] = [(128, 64), (256, 128), (512, 256), (1024, 512)]
@@ -122,9 +125,23 @@ struct ContentView: View {
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomLeading)
                     .padding(16)
                 }
+
+                Button("Double Iterations") {
+                    adjustMaxIterations(multiplier: 2.0)
+                }
+                .keyboardShortcut("+")
+                .opacity(0)
+
+                Button("Halve Iterations") {
+                    adjustMaxIterations(multiplier: 0.5)
+                }
+                .keyboardShortcut("-")
+                .opacity(0)
             }
             .frame(width: proxy.size.width, height: proxy.size.height)
             .background(Color.black)
+            .highPriorityGesture(doubleTapGesture(in: proxy.size))
+            .highPriorityGesture(quadTapGesture(in: proxy.size))
             .onChange(of: proxy.size) { _, newSize in
                 renderSize = newSize
                 renderToken += 1
@@ -144,7 +161,7 @@ struct ContentView: View {
                 await renderMandelbrot(size: renderSize, token: token)
             }
             .gesture(panGesture(in: proxy.size))
-            .simultaneousGesture(zoomGesture())
+            .simultaneousGesture(zoomGesture(in: proxy.size))
             .onChange(of: activeMode) { _, newMode in
                 if newMode == .benchmark, !hasRunBenchmarks {
                     ensureBenchmarkRows()
@@ -169,22 +186,30 @@ struct ContentView: View {
 
     @ViewBuilder private var keyCaptureView: some View {
         #if os(macOS)
-        KeyCaptureView {
-            toggleMode()
-        }
+        KeyCaptureView(
+            onTab: {
+                toggleMode()
+            },
+            onIncrement: {
+                adjustMaxIterations(multiplier: 2.0)
+            },
+            onDecrement: {
+                adjustMaxIterations(multiplier: 0.5)
+            }
+        )
         #else
         EmptyView()
         #endif
     }
 
     private var viewerPane: some View {
-        ZStack {
+        return ZStack {
             if let renderedImage {
                 Image(decorative: renderedImage, scale: displayScale)
                     .resizable()
                     .interpolation(.none)
                     .scaledToFill()
-                    .scaleEffect(previewMagnification * gestureMagnification)
+                    .scaleEffect(previewMagnification * gestureMagnification, anchor: zoomAnchor)
                     .offset(
                         CGSize(
                             width: previewOffset.width + gestureOffset.width,
@@ -299,7 +324,7 @@ struct ContentView: View {
 
     private var hudView: some View {
         VStack(alignment: .trailing, spacing: 10) {
-            if activeMode == .viewer, progress < 1.0 {
+            if activeMode == .viewer, progress < 1.0, showRenderProgress {
                 ProgressView(value: progress)
                     .progressViewStyle(.linear)
                     .frame(width: 180)
@@ -318,12 +343,23 @@ struct ContentView: View {
                     .font(.caption)
                     .foregroundStyle(.white.opacity(0.9))
             }
+            Text("Iterations \(maxIterations)")
+                .font(.caption)
+                .foregroundStyle(.white.opacity(0.9))
         }
         .padding(12)
         .background(.black.opacity(0.6))
         .clipShape(RoundedRectangle(cornerRadius: 12))
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
         .padding(16)
+    }
+
+    private var zoomAnchor: UnitPoint {
+#if os(iOS)
+        return gestureZoomAnchor
+#else
+        return .center
+#endif
     }
 
     private func panGesture(in size: CGSize) -> some Gesture {
@@ -348,8 +384,93 @@ struct ContentView: View {
             }
     }
 
-    private func zoomGesture() -> some Gesture {
-        MagnificationGesture()
+    private func applyZoom(magnification: CGFloat, anchor: UnitPoint, in size: CGSize) {
+        let baseSpan = 3.0
+        let realSpan = baseSpan / scale
+        let imagSpan = realSpan * Double(size.height / max(1, size.width))
+        let dx = Double(anchor.x - 0.5)
+        let dy = Double(0.5 - anchor.y)
+
+        let anchorReal = center.x + dx * realSpan
+        let anchorImag = center.y + dy * imagSpan
+
+        let newScale = scale * Double(magnification)
+        let newRealSpan = baseSpan / newScale
+        let newImagSpan = newRealSpan * Double(size.height / max(1, size.width))
+
+        center.x = anchorReal - dx * newRealSpan
+        center.y = anchorImag - dy * newImagSpan
+        scale = newScale
+        previewMagnification *= magnification
+        renderToken += 1
+    }
+
+    private func doubleTapGesture(in size: CGSize) -> some Gesture {
+        #if os(iOS)
+        if #available(iOS 16.0, *) {
+            return SpatialTapGesture(count: 2)
+                .onEnded { value in
+                    let leftZone = size.width * 0.25
+                    let rightZone = size.width * 0.75
+                    if value.location.x <= leftZone {
+                        adjustMaxIterations(multiplier: 0.5)
+                    } else if value.location.x >= rightZone {
+                        adjustMaxIterations(multiplier: 2.0)
+                    }
+                }
+        } else {
+            return TapGesture(count: 2)
+        }
+        #else
+        return TapGesture(count: 2)
+        #endif
+    }
+
+    private func quadTapGesture(in size: CGSize) -> some Gesture {
+        #if os(iOS)
+        if #available(iOS 16.0, *) {
+            return SpatialTapGesture(count: 4)
+                .onEnded { value in
+                    let left = size.width * 0.25
+                    let right = size.width * 0.75
+                    if value.location.x > left && value.location.x < right {
+                        toggleMode()
+                    }
+                }
+        } else {
+            return TapGesture(count: 4)
+        }
+        #else
+        return TapGesture(count: 4)
+        #endif
+    }
+
+    private func zoomGesture(in size: CGSize) -> some Gesture {
+        #if os(iOS)
+        if #available(iOS 17.0, *) {
+            return MagnifyGesture()
+                .updating($gestureMagnification) { value, state, _ in
+                    state = value.magnification
+                }
+                .updating($gestureZoomAnchor) { value, state, _ in
+                    state = value.startAnchor
+                }
+                .onEnded { value in
+                    applyZoom(magnification: value.magnification, anchor: value.startAnchor, in: size)
+                }
+        } else {
+            return MagnificationGesture()
+                .updating($gestureMagnification) { value, state, _ in
+                    state = value
+                }
+                .onEnded { value in
+                    scale *= Double(value)
+                    previewMagnification *= value
+                    renderToken += 1
+                }
+        }
+        #else
+        return MagnificationGesture()
             .updating($gestureMagnification) { value, state, _ in
                 state = value
             }
@@ -358,6 +479,7 @@ struct ContentView: View {
                 previewMagnification *= value
                 renderToken += 1
             }
+        #endif
     }
 
     private func renderMandelbrot(size: CGSize, token: Int) async {
@@ -367,27 +489,51 @@ struct ContentView: View {
         let pixelHeight = max(1, Int(size.height * displayScale))
         let center = center
         let scale = scale
+        let configuration = MandelbrotConfiguration(maxIterations: maxIterations)
         let blockSizes = [64, 32, 16, 8, 4, 2, 1]
         let startTime = Date()
 
         await MainActor.run {
             progress = 0.0
             renderResolution = CGSize(width: pixelWidth, height: pixelHeight)
+            showRenderProgress = false
         }
 
+        Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 500_000_000)
+            if progress < 1.0 {
+                showRenderProgress = true
+            }
+        }
+
+        let renderVariant = "metal"
         for (index, blockSize) in blockSizes.enumerated() {
+            if Task.isCancelled { return }
+            let passWidth = renderVariant == "metal" && blockSize > 1
+                ? max(1, pixelWidth / blockSize)
+                : pixelWidth
+            let passHeight = renderVariant == "metal" && blockSize > 1
+                ? max(1, pixelHeight / blockSize)
+                : pixelHeight
+
             let image = await RenderWorker.shared.renderImage(
-                variant: "metal",
-                width: pixelWidth,
-                height: pixelHeight,
+                variant: renderVariant,
+                width: passWidth,
+                height: passHeight,
                 center: center,
                 scale: scale,
-                blockSize: blockSize
+                blockSize: blockSize,
+                configuration: configuration
             )
 
             await MainActor.run {
+                guard token == renderToken else { return }
                 if let image {
                     renderedImage = image
+                    if token == renderToken, index == 0 {
+                        previewOffset = .zero
+                        previewMagnification = 1.0
+                    }
                 }
                 progress = Double(index + 1) / Double(blockSizes.count)
             }
@@ -396,10 +542,7 @@ struct ContentView: View {
         await MainActor.run {
             renderDuration = Date().timeIntervalSince(startTime)
             progress = 1.0
-            if token == renderToken {
-                previewOffset = .zero
-                previewMagnification = 1.0
-            }
+            showRenderProgress = false
         }
     }
 
@@ -525,10 +668,25 @@ struct ContentView: View {
             height: height,
             center: CGPoint(x: -0.5, y: 0.0),
             scale: 1.0,
-            blockSize: 1
+            blockSize: 1,
+            configuration: MandelbrotConfiguration(maxIterations: maxIterations)
         )
         return Date().timeIntervalSince(start)
     }
+
+    private func adjustMaxIterations(multiplier: Double) {
+        let newValue = max(1, Int(Double(maxIterations) * multiplier))
+        maxIterations = newValue
+        renderToken += 1
+        if activeMode == .benchmark {
+            hasRunBenchmarks = false
+            benchmarkRows = initialBenchmarkRows()
+            Task {
+                await runBenchmarks()
+            }
+        }
+    }
+
 
     private func copyBenchmarksAsMarkdown() {
         let sizes = benchmarkSizes

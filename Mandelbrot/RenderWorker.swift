@@ -16,7 +16,8 @@ actor RenderWorker {
         height: Int,
         center: CGPoint,
         scale: Double,
-        blockSize: Int
+        blockSize: Int,
+        configuration: MandelbrotConfiguration = MandelbrotConfiguration()
     ) -> CGImage? {
         guard let iterations = renderIterations(
             variant: variant,
@@ -24,7 +25,8 @@ actor RenderWorker {
             height: height,
             center: center,
             scale: scale,
-            blockSize: blockSize
+            blockSize: blockSize,
+            configuration: configuration
         ) else {
             return nil
         }
@@ -37,7 +39,8 @@ actor RenderWorker {
         height: Int,
         center: CGPoint,
         scale: Double,
-        blockSize: Int
+        blockSize: Int,
+        configuration: MandelbrotConfiguration
     ) -> MandelbrotIterations? {
         switch variant {
         case "baseline":
@@ -46,7 +49,8 @@ actor RenderWorker {
                 height: height,
                 center: center,
                 scale: scale,
-                blockSize: blockSize
+                blockSize: blockSize,
+                configuration: configuration
             )
         case "scalar-tight":
             return MandelbrotRenderer.iterationsScalarTightened(
@@ -54,7 +58,8 @@ actor RenderWorker {
                 height: height,
                 center: center,
                 scale: scale,
-                blockSize: blockSize
+                blockSize: blockSize,
+                configuration: configuration
             )
         case "coord-precompute":
             return MandelbrotRenderer.iterationsCoordPrecompute(
@@ -62,7 +67,8 @@ actor RenderWorker {
                 height: height,
                 center: center,
                 scale: scale,
-                blockSize: blockSize
+                blockSize: blockSize,
+                configuration: configuration
             )
         case "unsafe-buffer":
             return MandelbrotRenderer.iterationsUnsafeBuffer(
@@ -70,7 +76,8 @@ actor RenderWorker {
                 height: height,
                 center: center,
                 scale: scale,
-                blockSize: blockSize
+                blockSize: blockSize,
+                configuration: configuration
             )
         case "float-math":
             return MandelbrotRenderer.iterationsFloatMath(
@@ -78,7 +85,8 @@ actor RenderWorker {
                 height: height,
                 center: center,
                 scale: scale,
-                blockSize: blockSize
+                blockSize: blockSize,
+                configuration: configuration
             )
         case "parallel":
             return MandelbrotRenderer.iterationsParallel(
@@ -86,7 +94,8 @@ actor RenderWorker {
                 height: height,
                 center: center,
                 scale: scale,
-                blockSize: blockSize
+                blockSize: blockSize,
+                configuration: configuration
             )
         case "simd4-float":
             return MandelbrotRenderer.iterationsSIMD4Float(
@@ -94,14 +103,16 @@ actor RenderWorker {
                 height: height,
                 center: center,
                 scale: scale,
-                blockSize: blockSize
+                blockSize: blockSize,
+                configuration: configuration
             )
         case "metal":
             return MandelbrotMetalRenderer.iterations(
                 width: width,
                 height: height,
                 center: center,
-                scale: scale
+                scale: scale,
+                configuration: configuration
             )
         default:
             return nil
