@@ -114,6 +114,14 @@ actor RenderWorker {
                 scale: scale,
                 configuration: configuration
             )
+        case "metal-double":
+            return MandelbrotMetalDoubleRenderer.iterations(
+                width: width,
+                height: height,
+                center: center,
+                scale: scale,
+                configuration: configuration
+            )
         default:
             return nil
         }
