@@ -61,7 +61,8 @@ struct ContentView: View {
                 return [
                     "baseline",
                     "parallel",
-                    "metal"
+                    "metal",
+                    "metal-double"
                 ]
             }
         }
