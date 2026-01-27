@@ -123,10 +123,12 @@ kernel void mandelbrotIterationsDouble(
     float2 realMin = dd_sub(params.centerX, dd_mul_float(realSpan, 0.5f));
     float2 imagMax = dd_add(params.centerY, dd_mul_float(imagSpan, 0.5f));
 
-    float normX = float(gid.x) / float(max(1u, params.width - 1));
-    float normY = float(gid.y) / float(max(1u, params.height - 1));
-    float2 real = dd_add(realMin, dd_mul_float(realSpan, normX));
-    float2 imag = dd_sub(imagMax, dd_mul_float(imagSpan, normY));
+    float denomX = float(max(1u, params.width - 1));
+    float denomY = float(max(1u, params.height - 1));
+    float2 normXdd = dd_div(float2(float(gid.x), 0.0f), float2(denomX, 0.0f));
+    float2 normYdd = dd_div(float2(float(gid.y), 0.0f), float2(denomY, 0.0f));
+    float2 real = dd_add(realMin, dd_mul(realSpan, normXdd));
+    float2 imag = dd_sub(imagMax, dd_mul(imagSpan, normYdd));
 
     float2 zr = float2(0.0f, 0.0f);
     float2 zi = float2(0.0f, 0.0f);

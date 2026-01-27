@@ -115,7 +115,7 @@ actor RenderWorker {
                 configuration: configuration
             )
         case "metal-double":
-            return MandelbrotMetalDoubleRenderer.iterations(
+            return MandelbrotMetalRenderer.iterationsDouble(
                 width: width,
                 height: height,
                 center: center,

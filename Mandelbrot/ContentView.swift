@@ -29,6 +29,7 @@ struct ContentView: View {
     @State private var renderResolution: CGSize = .zero
     @State private var showRenderProgress = false
     @State private var maxIterations: Int = 200
+    @State private var renderVariant: String = "metal"
     @State private var activeMode: Mode = .viewer
     @State private var benchmarkRows: [BenchmarkRow] = []
     @State private var benchmarkSizes: [(Int, Int)] = [(128, 64), (256, 128), (512, 256), (1024, 512)]
@@ -76,6 +77,18 @@ struct ContentView: View {
             }
         }
     }
+
+    private let viewerVariants = [
+        "baseline",
+        "scalar-tight",
+        "coord-precompute",
+        "unsafe-buffer",
+        "float-math",
+        "parallel",
+        "simd4-float",
+        "metal",
+        "metal-double"
+    ]
 
     private struct BenchmarkCell {
         let seconds: Double
@@ -339,6 +352,7 @@ struct ContentView: View {
                 Text(String(format: "Render %.2fs", renderDuration))
                     .font(.caption)
                     .foregroundStyle(.white.opacity(0.9))
+                rendererPicker
             } else {
                 Text("Benchmark mode")
                     .font(.caption)
@@ -360,6 +374,29 @@ struct ContentView: View {
         return gestureZoomAnchor
 #else
         return .center
+#endif
+    }
+
+    @ViewBuilder private var rendererPicker: some View {
+#if os(macOS)
+        Menu {
+            ForEach(viewerVariants, id: \.self) { variant in
+                Button(variant) {
+                    renderVariant = variant
+                    renderToken += 1
+                }
+            }
+        } label: {
+            Text("Renderer \(renderVariant)")
+                .font(.caption)
+                .foregroundStyle(.white.opacity(0.9))
+                .fixedSize()
+        }
+        .fixedSize()
+#else
+        Text("Renderer \(renderVariant)")
+            .font(.caption)
+            .foregroundStyle(.white.opacity(0.9))
 #endif
     }
 
@@ -507,18 +544,19 @@ struct ContentView: View {
             }
         }
 
-        let renderVariant = "metal"
+        let currentVariant = renderVariant
+        let isMetalVariant = currentVariant == "metal" || currentVariant == "metal-double"
         for (index, blockSize) in blockSizes.enumerated() {
             if Task.isCancelled { return }
-            let passWidth = renderVariant == "metal" && blockSize > 1
+            let passWidth = isMetalVariant && blockSize > 1
                 ? max(1, pixelWidth / blockSize)
                 : pixelWidth
-            let passHeight = renderVariant == "metal" && blockSize > 1
+            let passHeight = isMetalVariant && blockSize > 1
                 ? max(1, pixelHeight / blockSize)
                 : pixelHeight
 
             let image = await RenderWorker.shared.renderImage(
-                variant: renderVariant,
+                variant: currentVariant,
                 width: passWidth,
                 height: passHeight,
                 center: center,
