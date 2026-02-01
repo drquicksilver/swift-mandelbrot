@@ -30,6 +30,8 @@ struct ContentView: View {
     @State private var showRenderProgress = false
     @State private var maxIterations: Int = 200
     @State private var renderVariant: String = "metal"
+    @State private var selectionStart: CGPoint?
+    @State private var selectionEnd: CGPoint?
     @State private var activeMode: Mode = .viewer
     @State private var benchmarkRows: [BenchmarkRow] = []
     @State private var benchmarkSizes: [(Int, Int)] = [(128, 64), (256, 128), (512, 256), (1024, 512)]
@@ -156,6 +158,7 @@ struct ContentView: View {
             .background(Color.black)
             .highPriorityGesture(doubleTapGesture(in: proxy.size))
             .highPriorityGesture(quadTapGesture(in: proxy.size))
+            .highPriorityGesture(shiftDragGesture(in: proxy.size))
             .onChange(of: proxy.size) { _, newSize in
                 renderSize = newSize
                 renderToken += 1
@@ -233,6 +236,12 @@ struct ContentView: View {
             } else {
                 ProgressView("Rendering Mandelbrot...")
                     .foregroundStyle(.white)
+            }
+            if let selectionRect {
+                Rectangle()
+                    .stroke(Color.white.opacity(0.9), style: StrokeStyle(lineWidth: 2, dash: [6, 4]))
+                    .frame(width: selectionRect.width, height: selectionRect.height)
+                    .position(x: selectionRect.midX, y: selectionRect.midY)
             }
         }
     }
@@ -440,6 +449,69 @@ struct ContentView: View {
         center.y = anchorImag - dy * newImagSpan
         scale = newScale
         previewMagnification *= magnification
+        renderToken += 1
+    }
+
+    private func shiftDragGesture(in size: CGSize) -> some Gesture {
+        #if os(macOS)
+        if #available(macOS 13.0, *) {
+            return DragGesture(minimumDistance: 0)
+                .modifiers(.shift)
+                .onChanged { value in
+                    if selectionStart == nil {
+                        selectionStart = value.startLocation
+                    }
+                    selectionEnd = value.location
+                }
+                .onEnded { _ in
+                    if let selectionRect {
+                        applySelectionZoom(rect: selectionRect, in: size)
+                    }
+                    selectionStart = nil
+                    selectionEnd = nil
+                }
+        } else {
+            return DragGesture(minimumDistance: 0)
+        }
+        #else
+        return DragGesture(minimumDistance: 0)
+        #endif
+    }
+
+    private var selectionRect: CGRect? {
+        guard let start = selectionStart, let end = selectionEnd else { return nil }
+        let x = min(start.x, end.x)
+        let y = min(start.y, end.y)
+        let width = max(1, abs(end.x - start.x))
+        let height = max(1, abs(end.y - start.y))
+        return CGRect(x: x, y: y, width: width, height: height)
+    }
+
+    private func applySelectionZoom(rect: CGRect, in size: CGSize) {
+        let baseSpan = 3.0
+        let realSpan = baseSpan / scale
+        let imagSpan = realSpan * Double(size.height / max(1, size.width))
+
+        let factorX = Double(rect.width / max(1, size.width))
+        let factorY = Double(rect.height / max(1, size.height))
+        let factor = max(factorX, factorY)
+        guard factor > 0 else { return }
+
+        let centerX = rect.midX
+        let centerY = rect.midY
+        let dx = Double(centerX / max(1, size.width) - 0.5)
+        let dy = Double(0.5 - centerY / max(1, size.height))
+
+        let anchorReal = center.x + dx * realSpan
+        let anchorImag = center.y + dy * imagSpan
+
+        let newScale = scale / factor
+        let newRealSpan = baseSpan / newScale
+        let newImagSpan = newRealSpan * Double(size.height / max(1, size.width))
+
+        center.x = anchorReal - dx * newRealSpan
+        center.y = anchorImag - dy * newImagSpan
+        scale = newScale
         renderToken += 1
     }
 
