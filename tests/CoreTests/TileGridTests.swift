@@ -20,3 +20,11 @@ import Testing
     #expect(!deep.isEmpty)
     #expect(deep.allSatisfy { abs($0.x)<10 && abs($0.y)<10 })
 }
+
+@Test func refinementFadesAndFractionalLevels() {
+    #expect(TilePresentation.fade(readyAt:1,now:1)==0)
+    #expect(TilePresentation.fade(readyAt:1,now:1.0625)==0.5)
+    #expect(TilePresentation.fade(readyAt:1,now:2)==1)
+    #expect(TilePresentation.fineWeight(lod:4.25,readyAt:1,now:1.0625)==0.125)
+    #expect(TilePresentation.fineWeight(lod:4,readyAt:1,now:2)==0)
+}

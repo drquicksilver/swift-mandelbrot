@@ -42,7 +42,7 @@ struct GPUCanvas: UIViewRepresentable {
         guard framesInFlight<2,let gpu=GPUContext.shared,
               let descriptor=view.currentRenderPassDescriptor,let drawable=view.currentDrawable,
               let command=gpu.displayQueue.makeCommandBuffer(),let encoder=command.makeRenderCommandEncoder(descriptor:descriptor) else { return }
-        TileCompositor.encode(store:model.tiles,viewport:model.viewport,size:view.bounds.size,gpu:gpu,encoder:encoder)
+        TileCompositor.encode(store:model.tiles,viewport:model.viewport,size:view.bounds.size,gpu:gpu,encoder:encoder,overlay:model.showTileOverlay)
         encoder.endEncoding();command.present(drawable)
         framesInFlight += 1
         command.addCompletedHandler { [weak self] _ in Task { @MainActor [weak self] in self?.framesInFlight -= 1 } }

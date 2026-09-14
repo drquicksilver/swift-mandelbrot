@@ -53,6 +53,7 @@ final class GPUContext: @unchecked Sendable {
     let samplePipeline: MTLComputePipelineState
     let colourPipeline: MTLComputePipelineState
     let imagePipeline: MTLRenderPipelineState
+    let tilePipeline: MTLRenderPipelineState
     let library: MTLLibrary
 
     private init() throws {
@@ -73,6 +74,9 @@ final class GPUContext: @unchecked Sendable {
         descriptor.colorAttachments[0].sourceAlphaBlendFactor = .one
         descriptor.colorAttachments[0].destinationAlphaBlendFactor = .oneMinusSourceAlpha
         imagePipeline=try device.makeRenderPipelineState(descriptor:descriptor)
+        descriptor.vertexFunction=library.makeFunction(name:"tileVertex")
+        descriptor.fragmentFunction=library.makeFunction(name:"tileFragment")
+        tilePipeline=try device.makeRenderPipelineState(descriptor:descriptor)
     }
     func texture(width: Int, height: Int, format: MTLPixelFormat) throws -> MTLTexture {
         let descriptor=MTLTextureDescriptor.texture2DDescriptor(pixelFormat:format,width:width,height:height,mipmapped:false)

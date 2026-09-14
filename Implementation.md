@@ -33,6 +33,9 @@ Completed:
 - 2.1(b): multiple levels, coarse-first scheduling, parent fallback with zero-hole
   zoom tests, and anchor rebasing with retained coverage.
 
-Next: tile stages 2.1(c–d). No perturbation or automatic iteration-depth
+- 2.1(c): colour-space level blending, 125 ms refinement fades, and GPU tile
+  borders/level labels. Shader integration verifies known RGB blend weights.
+
+Next: tile stage 2.1(d). No perturbation or automatic iteration-depth
 heuristic is included in this milestone. Colour mipmaps are disposable
 palette-dependent display data; raw sample tiles remain authoritative.

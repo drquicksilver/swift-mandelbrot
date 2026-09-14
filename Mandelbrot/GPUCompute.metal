@@ -92,3 +92,47 @@ fragment float4 imageFragment(QuadOutput in [[stage_in]],texture2d<float> image 
     constexpr sampler s(coord::normalized, address::clamp_to_edge, filter::linear);
     return float4(image.sample(s,in.uv).rgb,p.opacity);
 }
+
+struct TileDrawUniforms {
+    float4 rect, coarseUV, baseUV, fineUV;
+    float baseMix, fineMix;
+    uint border;
+    int level;
+};
+vertex QuadOutput tileVertex(uint index [[vertex_id]],constant TileDrawUniforms &p [[buffer(0)]]) {
+    constexpr float2 corners[] = {float2(0,0),float2(1,0),float2(0,1),float2(1,0),float2(1,1),float2(0,1)};
+    float2 c=corners[index];
+    return {float4(mix(p.rect.x,p.rect.z,c.x),mix(p.rect.y,p.rect.w,c.y),0,1),c};
+}
+bool digitPixel(float2 point,uint digit) {
+    constexpr uint masks[]={63,6,91,79,102,109,125,7,127,111};
+    uint mask=masks[min(digit,9u)];
+    float x=point.x,y=point.y;
+    if(x<0 || x>=5 || y<0 || y>=9) return false;
+    return ((mask&1) && y<1 && x>=1 && x<4) || ((mask&2) && x>=4 && y>=1 && y<4)
+        || ((mask&4) && x>=4 && y>=5 && y<8) || ((mask&8) && y>=8 && x>=1 && x<4)
+        || ((mask&16) && x<1 && y>=5 && y<8) || ((mask&32) && x<1 && y>=1 && y<4)
+        || ((mask&64) && y>=4 && y<5 && x>=1 && x<4);
+}
+fragment float4 tileFragment(QuadOutput in [[stage_in]],texture2d<float> coarse [[texture(0)]],
+                             texture2d<float> base [[texture(1)]],texture2d<float> fine [[texture(2)]],
+                             constant TileDrawUniforms &p [[buffer(0)]]) {
+    constexpr sampler s(coord::normalized,address::clamp_to_edge,filter::linear);
+    // Interpolate colours, never iteration counts or inside/outside flags.
+    float3 rgb=base.sample(s,mix(p.baseUV.xy,p.baseUV.zw,in.uv)).rgb;
+    if(p.baseMix<1) rgb=mix(coarse.sample(s,mix(p.coarseUV.xy,p.coarseUV.zw,in.uv)).rgb,rgb,p.baseMix);
+    if(p.fineMix>0) rgb=mix(rgb,fine.sample(s,mix(p.fineUV.xy,p.fineUV.zw,in.uv)).rgb,p.fineMix);
+    if(p.border) {
+        float2 pixel=in.uv/max(fwidth(in.uv),float2(1e-6));
+        float2 edge=min(in.uv,1-in.uv)/max(fwidth(in.uv),float2(1e-6));
+        if(min(edge.x,edge.y)<1.25) rgb=float3(1);
+        float2 digit=(pixel-float2(5,5))/1.5f;
+        uint level=uint(abs(p.level));
+        bool ink=false;
+        if(p.level<0) { ink=digit.x>=0 && digit.x<4 && digit.y>=4 && digit.y<5;digit.x-=6; }
+        if(level>=10) { ink=ink || digitPixel(digit,level/10);digit.x-=6; }
+        ink=ink || digitPixel(digit,level%10);
+        if(ink) rgb=float3(1,0.9,0.15);
+    }
+    return float4(rgb,1);
+}

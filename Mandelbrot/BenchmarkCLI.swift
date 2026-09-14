@@ -289,7 +289,7 @@ enum BenchmarkCLI {
             store.update(viewport:view,size:CGSize(width:size.0,height:size.1),pixelWidth:Double(size.0),iterations:options.iterations,
                          override:RendererID(rawValue:options.renderer),colouring:options.colouring)
             try await store.waitUntilReady()
-            let texture = try await TileCompositor.snapshot(store:store,viewport:view,width:size.0,height:size.1)
+            let texture = try await TileCompositor.snapshot(store:store,viewport:view,width:size.0,height:size.1,now:ProcessInfo.processInfo.systemUptime+TilePresentation.fadeDuration)
             let image = try await gpu.image(texture), data = NSMutableData()
             guard let destination = CGImageDestinationCreateWithData(data,UTType.png.identifier as CFString,1,nil) else { throw GPUFailure("PNG encoder unavailable") }
             CGImageDestinationAddImage(destination,image,nil)

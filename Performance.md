@@ -234,3 +234,11 @@ trace: 173.095 ms; maximum observed GPU batch:
 Samples: `evidence/product/2.1b-parent-fallback.json`. Coarse tiles precede fine tiles;
 one ancestor lookup per screen cell avoids drawing every ancestor over the screen.
 Anchor rebasing retains previous coverage while replacement tiles are computed.
+
+### 2.1(c): level blending and refinement fades
+
+The same pan/palette/zoom trace now uses the three-source colour compositor.
+Five M1 Pro runs: median 134.249 ms, longest compute batch 0.641 ms.
+Raw runs: `evidence/product/2.1c-blending.json`. This is offscreen integration
+time, not a measurement of display refresh rate. `make test` passes, including
+an actual GPU render with known coarse/base/fine colours and blend weights.
