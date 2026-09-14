@@ -32,7 +32,7 @@ import SwiftUI
     @Published var showBenchmark = false
     @Published var showSettings = false
     @Published var showDeveloper = false
-    @Published var showHUD = true
+    @Published var showHUD = false
     @Published var showTileOverlay = false
     @Published var atPrecisionLimit = false
     var size = CGSize(width: 900, height: 600)

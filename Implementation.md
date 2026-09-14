@@ -20,7 +20,10 @@ Completed:
 - 1.5: smooth radius-256 samples, seven cyclic palettes, appearance controls,
   recolouring without recomputation, and an independent smooth-count oracle.
 
-Next: developer panel (1.7), platform
+- 1.7: hidden developer access, automatic/default clean viewer, renderer overrides,
+  HUD/overlay toggles, device-tagged benchmark sharing and timing scope.
+
+Next: platform
 input (1.8), then tile stages 2.1(a–d). No perturbation or automatic iteration-depth
 heuristic is included in this milestone. Colour mipmaps are disposable
 palette-dependent display data; raw sample tiles remain authoritative.

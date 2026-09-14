@@ -7,11 +7,11 @@ struct HelpView: View {
             List {
                 Section("Explore") {
                     Text("Drag to move. Pinch to zoom around your fingers.")
-                    Text("Detail increases automatically as you zoom. A small notice appears when you reach the current precision limit.")
+                    Text("Finer detail appears as you explore. A small notice appears when you reach the current precision limit.")
                 }
                 #if os(macOS)
                 Section("Keyboard") {
-                    ForEach(ExplorerCommand.allCases) { command in
+                    ForEach(ExplorerCommand.allCases.filter { $0 != .benchmark }) { command in
                         LabeledContent(command.title, value: command.binding)
                     }
                 }

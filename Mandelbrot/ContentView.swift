@@ -11,10 +11,6 @@ struct ContentView: View {
                     VStack(alignment: .trailing) {
                         Text(model.renderer.title)
                         Text("\(model.iterations) iterations · \(model.duration, specifier: "%.3f") s")
-                        Picker("Renderer", selection: $model.rendererOverride) {
-                            Text("Automatic").tag(nil as RendererID?)
-                            ForEach(RendererID.allCases) { Text($0.title).tag(Optional($0)) }
-                        }.frame(width: 220)
                     }.font(.caption.monospacedDigit()).padding().background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12)).padding()
                 }
                 if model.atPrecisionLimit {
@@ -33,10 +29,10 @@ struct ContentView: View {
         .background(.black)
         .toolbar {
             Button { model.perform(.reset) } label: { Label("Reset", systemImage: "house") }
-            Button { model.showSettings = true } label: { Label("Appearance", systemImage: "paintpalette") }
-            Button { model.showBenchmark = true } label: { Label("Benchmarks", systemImage: "speedometer") }
+            Button { model.showSettings = true } label: { Label("Settings", systemImage: "slider.horizontal.3") }
             Button { model.showHelp = true } label: { Label("Controls", systemImage: "questionmark.circle") }
         }
+        .sheet(isPresented: $model.showDeveloper) { DeveloperPanel(model:model) }
         .sheet(isPresented: $model.showBenchmark) { BenchmarkView(viewport: model.viewport, iterations: model.iterations) }
         .sheet(isPresented: $model.showSettings) { AppearanceView(model:model) }
         .sheet(isPresented: $model.showHelp) { HelpView() }

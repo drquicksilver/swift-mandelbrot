@@ -64,14 +64,42 @@ extension FocusedValues {
         set { self[ExplorerFocusKey.self] = newValue }
     }
 }
+#if os(macOS)
+import AppKit
+import Combine
+@MainActor final class DeveloperAccess: ObservableObject {
+    static let shared = DeveloperAccess()
+    @Published var optionHeld = false
+    private var monitor: Any?
+    private init() {
+        monitor = NSEvent.addLocalMonitorForEvents(matching:.flagsChanged) { event in
+            Task { @MainActor in DeveloperAccess.shared.optionHeld = event.modifierFlags.contains(.option) }
+            return event
+        }
+    }
+}
+#endif
 struct ExplorerCommands: Commands {
+    #if os(macOS)
+    @ObservedObject private var access = DeveloperAccess.shared
+    @AppStorage("DeveloperMenuEnabled") private var developerMenu = false
+    #endif
     @FocusedValue(\.explorer) private var explorer
     var body: some Commands {
         CommandMenu("Explore") {
-            ForEach(ExplorerCommand.allCases) { command in
+            ForEach(ExplorerCommand.allCases.filter { $0 != .benchmark }) { command in
                 Button(command.title) { explorer?.perform(command) }
                     .keyboardShortcut(command.key, modifiers: command.modifiers)
             }
         }
+        #if os(macOS)
+        if access.optionHeld || developerMenu {
+            CommandMenu("Debug") {
+                Button("Developer Panel") { explorer?.showDeveloper = true }
+                Button(ExplorerCommand.benchmark.title) { explorer?.perform(.benchmark) }
+                    .keyboardShortcut(ExplorerCommand.benchmark.key,modifiers:ExplorerCommand.benchmark.modifiers)
+            }
+        }
+        #endif
     }
 }

@@ -2,6 +2,9 @@ import SwiftUI
 
 struct AppearanceView: View {
     @ObservedObject var model: ExplorerModel
+    @State private var versionTaps = 0
+    @State private var showDeveloper = false
+    @AppStorage("DeveloperToolsUnlocked") private var unlocked = false
     @Environment(\.dismiss) private var dismiss
     var body: some View {
         NavigationStack {
@@ -25,8 +28,19 @@ struct AppearanceView: View {
                     Stepper("\(model.iterations) iterations",value:$model.iterations,in:200...10000,step:200)
                     Text("Increase the detail limit when a region appears completely dark.").font(.caption)
                 }
-            }.navigationTitle("Appearance")
+                Section("About") {
+                    Text("Mandelbrot")
+                    Text("Version \(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0")")
+                        .accessibilityIdentifier("versionLabel")
+                        .onTapGesture {
+                            versionTaps += 1
+                            if versionTaps == 7 { unlocked = true; showDeveloper = true; versionTaps = 0 }
+                        }
+                    if unlocked { Button("Developer tools") { showDeveloper = true } }
+                }
+            }.navigationTitle("Settings")
                 .toolbar { Button("Done") { dismiss() } }
-        }.frame(minWidth:320,idealWidth:420,minHeight:350)
+        }.sheet(isPresented:$showDeveloper) { DeveloperPanel(model:model) }
+        .frame(minWidth:320,idealWidth:420,minHeight:350)
     }
 }

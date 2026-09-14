@@ -12,25 +12,37 @@ struct BenchmarkMeasurement: Identifiable {
     @Published var rows: [BenchmarkMeasurement] = []
     @Published var running = false
     @Published var status = ""
+    private var viewport = Viewport()
+    private var iterations = 200
+    private var kernelOnly = false
     private var task: Task<Void, Never>?
     func cancel() { task?.cancel(); running = false }
-    func run(viewport: Viewport, iterations: Int) {
+    func run(viewport: Viewport, iterations: Int, kernelOnly: Bool = false) {
+        self.viewport = viewport; self.iterations = iterations; self.kernelOnly = kernelOnly
         cancel(); rows = []; running = true
         task = Task {
             for size in [256,512] {
-                for renderer in RendererID.allCases {
+                for renderer in RendererID.allCases where !kernelOnly || renderer.isGPU {
                     if Task.isCancelled { return }
                     status = "\(renderer.title), \(size) × \(size)"
                     var samples: [Double] = []
                     for run in 0..<4 {
                         if Task.isCancelled { return }
                         let start = DispatchTime.now().uptimeNanoseconds
-                        let image = await RenderWorker.shared.renderImage(variant: renderer.rawValue,
-                            width: size, height: size, center: viewport.center, scale: viewport.scale,
-                            blockSize: 1, configuration: MandelbrotConfiguration(maxIterations: iterations))
+                        var kernelTime: Double?
+                        var success = false
+                        if renderer.isGPU, let gpu = GPUContext.shared {
+                            if let frame = try? await gpu.render(viewport:viewport,width:size,height:size,iterations:iterations,renderer:renderer) {
+                                kernelTime = frame.kernelSeconds; success = true
+                            }
+                        } else {
+                            let image = await RenderWorker.shared.renderImage(variant:renderer.rawValue,width:size,height:size,
+                                center:viewport.center,scale:viewport.scale,blockSize:1,configuration:MandelbrotConfiguration(maxIterations:iterations))
+                            success = image != nil
+                        }
                         if Task.isCancelled { return }
-                        guard image != nil else { status = "\(renderer.title) unavailable"; running = false; return }
-                        if run > 0 { samples.append(Double(DispatchTime.now().uptimeNanoseconds-start)/1e9) }
+                        guard success else { status = "\(renderer.title) unavailable"; running = false; return }
+                        if run > 0 { samples.append(kernelOnly ? (kernelTime ?? 0) : Double(DispatchTime.now().uptimeNanoseconds-start)/1e9) }
                     }
                     rows.append(BenchmarkMeasurement(renderer: renderer, size: size, seconds: samples.sorted()[1]))
                 }
@@ -39,7 +51,7 @@ struct BenchmarkMeasurement: Identifiable {
         }
     }
     var markdown: String {
-        var text = "# Mandelbrot benchmark\n\(ProcessInfo.processInfo.operatingSystemVersionString)\n\nMedian of 3 runs after 1 warmup; includes colour conversion.\n\n| Renderer | Size | Seconds | Mpx/s |\n| --- | --- | ---: | ---: |\n"
+        var text = "# Mandelbrot benchmark\n\(DeviceDescription.current)\nCenter: \(viewport.center.x), \(viewport.center.y); scale: \(viewport.scale); iterations: \(iterations)\nScope: \(kernelOnly ? "GPU compute only" : "CPU legacy / GPU smooth compute + colour; no display/readback")\n\nMedian of 3 runs after 1 warmup; includes colour conversion.\n\n| Renderer | Size | Seconds | Mpx/s |\n| --- | --- | ---: | ---: |\n"
         for row in rows {
             text += String(format: "| %@ | %d² | %.6f | %.2f |\n", row.renderer.rawValue, row.size, row.seconds, Double(row.size*row.size)/row.seconds/1e6)
         }
@@ -50,14 +62,16 @@ struct BenchmarkMeasurement: Identifiable {
 struct BenchmarkView: View {
     let viewport: Viewport
     let iterations: Int
+    @State private var kernelOnly = false
     @StateObject private var model = BenchmarkModel()
     @Environment(\.dismiss) private var dismiss
     var body: some View {
         NavigationStack {
             List {
                 Text("Current view · \(iterations) iterations")
+                Toggle("GPU kernel only",isOn:$kernelOnly).disabled(model.running)
                 Button(model.running ? "Cancel" : "Run benchmarks") {
-                    if model.running { model.cancel() } else { model.run(viewport: viewport, iterations: iterations) }
+                    if model.running { model.cancel() } else { model.run(viewport: viewport, iterations: iterations, kernelOnly:kernelOnly) }
                 }
                 Text(model.status).font(.caption)
                 ForEach(model.rows) { row in
