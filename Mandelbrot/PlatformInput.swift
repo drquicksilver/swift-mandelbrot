@@ -5,7 +5,10 @@ import SwiftUI
   struct PlatformInput: NSViewRepresentable {
     var model: ExplorerModel
     func makeNSView(context: Context) -> MacInputView { MacInputView(model: model) }
-    func updateNSView(_ view: MacInputView, context: Context) { view.model = model }
+    func updateNSView(_ view: MacInputView, context: Context) {
+      view.model = model
+      view.updateMotionClock()
+    }
   }
   @MainActor final class MacInputView: NSView {
     var model: ExplorerModel
@@ -23,20 +26,24 @@ import SwiftUI
     }
     required init?(coder: NSCoder) { fatalError("init(coder:) is not supported") }
     override func viewDidMoveToWindow() {
-      timer?.invalidate()
-      timer = nil
-      if window != nil {
-        timer = Timer(timeInterval: 1 / 60, repeats: true) { [weak self] _ in
-          Task { @MainActor [weak self] in
-            if let self, !self.model.renderer.isGPU {
-              self.model.advanceMotion(now: ProcessInfo.processInfo.systemUptime)
-            }
-          }
-        }
-        RunLoop.main.add(timer!, forMode: .common)
-      } else {
-        model.stopMotion()
+      if window == nil { model.stopMotion() }
+      updateMotionClock()
+    }
+    func updateMotionClock() {
+      guard window != nil, model.isActive, !model.renderer.isGPU, model.motionActive else {
+        timer?.invalidate()
+        timer = nil
+        return
       }
+      guard timer == nil else { return }
+      timer = Timer(timeInterval: 1 / 60, repeats: true) { [weak self] _ in
+        Task { @MainActor [weak self] in
+          guard let self else { return }
+          self.model.advanceMotion(now: ProcessInfo.processInfo.systemUptime)
+          self.updateMotionClock()
+        }
+      }
+      RunLoop.main.add(timer!, forMode: .common)
     }
     override func mouseDown(with event: NSEvent) {
       window?.makeFirstResponder(self)
@@ -86,22 +93,9 @@ import SwiftUI
         max(0.01, 1 + Double(event.magnification)), at: convert(event.locationInWindow, from: nil))
     }
     override func keyDown(with event: NSEvent) {
-      let flags = event.modifierFlags.intersection([.command, .shift, .control, .option])
-      for command in ExplorerCommand.allCases where command != .benchmark {
-        var expected = NSEvent.ModifierFlags()
-        if command.modifiers.contains(.command) { expected.insert(.command) }
-        if command.modifiers.contains(.shift) { expected.insert(.shift) }
-        let arrow: [ExplorerCommand: UInt16] = [.left: 123, .right: 124, .down: 125, .up: 126]
-        let matches =
-          arrow[command] == event.keyCode
-          || (command == .help
-            ? event.characters == "?"
-            : event.charactersIgnoringModifiers?.lowercased()
-              == String(command.key.character).lowercased())
-        if matches && flags == expected {
-          model.perform(command)
-          return
-        }
+      if let command = ExplorerCommand.matching(event) {
+        model.perform(command)
+        return
       }
       super.keyDown(with: event)
     }
@@ -111,7 +105,10 @@ import SwiftUI
   struct PlatformInput: UIViewRepresentable {
     var model: ExplorerModel
     func makeUIView(context: Context) -> TouchInputView { TouchInputView(model: model) }
-    func updateUIView(_ view: TouchInputView, context: Context) { view.model = model }
+    func updateUIView(_ view: TouchInputView, context: Context) {
+      view.model = model
+      view.updateMotionClock()
+    }
   }
   @MainActor final class TouchInputView: UIView, UIGestureRecognizerDelegate {
     var model: ExplorerModel
@@ -152,12 +149,18 @@ import SwiftUI
           minimum: 30, maximum: Float(window?.screen.maximumFramesPerSecond ?? 60),
           preferred: Float(window?.screen.maximumFramesPerSecond ?? 60))
         displayLink?.add(to: .main, forMode: .common)
+        updateMotionClock()
       } else {
         model.stopMotion()
       }
     }
+    func updateMotionClock() {
+      displayLink?.isPaused =
+        !(window != nil && model.isActive && !model.renderer.isGPU && model.motionActive)
+    }
     @objc private func tick() {
       if !model.renderer.isGPU { model.advanceMotion(now: ProcessInfo.processInfo.systemUptime) }
+      updateMotionClock()
     }
     func gestureRecognizer(
       _ a: UIGestureRecognizer, shouldRecognizeSimultaneouslyWith b: UIGestureRecognizer

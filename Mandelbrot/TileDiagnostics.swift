@@ -1,4 +1,5 @@
 #if os(macOS)
+  import AppKit
   import Foundation
   import CoreGraphics
   import Metal
@@ -299,6 +300,29 @@
       try await store.waitUntilReady()
       try require(store.allVisibleReady, "Resuming unchanged demand lost readiness")
     }
+    static func checkNativeCommands() throws {
+      func event(_ characters: String, code: UInt16, flags: NSEvent.ModifierFlags = []) -> NSEvent {
+        NSEvent.keyEvent(
+          with: .keyDown, location: .zero, modifierFlags: flags, timestamp: 0,
+          windowNumber: 0, context: nil, characters: characters,
+          charactersIgnoringModifiers: characters,
+          isARepeat: false, keyCode: code)!
+      }
+      try require(ExplorerCommand.matching(event("", code: 123)) == .left, "Arrow command missing")
+      try require(
+        ExplorerCommand.matching(event("?", code: 44, flags: .shift)) == .help,
+        "Help command missing")
+      try require(
+        ExplorerCommand.matching(event("h", code: 4, flags: .shift)) == .reset,
+        "Reset command missing")
+      try require(
+        ExplorerCommand.matching(event("h", code: 4)) == nil, "Incorrect modifier triggered reset")
+      let model = ExplorerModel()
+      model.fling(pan: CGPoint(x: 100, y: 0))
+      try require(model.motionActive, "Fling did not signal input-clock wakeup")
+      model.stopMotion()
+      try require(!model.motionActive, "Stopped motion left input clock active")
+    }
     static func run() async -> Int32 {
       do {
         guard let gpu = GPUContext.shared else { throw GPUFailure("GPU unavailable") }
@@ -307,6 +331,7 @@
           let second = try gpu.paletteTexture(palette)
           try require(first === second, "Palette GPU texture was rebuilt")
         }
+        try checkNativeCommands()
         try await checkDemandWakeups()
         try await checkIterationContinuity(gpu)
         try await checkFailureRecovery()

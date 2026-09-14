@@ -31,11 +31,13 @@ import SwiftUI
   @Published var showTileOverlay = false
   @Published var selection: CGRect?
   var motion = Motion()
+  @Published private(set) var motionActive = false
   var motionAnchor: CGPoint?
   private var lastMotionTime: Double?
   var zoomDirection = 0
   func stopMotion() {
     motion.stop()
+    motionActive = false
     lastMotionTime = nil
     zoomDirection = 0
   }
@@ -44,6 +46,7 @@ import SwiftUI
     motion.zoomVelocity = max(-4, min(4, zoom))
     motionAnchor = anchor
     lastMotionTime = ProcessInfo.processInfo.systemUptime
+    motionActive = motion.active
   }
   func advanceMotion(now: Double) {
     guard isActive, motion.active else {
@@ -61,6 +64,7 @@ import SwiftUI
       pixelWidth: pixelWidth)
     if atPrecisionLimit { motion.zoomVelocity = 0 }
     viewport = next
+    if motionActive != motion.active { motionActive = motion.active }
   }
   @Published var atPrecisionLimit = false
   var size = CGSize(width: 900, height: 600)

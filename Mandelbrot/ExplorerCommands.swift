@@ -107,3 +107,27 @@ struct ExplorerCommands: Commands {
     #endif
   }
 }
+
+#if os(macOS)
+  extension ExplorerCommand {
+    static func matching(_ event: NSEvent) -> ExplorerCommand? {
+      let flags = event.modifierFlags.intersection([.command, .shift, .control, .option])
+      for command in ExplorerCommand.allCases where command != .benchmark {
+        var expected = NSEvent.ModifierFlags()
+        if command.modifiers.contains(.command) { expected.insert(.command) }
+        if command.modifiers.contains(.shift) { expected.insert(.shift) }
+        let arrow: [ExplorerCommand: UInt16] = [.left: 123, .right: 124, .down: 125, .up: 126]
+        let matches =
+          arrow[command] == event.keyCode
+          || (command == .help
+            ? event.characters == "?"
+            : event.charactersIgnoringModifiers?.lowercased()
+              == String(command.key.character).lowercased())
+        if matches && flags == expected {
+          return command
+        }
+      }
+      return nil
+    }
+  }
+#endif
