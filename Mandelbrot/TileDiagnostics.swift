@@ -49,6 +49,63 @@
             && abs(Int(bytes[index + 2]) - 32) <= 1, "GPU did not blend coloured levels correctly")
       }
     }
+    static func checkHighIterationColour(_ gpu: GPUContext) async throws {
+      let values = [
+        SampleRecord(iteration: 1_000_000, correction: 0.003),
+        SampleRecord(iteration: 1_000_000, correction: 0.02),
+        SampleRecord(iteration: 999_999, correction: -2.003),
+      ]
+      let descriptor = MTLTextureDescriptor.texture2DDescriptor(
+        pixelFormat: .rg32Uint,
+        width: values.count, height: 1, mipmapped: false)
+      descriptor.storageMode = .shared
+      descriptor.usage = .shaderRead
+      let samples = gpu.device.makeTexture(descriptor: descriptor)!
+      values.withUnsafeBytes { bytes in
+        samples.replace(
+          region: MTLRegionMake2D(0, 0, values.count, 1), mipmapLevel: 0,
+          withBytes: bytes.baseAddress!, bytesPerRow: values.count * 8)
+      }
+      let output = try gpu.texture(width: values.count, height: 1, format: .rgba8Unorm)
+      let settings = ColourSettings(palette: .ink, density: 1, offset: 0.25)
+      _ = try await gpu.colour(samples, into: output, settings: settings)
+      let bytes = try await gpu.readback(output)
+      let lut = settings.palette.lookupTable()
+      for (i, value) in values.enumerated() {
+        let phase = Double(value.iteration) + Double(value.correction) + Double(settings.offset)
+        let coordinate = (phase - floor(phase)) * 1024 - 0.5
+        let index = Int(floor(coordinate))
+        let fraction = coordinate - floor(coordinate)
+        for channel in 0..<3 {
+          let a = Double(lut[((index + 1024) % 1024) * 4 + channel])
+          let b = Double(lut[((index + 1025) % 1024) * 4 + channel])
+          let expected = Int((a * (1 - fraction) + b * fraction).rounded())
+          try require(
+            abs(Int(bytes[i * 4 + channel]) - expected) <= 1,
+            "High-count palette phase lost its fractional correction")
+        }
+      }
+      try require(bytes[0] != bytes[4], "Distinct high-count corrections collapsed to one colour")
+    }
+    static func checkDepthControls() async throws {
+      let model = ExplorerModel()
+      model.viewport = try Viewport(real: "0", imag: "1", zoom: "1e1000")
+      try require(model.iterations > 65535, "Depth estimate retained the legacy cap")
+      let deep = model.iterations
+      model.interactionActive = true
+      model.viewport = Viewport()
+      try await Task.sleep(for: .milliseconds(350))
+      try require(model.iterations == deep, "Iteration limit decreased during a gesture")
+      model.interactionActive = false
+      try await Task.sleep(for: .milliseconds(350))
+      try require(model.iterations == 200, "Iteration limit did not decrease at idle")
+      model.automaticIterations = false
+      model.manualIterations = 800000
+      model.perform(.increaseIterations)
+      try require(
+        model.iterations == IterationPolicy.maximum, "Keyboard and manual limits disagree")
+      model.setActive(false)
+    }
     static func checkResumption(_ gpu: GPUContext) async throws {
       for renderer in [RendererID.metal, .metalDouble] {
         let width = 66
@@ -58,8 +115,8 @@
             center: CGPoint(x: -0.743643887037151, y: 0.13182590390533), scale: 1e7), width: width,
           height: height, iterations: 2000, renderer: renderer)
         params.smooth = 1
-        let full = try gpu.texture(width: width, height: height, format: .r32Float)
-        let sliced = try gpu.texture(width: width, height: height, format: .r32Float)
+        let full = try gpu.texture(width: width, height: height, format: .rg32Uint)
+        let sliced = try gpu.texture(width: width, height: height, format: .rg32Uint)
         let states = gpu.device.makeBuffer(
           length: width * height * 16, options: .storageModePrivate)!
         _ = try await gpu.compute(into: full, parameters: params)
@@ -129,7 +186,9 @@
       }
     }
     static func checkCache() async throws -> [String: Double] {
-      let store = TileStore(budgetBytes: 40 * 1024 * 1024)
+      // Keep complete prefetched sibling groups resident with eight-byte raw samples.
+      // Separate constrained-cache checks below still exercise LOD reduction and eviction.
+      let store = TileStore(budgetBytes: 64 * 1024 * 1024)
       let size = CGSize(width: 256, height: 256)
       var view = Viewport()
       store.update(
@@ -403,6 +462,8 @@
         try await checkIterationContinuity(gpu)
         try await checkFailureRecovery()
         try await checkColourBlend(gpu)
+        try await checkHighIterationColour(gpu)
+        try await checkDepthControls()
         try await checkResumption(gpu)
         try await checkMipmaps(gpu)
         let cacheMetrics = try await checkCache()

@@ -16,6 +16,9 @@ struct DeveloperPanel: View {
             Text("Deep views require perturbation; other overrides resume when you zoom out.").font(
               .caption)
           }
+          if !model.renderer.isGPU {
+            Text("Legacy CPU renderers use at most 65,535 iterations.").font(.caption)
+          }
           Toggle("Show performance HUD", isOn: $model.showHUD)
           Toggle("Tile borders and levels", isOn: $model.showTileOverlay)
           Text(

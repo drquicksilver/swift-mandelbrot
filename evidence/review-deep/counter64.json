@@ -1,0 +1,40 @@
+{
+  "centerImag": 1,
+  "centerReal": 0,
+  "iterations": 5000,
+  "preciseCenterImag": "1",
+  "preciseCenterReal": "0",
+  "preciseScale": "1e1000",
+  "results": [
+    {
+      "height": 2048,
+      "medianSeconds": 0.596243125,
+      "megapixelsPerSecond": 3.5172766143005845,
+      "perturbation": [
+        {
+          "avoidedGlitches": 0,
+          "batches": 115,
+          "blaSeconds": 0.0006152500864118338,
+          "glitches": 0,
+          "kernelSeconds": 0.43271279125474393,
+          "longestBLASkip": 2048,
+          "longestBatchMS": 51.07854166999459,
+          "rebases": 3870117,
+          "referenceBytes": 0,
+          "referenceCacheHits": 0,
+          "referenceSeconds": 0.10358875012025237,
+          "references": 1,
+          "skippedIterations": 5430400581
+        }
+      ],
+      "samplesSeconds": [
+        0.596243125
+      ],
+      "variant": "perturbation",
+      "width": 1024
+    }
+  ],
+  "runs": 1,
+  "timingScope": "gpu-compute-and-colour-no-readback",
+  "warmup": 0
+}

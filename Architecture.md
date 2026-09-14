@@ -32,9 +32,13 @@ spans and local geometry retain a separate binary exponent.
 uses Float while pixel spacing has adequate Float-ULP headroom, then FloatFloat,
 then perturbation. All Metal arithmetic paths retain strict arithmetic. Tile origins
 and increments are split on the CPU, avoiding per-pixel FloatFloat division.
-Raw R32Float values contain smooth escape counts with bailout radius 256; -1
-marks a sample at its iteration cap. A private, unfinished ordinary tile uses -2 internally; perturbation uses -3
-for a detected glitch until that pixel is recomputed.
+Raw RG32Uint records hold an exact UInt32 escape iteration and the bits of a
+Float32 smooth correction, using bailout radius 256. Counts 0xffffffff,
+0xfffffffe and 0xfffffffd denote capped, unfinished and glitched respectively.
+Capped means unresolved, not proven interior. FloatFloat division reduces palette
+phase before combining its fractional parts, retaining colour detail at one
+million iterations. Raw records cost eight bytes per sample; tile budgeting uses
+the textures’ actual allocated sizes.
 
 ## Work and presentation
 
@@ -117,15 +121,22 @@ changes; unchanged-demand tests ensure 120 idle updates schedule no new work.
 validation includes simulator and physical iOS targets. Actual 60 Hz/120 Hz frame
 pacing and touch feel on iPhone 11 Pro and iPhone 16 Pro still need device testing.
 
-## Before automatic depth or perturbation
+## Iteration depth
 
-The current 65,535 iteration ceiling keeps Float32 smooth-count spacing at or below
-1/256. Coordinate depth alone does not reduce this precision. Before permitting
-much larger iteration counts, use an integer escape iteration plus a separate
-floating smoothing correction, and keep palette phase calculations from collapsing
-them back into one large Float. Unresolved and proven-interior status also need
-separate representation once periodicity checking is introduced.
+The GPU/product limit is 1,000,000 iterations. Settings and keyboard controls use
+one policy: an automatic starting estimate of `200 + 80*log2(scale)`, rounded up
+to 200-step bands, with a manual detail multiplier. Automatic increases require
+10% or 200 iterations of change; decreases wait 300 ms after motion/gestures stop.
+Manual mode accepts a direct count. The default CLI remains 200 for reproducibility.
+Legacy renderers and UInt16 export retain their 65,535 limit; the developer
+benchmark excludes those renderers when the requested count is larger.
 
+`--sample-records` exports little-endian UInt32 count + Float32 correction pairs,
+row-major, top to bottom. `--samples` remains the compatible, lossy Float32 export
+and requires a limit <=65,535. Output destinations must differ.
+
+This completes the depth-based first estimate from 2.3, not pixel-driven
+adaptation, periodicity checking, or selective extension of capped samples.
 Extending capped tiles should preserve escaped samples, but retaining a full orbit
 buffer costs about 1 MiB per tile. Design bounded/selective state retention with
 2.3; storing coordinates alone only enables recomputation. Larger GPU batches and
@@ -171,4 +182,4 @@ work and BLA preparation are cancellable and off the main actor. At deep zoom th
 tile budget reserves up to 12 MiB for reference/cache/state resources before its
 existing transactional colour/display headroom. Full-image benchmarks create
 fresh references, so end-to-end results do not disguise reference latency with
-cache hits. Iteration state retention and automatic iteration depth remain 2.3.
+cache hits. Iteration state retention and pixel-driven adaptation remain 2.3.

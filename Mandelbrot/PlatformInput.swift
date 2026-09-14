@@ -26,7 +26,10 @@ import SwiftUI
     }
     required init?(coder: NSCoder) { fatalError("init(coder:) is not supported") }
     override func viewDidMoveToWindow() {
-      if window == nil { model.stopMotion() }
+      if window == nil {
+        model.stopMotion()
+        model.interactionActive = false
+      }
       updateMotionClock()
     }
     func updateMotionClock() {
@@ -46,6 +49,7 @@ import SwiftUI
       RunLoop.main.add(timer!, forMode: .common)
     }
     override func mouseDown(with event: NSEvent) {
+      model.interactionActive = true
       window?.makeFirstResponder(self)
       model.stopMotion()
       last = convert(event.locationInWindow, from: nil)
@@ -79,8 +83,13 @@ import SwiftUI
       }
       model.selection = nil
       selecting = false
+      model.interactionActive = false
     }
     override func scrollWheel(with event: NSEvent) {
+      if event.phase.contains(.began) { model.interactionActive = true }
+      if event.phase.contains(.ended) || event.phase.contains(.cancelled) {
+        model.interactionActive = false
+      }
       model.stopMotion()
       model.zoom(
         exp(Double(event.scrollingDeltaY) * (event.hasPreciseScrollingDeltas ? 0.008 : 0.12)),
@@ -88,6 +97,10 @@ import SwiftUI
       // AppKit supplies trackpad momentum events; do not add a second inertia curve.
     }
     override func magnify(with event: NSEvent) {
+      if event.phase.contains(.began) { model.interactionActive = true }
+      if event.phase.contains(.ended) || event.phase.contains(.cancelled) {
+        model.interactionActive = false
+      }
       model.stopMotion()
       model.zoom(
         max(0.01, 1 + Double(event.magnification)), at: convert(event.locationInWindow, from: nil))
@@ -118,6 +131,7 @@ import SwiftUI
     private var pinchVelocity = 0.0
     private var anchor = CGPoint.zero
     private func finishGesture() {
+      model.interactionActive = panning || pinching
       if !panning && !pinching {
         model.fling(pan: panVelocity, zoom: pinchVelocity, anchor: anchor)
       }
@@ -151,6 +165,9 @@ import SwiftUI
         displayLink?.add(to: .main, forMode: .common)
         updateMotionClock()
       } else {
+        model.interactionActive = false
+        panning = false
+        pinching = false
         model.stopMotion()
       }
     }
@@ -175,6 +192,7 @@ import SwiftUI
           pinchVelocity = 0
         }
         panning = true
+        model.interactionActive = true
         model.stopMotion()
       }
       let delta = recognizer.translation(in: self)
@@ -187,6 +205,7 @@ import SwiftUI
       }
       if recognizer.state == .cancelled {
         panning = false
+        model.interactionActive = pinching
         model.stopMotion()
       }
     }
@@ -197,6 +216,7 @@ import SwiftUI
           pinchVelocity = 0
         }
         pinching = true
+        model.interactionActive = true
         model.stopMotion()
       }
       let anchor = recognizer.location(in: self)
@@ -210,6 +230,7 @@ import SwiftUI
       }
       if recognizer.state == .cancelled {
         pinching = false
+        model.interactionActive = panning
         model.stopMotion()
       }
     }

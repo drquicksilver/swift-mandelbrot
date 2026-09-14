@@ -419,7 +419,7 @@ struct TileStatistics: Equatable, Codable {
             continue
           }
           let bounds = self.bounds(key)
-          let samples = try gpu.texture(width: resolution, height: resolution, format: .r32Float)
+          let samples = try gpu.texture(width: resolution, height: resolution, format: .rg32Uint)
           let colour = try gpu.texture(width: resolution, height: resolution, format: .rgba8Unorm)
           let renderer = PrecisionPolicy.renderer(
             logScale: Double(key.level), pixelWidth: 256, center: bounds.center,

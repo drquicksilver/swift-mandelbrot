@@ -25,9 +25,22 @@ struct AppearanceView: View {
           Slider(value: $model.colouring.offset, in: 0...1)
         }
         Section("Detail") {
-          Stepper(
-            "\(model.iterations) iterations", value: $model.iterations, in: 200...10000, step: 200)
-          Text("Increase the detail limit when a region appears completely dark.").font(.caption)
+          Toggle("Automatic iteration limit", isOn: $model.automaticIterations)
+          if model.automaticIterations {
+            Stepper(
+              "Detail ×\(model.detailMultiplier, specifier: "%.2g")",
+              value: $model.detailMultiplier, in: 0.25...16, step: 0.25)
+          } else {
+            TextField("Iteration limit", value: $model.manualIterations, format: .number)
+            HStack {
+              Button("Halve") { model.perform(.decreaseIterations) }
+              Button("Double") { model.perform(.increaseIterations) }
+            }.buttonStyle(.bordered)
+          }
+          Text("\(model.iterations.formatted()) iterations · maximum 1,000,000")
+          Text(
+            "Automatic detail estimates a starting limit from zoom depth. Raise the detail multiplier if a region remains dark."
+          ).font(.caption)
         }
         Section("About") {
           Text("Mandelbrot")

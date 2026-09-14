@@ -19,7 +19,7 @@
         --variants LIST    Comma-separated renderers (default: baseline,parallel,metal)
                            Use 'all' for every renderer supported by the selected pipeline.
         --sizes LIST       Comma-separated WIDTHxHEIGHT (default: 1024x512,2048x1024)
-        --iterations N     Iteration limit, 1...65535 (default: 200)
+        --iterations N     Iteration limit, 1...1000000 for GPU/tiles; legacy <=65535
         --runs N           Measured runs per renderer/size (default: 3)
         --warmup N         Untimed runs per renderer/size (default: 1; may be 0)
         --format FORMAT    markdown or json (default: markdown)
@@ -36,7 +36,9 @@
         --palette NAME     blue-gold, fire, ice, ink, twilight, forest, orbit
         --density N        Iterations per palette cycle (default: 64)
         --offset N         Palette phase (default: 0)
-        --samples PATH     Raw float32 GPU samples; -1 means capped/inside
+        --samples PATH     Float32 samples (<=65535 iterations); -1 means capped
+        --sample-records PATH  Raw little-endian UInt32 count + Float32 correction;
+                          count 0xffffffff means capped; eight bytes per pixel
         --pipeline NAME    legacy, gpu or tiles (default: legacy); tiles exports PNGs
         --rebasing on|off  Critical-point rebasing; off is a recovery diagnostic
         --bla on|off|fixed Perturbation hierarchy, no skipping, or 32-step blocks
@@ -57,6 +59,7 @@
       var format = "markdown"
       var colouring = ColourSettings()
       var samples: String?
+      var sampleRecords: String?
       var pipeline = "legacy"
       var timing = "end-to-end"
       var useBLA = true
@@ -89,7 +92,8 @@
           guard
             (renderFlags + benchmarkFlags + [
               "--iterations", "--center-real", "--center-imag", "--scale", "--pipeline", "--timing",
-              "--colouring", "--palette", "--density", "--offset", "--samples", "--bla",
+              "--colouring", "--palette", "--density", "--offset", "--samples", "--sample-records",
+              "--bla",
               "--rebasing",
             ]).contains(flag)
           else {
@@ -127,6 +131,7 @@
             else { throw CLIError("Invalid colour parameter") }
             if flag == "--density" { colouring.density = number } else { colouring.offset = number }
           case "--samples": samples = value
+          case "--sample-records": sampleRecords = value
           case "--pipeline":
             guard ["legacy", "gpu", "tiles"].contains(value) else {
               throw CLIError("Pipeline must be legacy, gpu or tiles")
@@ -185,7 +190,7 @@
             format = value
           default:
             guard let number = Int(value), number >= (flag == "--warmup" ? 0 : 1),
-              number <= (flag == "--iterations" ? 65535 : 1000)
+              number <= (flag == "--iterations" ? IterationPolicy.maximum : 1000)
             else {
               throw CLIError("Invalid value for \(flag): \(value)")
             }
@@ -216,6 +221,22 @@
         if viewport.logScale > log2(1e14) && selected.contains(where: { $0 != "perturbation" }) {
           throw CLIError("Scales beyond 1e14 require the perturbation renderer")
         }
+        if iterations > 65535 && (pipeline == "legacy" || counts != nil || samples != nil) {
+          throw CLIError(
+            "Legacy rendering, --counts and --samples require iterations <=65535; use GPU/tiles and --sample-records for higher limits"
+          )
+        }
+        if let path = sampleRecords {
+          guard render, pipeline == "gpu", !path.isEmpty else {
+            throw CLIError("--sample-records requires GPU PNG rendering")
+          }
+          if [output, counts, samples].compactMap({ $0 }).contains(where: {
+            URL(fileURLWithPath: $0).standardizedFileURL
+              == URL(fileURLWithPath: path).standardizedFileURL
+          }) {
+            throw CLIError("Output destinations must differ")
+          }
+        }
         if let samples {
           guard render, pipeline == "gpu", !samples.isEmpty else {
             throw CLIError("--samples requires GPU PNG rendering")
@@ -240,7 +261,9 @@
         if timing == "kernel" && (pipeline != "gpu" || render) {
           throw CLIError("Kernel timing requires a GPU benchmark")
         }
-        if pipeline == "tiles" && (!render || counts != nil || samples != nil) {
+        if pipeline == "tiles"
+          && (!render || counts != nil || samples != nil || sampleRecords != nil)
+        {
           throw CLIError(
             "Tile pipeline exports composited PNGs; use --render without --counts or --samples")
         }
@@ -447,16 +470,23 @@
             throw CLIError("PNG encoding failed")
           }
           try (data as Data).write(to: URL(fileURLWithPath: options.output!), options: .atomic)
-          if let path = options.samples {
+          if let path = options.sampleRecords {
             try await gpu.readback(frame.samples).write(
+              to: URL(fileURLWithPath: path), options: .atomic)
+          }
+          if let path = options.samples {
+            let data = try await gpu.readback(frame.samples)
+            try SampleRecord.floatSamples(data).write(
               to: URL(fileURLWithPath: path), options: .atomic)
           }
           if let path = options.counts {
             let samples = try await gpu.readback(frame.samples)
             let raw = samples.withUnsafeBytes { buffer -> Data in
               var result = Data()
-              for sample in buffer.bindMemory(to: Float.self) {
-                let count = sample < 0 ? options.iterations : Int(sample)
+              for sample in buffer.bindMemory(to: SampleRecord.self) {
+                let count =
+                  sample.iteration >= SampleRecord.glitched
+                  ? options.iterations : Int(sample.iteration)
                 result.append(UInt8(count & 255))
                 result.append(UInt8((count >> 8) & 255))
               }

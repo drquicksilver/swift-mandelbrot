@@ -1,5 +1,6 @@
 #include <metal_stdlib>
 #include "FloatFloat.h"
+#include "SampleRecord.h"
 using namespace metal;
 #pragma clang fp contract(off)
 
@@ -9,9 +10,8 @@ struct GPUParameters {
     uint rowStart, rowCount, smooth, padding;
 };
 
-// Negative samples mark points that reached the iteration cap. Raw iteration
-// data stays independent of palettes and uses four bytes per pixel.
-kernel void renderSamples(texture2d<float, access::write> out [[texture(0)]],
+// Integer escape count and fractional smooth correction stay separate (8 bytes).
+kernel void renderSamples(texture2d<uint, access::write> out [[texture(0)]],
                           constant GPUParameters &p [[buffer(0)]], uint2 gid [[thread_position_in_grid]]) {
     uint2 point = uint2(gid.x, gid.y + p.rowStart);
     if (point.x >= p.width || point.y >= p.height || gid.y >= p.rowCount) return;
@@ -40,9 +40,7 @@ kernel void renderSamples(texture2d<float, access::write> out [[texture(0)]],
             zi = dd_add(dd_mul_float(dd_mul(zr,zi),2),ci); zr = next; ++n;
         }
     }
-    float sample = float(n);
-    if (p.smooth != 0 && n < p.maxIterations) sample = max(0.0f,float(n)+1-log2(log2(sqrt(magnitude))));
-    out.write(float4(n == p.maxIterations ? -1.0f : sample),point);
+    out.write(n == p.maxIterations ? sampleStatus(sampleCapped) : escapeSample(n, p.smooth ? 1-log2(log2(sqrt(magnitude))) : 0),point);
 }
 
 float3 hsvRGB(float h, float s, float v) {
@@ -67,15 +65,19 @@ float3 legacyColour(float iteration) {
     return clamp(rgb,0.0f,1.0f);
 }
 struct ColourParameters { float density; float offset; uint smooth; uint padding; };
-kernel void colourSamples(texture2d<float,access::read> samples [[texture(0)]],
+kernel void colourSamples(texture2d<uint,access::read> samples [[texture(0)]],
                           texture2d<float,access::write> output [[texture(1)]],
                           texture1d<float> palette [[texture(2)]],
                           constant ColourParameters &settings [[buffer(0)]],
                           uint2 gid [[thread_position_in_grid]]) {
     if(gid.x>=output.get_width() || gid.y>=output.get_height()) return;
-    float value = samples.read(gid).x;
+    uint2 raw = samples.read(gid).xy;
+    bool capped = raw.x >= sampleGlitched;
+    float correction = as_type<float>(raw.y);
+    float value = capped ? -1.0f : float(raw.x);
+    float2 phase = dd_div(dd_add(float2(float(raw.x),0),float2(correction,0)),float2(settings.density,0));
     constexpr sampler lookup(coord::normalized, address::repeat, filter::linear);
-    float3 rgb = value < 0 ? float3(0.005,0.008,0.014) : palette.sample(lookup,value/settings.density+settings.offset).rgb;
+    float3 rgb = capped ? float3(0.005,0.008,0.014) : palette.sample(lookup,fract(phase.x)+phase.y+settings.offset).rgb;
     output.write(float4(settings.smooth != 0 ? rgb : legacyColour(value),1),gid);
 }
 
@@ -144,16 +146,15 @@ fragment float4 tileFragment(QuadOutput in [[stage_in]],texture2d<float> coarse 
     return float4(rgb,1);
 }
 
-// Resumable tile work bounds both pixels and iterations per command. -2 means
-// unfinished; -1 means capped. Only the worker sees an unfinished texture.
+// Only the worker sees unfinished records; counts remain exact at the product cap.
 struct TileWorkParameters { GPUParameters image; uint start, count, padding0, padding1; };
-kernel void resumeTile(texture2d<float,access::read_write> out [[texture(0)]],
+kernel void resumeTile(texture2d<uint,access::read_write> out [[texture(0)]],
                        device float4 *states [[buffer(1)]],
                        constant TileWorkParameters &work [[buffer(0)]],uint2 point [[thread_position_in_grid]]) {
     constant GPUParameters &p=work.image;
     if(point.x>=p.width || point.y>=p.height) return;
     uint index=point.y*p.width+point.x;
-    if(work.start>0 && out.read(point).x != -2.0f) return;
+    if(work.start>0 && out.read(point).x != sampleUnfinished) return;
     float4 state=work.start==0 ? float4(0) : states[index];
     uint n=work.start,end=min(p.maxIterations,work.start+work.count);
     float magnitude=0;bool escaped=false;
@@ -180,8 +181,7 @@ kernel void resumeTile(texture2d<float,access::read_write> out [[texture(0)]],
         state=float4(zr,zi);
     }
     states[index]=state;
-    float value=escaped ? max(0.0f,float(n)+1-log2(log2(sqrt(magnitude)))) : (n==p.maxIterations ? -1.0f : -2.0f);
-    out.write(float4(value),point);
+    out.write(escaped ? escapeSample(n,1-log2(log2(sqrt(magnitude)))) : sampleStatus(n==p.maxIterations ? sampleCapped : sampleUnfinished),point);
 }
 
 // Child ordering is top-left, top-right, bottom-left, bottom-right. Each parent

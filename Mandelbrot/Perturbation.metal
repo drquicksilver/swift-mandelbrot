@@ -1,5 +1,6 @@
 #include <metal_stdlib>
 #include "FloatFloat.h"
+#include "SampleRecord.h"
 using namespace metal;
 #pragma clang fp contract(off)
 
@@ -40,7 +41,7 @@ struct PerturbParameters {
 struct BLA { XC a,b; XF radius; uint length,pad0,pad1,pad2; };
 struct PerturbState { XC delta; uint n,ref,done,pad; };
 // flags: first glitched pixel, number of glitches, rebases, skipped iterations.
-kernel void perturbTile(texture2d<float,access::read_write> output [[texture(0)]],
+kernel void perturbTile(texture2d<uint,access::read_write> output [[texture(0)]],
  constant PerturbParameters &p [[buffer(0)]], device const XC *orbit [[buffer(1)]],
  device PerturbState *states [[buffer(2)]], device atomic_uint *flags [[buffer(3)]],
  device const BLA *blas [[buffer(4)]],
@@ -49,7 +50,7 @@ kernel void perturbTile(texture2d<float,access::read_write> output [[texture(0)]
  uint index=pos.y*p.width+pos.x;
  PerturbState s;
  if(p.start==0) {
-   if(p.pass>0 && output.read(pos).x!=-3) { states[index].done=1;return; }
+   if(p.pass>0 && output.read(pos).x!=sampleGlitched) { states[index].done=1;return; }
    s={ {xf(0),xf(0)},0,0,0,0};
  } else { s=states[index];if(s.done)return; }
  uint rebases=0,skipped=0;
@@ -58,7 +59,7 @@ kernel void perturbTile(texture2d<float,access::read_write> output [[texture(0)]
    XC total=add(orbit[s.ref],s.delta);
    XF magnitude=abs2(total);
    if(less(xf(65536),magnitude)) {
-     output.write(float4(max(0.0f,float(s.n)+1-log2(log2(sqrt(value(magnitude)))))),pos);s.done=1;break;
+     output.write(escapeSample(s.n,1-log2(log2(sqrt(value(magnitude))))),pos);s.done=1;break;
    }
    // Rebase before cancellation can trigger an expensive new reference.
    bool candidate=less(magnitude,times(abs2(orbit[s.ref]),1e-8f));
@@ -67,7 +68,7 @@ kernel void perturbTile(texture2d<float,access::read_write> output [[texture(0)]
      if(candidate) atomic_fetch_add_explicit(flags+5,1,memory_order_relaxed);
    } else if(candidate) {
      // Retained diagnostic/recovery path when critical-point rebasing is disabled.
-     output.write(float4(-3),pos);s.done=1;
+     output.write(sampleStatus(sampleGlitched),pos);s.done=1;
      atomic_fetch_min_explicit(flags,index,memory_order_relaxed);
      atomic_fetch_add_explicit(flags+1,1,memory_order_relaxed);break;
    }
@@ -90,7 +91,7 @@ kernel void perturbTile(texture2d<float,access::read_write> output [[texture(0)]
    s.delta=add(add(times(mul(orbit[s.ref],s.delta),2),mul(s.delta,s.delta)),dc);
    s.n++;s.ref++;
  }
- if(!s.done && s.n>=p.iterations){output.write(float4(-1),pos);s.done=1;}
+ if(!s.done && s.n>=p.iterations){output.write(sampleStatus(sampleCapped),pos);s.done=1;}
  if(!s.done) atomic_fetch_add_explicit(flags+4,1,memory_order_relaxed);
  if(rebases) atomic_fetch_add_explicit(flags+2,rebases,memory_order_relaxed);
  if(skipped) {

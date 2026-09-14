@@ -8,16 +8,70 @@ import SwiftUI
   func setActive(_ active: Bool) {
     isActive = active
     if active {
+      updateDepth(force: true)
       requestRender()
     } else {
       stopMotion()
+      interactionActive = false
+      depthTask?.cancel()
       renderTask?.cancel()
       tiles.cancel()
     }
   }
-  @Published var viewport = Viewport() { didSet { if viewport != oldValue { requestRender() } } }
-  @Published var iterations = 200 { didSet { requestRender() } }
-  @Published var rendererOverride: RendererID? { didSet { requestRender() } }
+  @Published var viewport = Viewport() {
+    didSet {
+      if viewport != oldValue {
+        updateDepth()
+        requestRender()
+      }
+    }
+  }
+  @Published private(set) var iterations = 200 { didSet { requestRender() } }
+  @Published var automaticIterations = true { didSet { updateDepth(force: true) } }
+  @Published var manualIterations = 200 { didSet { updateDepth(force: true) } }
+  @Published var detailMultiplier = 1.0 { didSet { updateDepth(force: true) } }
+  var interactionActive = false {
+    didSet {
+      if interactionActive { depthTask?.cancel() } else { updateDepth() }
+    }
+  }
+  private var depthTask: Task<Void, Never>?
+  private func updateDepth(force: Bool = false) {
+    depthTask?.cancel()
+    let requested =
+      automaticIterations
+      ? IterationPolicy.estimate(logScale: viewport.logScale, multiplier: detailMultiplier)
+      : max(1, min(IterationPolicy.maximum, manualIterations))
+    let target = renderer.isGPU ? requested : min(65535, requested)
+    if force || !automaticIterations {
+      if iterations != target { iterations = target }
+    } else if IterationPolicy.shouldRaise(current: iterations, target: target) {
+      iterations = target
+    } else if target < iterations && !interactionActive {
+      depthTask = Task { [weak self] in
+        do { try await Task.sleep(for: .milliseconds(300)) } catch { return }
+        guard let self, self.isActive, !self.motionActive, !self.interactionActive else { return }
+        self.iterations = target
+      }
+    }
+  }
+  private func changeDetail(by factor: Double) {
+    if automaticIterations {
+      detailMultiplier = max(0.25, min(16, detailMultiplier * factor))
+    } else {
+      manualIterations = max(
+        1,
+        min(
+          IterationPolicy.maximum,
+          Int(min(Double(IterationPolicy.maximum), max(1, Double(manualIterations) * factor)))))
+    }
+  }
+  @Published var rendererOverride: RendererID? {
+    didSet {
+      updateDepth(force: true)
+      requestRender()
+    }
+  }
   @Published var image: CGImage?
   @Published var imageViewport = Viewport()
   @Published var duration = 0.0
@@ -107,8 +161,8 @@ import SwiftUI
     case .right: pan(CGSize(width: -80, height: 0))
     case .up: pan(CGSize(width: 0, height: 80))
     case .down: pan(CGSize(width: 0, height: -80))
-    case .increaseIterations: iterations = min(65535, iterations * 2)
-    case .decreaseIterations: iterations = max(1, iterations / 2)
+    case .increaseIterations: changeDetail(by: 2)
+    case .decreaseIterations: changeDetail(by: 0.5)
     case .benchmark: showBenchmark.toggle()
     case .help: showHelp.toggle()
     }
@@ -123,7 +177,7 @@ import SwiftUI
     tiles.cancel()
     let view = viewport
     let renderer = renderer
-    let iterations = iterations
+    let iterations = min(65535, iterations)
     let width = max(1, Int(size.width * displayScale))
     let height = max(1, Int(size.height * displayScale))
     renderTask = Task { [weak self] in

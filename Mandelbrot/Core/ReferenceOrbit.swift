@@ -27,6 +27,7 @@ struct ReferenceOrbit: Sendable {
   let bits: Int
   let iterations: Int
   let escaped: Bool
+  var storageBytes: Int { values.capacity * MemoryLayout<ExtendedComplex>.stride }
   static func compute(point: DeepPoint, iterations: Int, bits: Int) throws -> Self {
     let start = ProcessInfo.processInfo.systemUptime
     let cr = point.x.rounded(to: bits).raw
@@ -36,7 +37,7 @@ struct ReferenceOrbit: Sendable {
     let escape = BigInt(65536) << (2 * bits)
     var values: [ExtendedComplex] = []
     var escaped = false
-    values.reserveCapacity(iterations + 1)
+    values.reserveCapacity(min(iterations + 1, 4096))
     for n in 0...iterations {
       if n.isMultiple(of: 32) { try Task.checkCancellation() }
       values.append(

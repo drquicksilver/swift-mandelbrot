@@ -2,6 +2,7 @@
 import array
 import json
 import math
+import struct
 from pathlib import Path
 import subprocess
 import sys
@@ -37,6 +38,22 @@ class SmoothTests(unittest.TestCase):
             mismatches=sum(abs(a-b)>0.002 for a,b in zip(samples,reference))
             self.assertLess(mismatches/len(samples),0.01)
             self.assertGreater(sum(s>=0 and abs(s-round(s))>.01 for s in samples),len(samples)/2)
+
+    def test_high_iteration_records_and_legacy_limits(self):
+        with tempfile.TemporaryDirectory() as folder:
+            p=Path(folder)
+            base=[APP,'--render','--pipeline','gpu','--renderer','metal-double',
+                  '--size','3x3','--center-real','0','--center-imag','0','--scale','1',
+                  '--iterations','100000','--output',str(p/'x.png')]
+            subprocess.run(base+['--sample-records',str(p/'raw')],check=True,capture_output=True)
+            records=list(struct.iter_unpack('<If',(p/'raw').read_bytes()))
+            self.assertEqual(len(records),9)
+            self.assertEqual(records[4],(0xffffffff,0.0))
+            self.assertTrue(any(n<100000 and math.isfinite(c) and c!=0 for n,c in records))
+            for flags in [['--samples',str(p/'old')],['--counts',str(p/'old')],
+                          ['--sample-records',str(p/'x.png')],['--iterations','1000001']]:
+                r=subprocess.run(base+flags,capture_output=True)
+                self.assertEqual(r.returncode,2,r.stderr)
 
     def test_gpu_timing_and_invalid_export(self):
         result=subprocess.run([APP,'--benchmark','--pipeline','gpu','--variants','metal-double','--sizes','32x32',

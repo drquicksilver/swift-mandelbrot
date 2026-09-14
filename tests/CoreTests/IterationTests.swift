@@ -25,3 +25,21 @@ import Testing
     }
   }
 }
+
+@Test func depthEstimateAndHysteresis() {
+  #expect(IterationPolicy.estimate(logScale: 0) == 200)
+  #expect(IterationPolicy.estimate(logScale: log2(1e100)) >= 26000)
+  #expect(IterationPolicy.estimate(logScale: 1000 * log2(10)) > 65535)
+  #expect(IterationPolicy.estimate(logScale: 13000, multiplier: 16) == 1_000_000)
+  #expect(!IterationPolicy.shouldRaise(current: 10000, target: 10200))
+  #expect(IterationPolicy.shouldRaise(current: 10000, target: 11200))
+  #expect(IterationPolicy.shouldRaise(current: 990000, target: 1_000_000))
+}
+@Test func highCountRecordsPreserveCorrection() {
+  let a = SampleRecord(iteration: 1_000_000, correction: 0.003)
+  let b = SampleRecord(iteration: 1_000_000, correction: 0.02)
+  #expect(a.legacyFloat == b.legacyFloat)  // Why combining them was unsafe.
+  #expect(a.correction != b.correction)
+  #expect(MemoryLayout<SampleRecord>.stride == 8)
+  #expect(SampleRecord(iteration: SampleRecord.capped, correction: 0).legacyFloat == -1)
+}

@@ -229,7 +229,7 @@ final class GPUContext: @unchecked Sendable {
     settings: ColourSettings = ColourSettings(), useBLA: Bool = true, useRebasing: Bool = true,
     hierarchicalBLA: Bool = true
   ) async throws -> GPUFrame {
-    let samples = try texture(width: width, height: height, format: .r32Float)
+    let samples = try texture(width: width, height: height, format: .rg32Uint)
     let colour = try texture(width: width, height: height, format: .rgba8Unorm)
     var parameters = GPUParameters(
       viewport: viewport, width: width, height: height, iterations: iterations, renderer: renderer)
@@ -252,7 +252,8 @@ final class GPUContext: @unchecked Sendable {
   }
   // Readback exists only for export and numerical tests, never for presentation.
   func readback(_ texture: MTLTexture) async throws -> Data {
-    let stride = (texture.width * 4 + 255) / 256 * 256
+    let pixelBytes = texture.pixelFormat == .rg32Uint ? 8 : 4
+    let stride = (texture.width * pixelBytes + 255) / 256 * 256
     guard
       let buffer = device.makeBuffer(length: stride * texture.height, options: .storageModeShared),
       let command = computeQueue.makeCommandBuffer(), let encoder = command.makeBlitCommandEncoder()
@@ -264,11 +265,11 @@ final class GPUContext: @unchecked Sendable {
       destinationBytesPerImage: stride * texture.height)
     encoder.endEncoding()
     _ = try await submit(command)
-    var data = Data(capacity: texture.width * texture.height * 4)
+    var data = Data(capacity: texture.width * texture.height * pixelBytes)
     for y in 0..<texture.height {
       data.append(
         buffer.contents().advanced(by: y * stride).assumingMemoryBound(to: UInt8.self),
-        count: texture.width * 4)
+        count: texture.width * pixelBytes)
     }
     return data
   }

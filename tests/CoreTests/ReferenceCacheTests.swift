@@ -48,3 +48,14 @@ import Testing
     }
   }
 }
+
+@Test func escapedHighLimitReferenceDoesNotReserveTheWholeLimit() async throws {
+  let cache = ReferenceOrbitCache(byteLimit: 4 * 1024 * 1024)
+  let point = DeepPoint(CGPoint(x: 3, y: 0), bits: 256)
+  let result = try await cache.reference(point: point, iterations: 1_000_000, bits: 256)
+  #expect(result.0.escaped && result.0.values.count < 10)
+  #expect(result.0.storageBytes < 1024 * 1024)
+  #expect(await cache.bytes == result.0.storageBytes)
+  let again = try await cache.reference(point: point, iterations: 1_000_000, bits: 256)
+  #expect(again.1)
+}

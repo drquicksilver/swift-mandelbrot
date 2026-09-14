@@ -14,7 +14,7 @@ actor ReferenceOrbitCache {
   private(set) var computations = 0
   init(byteLimit: Int = 4 * 1024 * 1024) { self.byteLimit = max(1024, byteLimit) }
   var bytes: Int {
-    entries.reduce(0) { $0 + $1.values.count * MemoryLayout<ExtendedComplex>.stride }
+    entries.reduce(0) { $0 + $1.storageBytes }
   }
   static func precision(_ bits: Int) -> Int { max(256, (bits + 255) / 256 * 256) }
   private func nearby(_ a: DeepPoint, _ b: DeepPoint, radius: WideReal) -> Bool {
@@ -64,7 +64,7 @@ actor ReferenceOrbitCache {
         Task { await self.cancel(waiter: waiter, key: key) }
       }
       if pending.removeValue(forKey: key) != nil {
-        let cost = orbit.values.count * MemoryLayout<ExtendedComplex>.stride
+        let cost = orbit.storageBytes
         while !entries.isEmpty && (entries.count >= 3 || bytes + cost > byteLimit) {
           entries.removeFirst()
         }

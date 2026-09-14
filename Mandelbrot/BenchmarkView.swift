@@ -36,6 +36,7 @@ struct BenchmarkMeasurement: Identifiable {
           {
             continue
           }
+          if !renderer.isGPU && iterations > 65535 { continue }
           if Task.isCancelled { return }
           status = "\(renderer.title), \(size) × \(size)"
           var samples: [Double] = []

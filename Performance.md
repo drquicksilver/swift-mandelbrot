@@ -521,3 +521,26 @@ The full-frame minibrot test passes off/fixed/on; hierarchical maximum smooth
 sample error is 207.35 with seven colour-boundary outliers out of 192 pixels.
 These finite-precision boundary errors remain covered by the previously declared
 budgets, rather than being presented as exact agreement.
+
+## Deep-zoom review: iteration depth and smooth precision
+
+Product GPU rendering now supports one million iterations, with an exact UInt32
+escape count and a separate Float32 correction in each eight-byte raw record.
+An integration test supplies counts near one million with corrections 0.003 and
+0.02: these collapse to the same combined Float, but the GPU now produces distinct
+colours matching an independent Double/LUT calculation within one byte. A real
+100,000-iteration CLI render also verifies escaped and capped record exports.
+Legacy UInt16 rendering and exports remain limited to 65,535.
+
+The viewer defaults to the plan's depth-based estimate, with a detail multiplier,
+10%/200-step increase hysteresis, and decreases delayed until 300 ms after input
+and motion stop. Manual controls share the one-million cap. This is only the
+first estimate from 2.3: periodicity, pixel-driven adaptation and selective
+extension remain future work. Large bounded references can still take time;
+preparation remains cancellable and shared between nearby tiles.
+
+All existing numerical and product image budgets still pass. Reference cache
+accounting now includes array capacity, and an early-escaping million-iteration
+request no longer reserves a million reference entries. The mip/palette test's
+cache increases from 40 to 64 MiB to keep complete sibling groups resident with
+the larger raw records; separate constrained-cache and eviction tests remain.
