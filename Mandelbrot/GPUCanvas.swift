@@ -37,21 +37,12 @@ struct GPUCanvas: UIViewRepresentable {
     func mtkView(_ view: MTKView,drawableSizeWillChange size: CGSize) {}
     func draw(in view: MTKView) {
         model.advanceMotion(now:ProcessInfo.processInfo.systemUptime)
-        guard framesInFlight<2,let gpu=GPUContext.shared,let frame=model.gpuFrame,
+        model.tiles.update(viewport:model.viewport,size:view.bounds.size,pixelWidth:view.drawableSize.width,
+                           iterations:model.iterations,override:model.rendererOverride,colouring:model.colouring,zoomDirection:model.zoomDirection)
+        guard framesInFlight<2,let gpu=GPUContext.shared,
               let descriptor=view.currentRenderPassDescriptor,let drawable=view.currentDrawable,
               let command=gpu.displayQueue.makeCommandBuffer(),let encoder=command.makeRenderCommandEncoder(descriptor:descriptor) else { return }
-        let size=view.bounds.size
-        let center=model.viewport.screen(for:model.imageViewport.center,in:size)
-        let width=size.width*model.viewport.scale/model.imageViewport.scale
-        let height=width*Double(frame.colour.height)/Double(frame.colour.width)
-        var params=DrawUniforms()
-        params.rect=SIMD4(Float((center.x-width/2)/size.width*2-1),Float(1-(center.y-height/2)/size.height*2),
-                         Float((center.x+width/2)/size.width*2-1),Float(1-(center.y+height/2)/size.height*2))
-        encoder.setRenderPipelineState(gpu.imagePipeline)
-        encoder.setVertexBytes(&params,length:MemoryLayout<DrawUniforms>.stride,index:0)
-        encoder.setFragmentBytes(&params,length:MemoryLayout<DrawUniforms>.stride,index:0)
-        encoder.setFragmentTexture(frame.colour,index:0)
-        encoder.drawPrimitives(type:.triangle,vertexStart:0,vertexCount:6)
+        TileCompositor.encode(store:model.tiles,viewport:model.viewport,size:view.bounds.size,gpu:gpu,encoder:encoder)
         encoder.endEncoding();command.present(drawable)
         framesInFlight += 1
         command.addCompletedHandler { [weak self] _ in Task { @MainActor [weak self] in self?.framesInFlight -= 1 } }

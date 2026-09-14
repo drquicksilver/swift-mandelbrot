@@ -149,7 +149,12 @@ final class GPUContext: @unchecked Sendable {
         return data
     }
     func image(_ texture: MTLTexture) async throws -> CGImage {
-        let data=try await readback(texture)
+        var data=try await readback(texture)
+        if texture.pixelFormat == .bgra8Unorm {
+            data.withUnsafeMutableBytes { (bytes: UnsafeMutableRawBufferPointer) in
+                for i in stride(from:0,to:bytes.count,by:4) { let b=bytes[i];bytes[i]=bytes[i+2];bytes[i+2]=b }
+            }
+        }
         guard let provider=CGDataProvider(data:data as CFData),let image=CGImage(width:texture.width,height:texture.height,
             bitsPerComponent:8,bitsPerPixel:32,bytesPerRow:texture.width*4,space:CGColorSpaceCreateDeviceRGB(),
             bitmapInfo:CGBitmapInfo(rawValue:CGImageAlphaInfo.premultipliedLast.rawValue),provider:provider,

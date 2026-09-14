@@ -27,6 +27,9 @@ Completed:
   selection, arrows, and analytically integrated pan/pinch inertia. Mac tests and
   iPhone/iPad simulator compilation pass.
 
-Next: tile stages 2.1(a–d). No perturbation or automatic iteration-depth
+- 2.1(a): anchor-relative fixed-level tiles, a per-frame Metal compositor, sample
+  reuse during pan, transactional recolouring, and headless integration checks.
+
+Next: tile stages 2.1(b–d). No perturbation or automatic iteration-depth
 heuristic is included in this milestone. Colour mipmaps are disposable
 palette-dependent display data; raw sample tiles remain authoritative.

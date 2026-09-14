@@ -2,6 +2,7 @@ import Combine
 import SwiftUI
 
 @MainActor final class ExplorerModel: ObservableObject {
+    let tiles = TileStore()
     @Published var colouring = ColourSettings() { didSet { recolour() } }
     private var colourTask: Task<Void, Never>?
     func recolour() {
@@ -93,6 +94,8 @@ import SwiftUI
     }
     func requestRender() {
         renderTask?.cancel()
+        if renderer.isGPU { return }
+        tiles.cancel()
         let view = viewport, renderer = renderer, iterations = iterations
         let width = max(1, Int(size.width * displayScale)), height = max(1, Int(size.height * displayScale))
         renderTask = Task { [weak self] in

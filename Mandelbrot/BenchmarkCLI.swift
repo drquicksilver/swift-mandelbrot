@@ -35,7 +35,7 @@ enum BenchmarkCLI {
       --density N        Iterations per palette cycle (default: 64)
       --offset N         Palette phase (default: 0)
       --samples PATH     Raw float32 GPU samples; -1 means capped/inside
-      --pipeline NAME    legacy or gpu (default: legacy); gpu requires Metal renderers
+      --pipeline NAME    legacy, gpu or tiles (default: legacy); tiles exports PNGs
       --timing SCOPE     end-to-end or kernel (GPU benchmark only)
       --help             Show this help
 
@@ -99,7 +99,7 @@ enum BenchmarkCLI {
                     if flag == "--density" { colouring.density = number } else { colouring.offset = number }
                 case "--samples": samples = value
                 case "--pipeline":
-                    guard ["legacy", "gpu"].contains(value) else { throw CLIError("Pipeline must be legacy or gpu") }
+                    guard ["legacy", "gpu", "tiles"].contains(value) else { throw CLIError("Pipeline must be legacy, gpu or tiles") }
                     pipeline = value
                 case "--timing":
                     guard ["end-to-end", "kernel"].contains(value) else { throw CLIError("Timing must be end-to-end or kernel") }
@@ -161,10 +161,11 @@ enum BenchmarkCLI {
                 }
             }
             if pipeline == "gpu" && colouring.smooth && counts != nil { throw CLIError("Use --samples for smooth data, or --colouring legacy for integer counts") }
-            if pipeline == "gpu" && !(render ? [renderer] : variants).allSatisfy({ RendererID(rawValue:$0)?.isGPU == true }) {
+            if pipeline != "legacy" && !(render ? [renderer] : variants).allSatisfy({ RendererID(rawValue:$0)?.isGPU == true }) {
                 throw CLIError("The GPU pipeline requires metal or metal-double renderers")
             }
             if timing == "kernel" && (pipeline != "gpu" || render) { throw CLIError("Kernel timing requires a GPU benchmark") }
+            if pipeline == "tiles" && (!render || counts != nil || samples != nil) { throw CLIError("Tile pipeline exports composited PNGs; use --render without --counts or --samples") }
             if render && output == nil { throw CLIError("--render requires --output") }
             if let output, let counts,
                URL(fileURLWithPath: output).standardizedFileURL == URL(fileURLWithPath: counts).standardizedFileURL {
@@ -230,6 +231,7 @@ enum BenchmarkCLI {
             return 2
         }
 
+        if options.pipeline == "tiles" { return await renderTiles(options) }
         if options.pipeline == "gpu" { return await runGPU(options) }
         if options.render { return await renderPNG(options) }
         var results: [Result] = []
@@ -277,6 +279,25 @@ enum BenchmarkCLI {
             }
         }
         return 0
+    }
+
+    @MainActor private static func renderTiles(_ options: Options) async -> Int32 {
+        do {
+            guard let gpu = GPUContext.shared else { throw GPUFailure("GPU unavailable") }
+            let view = Viewport(center:options.center,scale:options.scale), size = options.size
+            let store = TileStore()
+            store.update(viewport:view,size:CGSize(width:size.0,height:size.1),pixelWidth:Double(size.0),iterations:options.iterations,
+                         override:RendererID(rawValue:options.renderer),colouring:options.colouring)
+            try await store.waitUntilReady()
+            let texture = try await TileCompositor.snapshot(store:store,viewport:view,width:size.0,height:size.1)
+            let image = try await gpu.image(texture), data = NSMutableData()
+            guard let destination = CGImageDestinationCreateWithData(data,UTType.png.identifier as CFString,1,nil) else { throw GPUFailure("PNG encoder unavailable") }
+            CGImageDestinationAddImage(destination,image,nil)
+            guard CGImageDestinationFinalize(destination) else { throw GPUFailure("PNG encoding failed") }
+            try (data as Data).write(to:URL(fileURLWithPath:options.output!),options:.atomic)
+            print("Wrote \(options.output!) using the tile compositor (\(store.statistics.tiles) tiles)")
+            return 0
+        } catch { writeError(String(describing:error)); return 1 }
     }
 
     private static func runGPU(_ options: Options) async -> Int32 {

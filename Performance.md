@@ -212,3 +212,15 @@ ProMotion entitlement-style Info.plist opt-in is enabled. This is configuration
 and numerical validation, not a measured claim of 120 fps on a physical phone.
 Both macOS tests and the iPhone/iPad simulator build pass. Physical testing on the
 iPhone 11 Pro and iPhone 16 Pro remains necessary for touch feel and frame pacing.
+
+## 2.1(a): fixed-level tile renderer
+
+The headless integration trace computes a 512×320 view, pans with overlap, and
+changes palette. It verifies sample-texture reuse and no recomputation on palette
+changes. Five isolated Release runs on M1 Pro: median trace 46.278 ms, maximum
+observed GPU row-batch 0.237 ms, six cached tiles using 4,915,200 allocated bytes.
+This includes readbacks used by assertions. Samples: `evidence/product/2.1a-tiles.json`.
+Tiles have 256² interior samples plus a one-sample gutter for seam-free filtering.
+The first stage deliberately holds the selected level fixed for panning; multilevel
+fallback is the next stage. `--render --pipeline tiles` exercises the compositor
+without opening a window. `make test` includes its headless integration checks.

@@ -13,6 +13,7 @@ enum MandelbrotMain {
     @MainActor static func main() async {
         #if os(macOS)
         let arguments = Array(CommandLine.arguments.dropFirst())
+        if arguments.contains("--test-tiles") { exit(await TileDiagnostics.run()) }
         if arguments.contains("--benchmark") || arguments.contains("--render") || arguments.contains("--help") {
             exit(await BenchmarkCLI.run(arguments: arguments))
         }
