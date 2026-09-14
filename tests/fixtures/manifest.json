@@ -1,5 +1,5 @@
 {
-  "schema": 1,
+  "schema": 2,
   "fixtures": [
     {
       "name": "whole-set",
@@ -10,8 +10,16 @@
       "height": 128,
       "iterations": 200,
       "renderers": "all",
-      "maxMismatch": 0.02,
-      "maxMeanError": 1.0
+      "tolerances": {
+        "float": {
+          "maxMismatch": 0.0075,
+          "maxMeanError": 0.15
+        },
+        "floatfloat": {
+          "maxMismatch": 0.001,
+          "maxMeanError": 0.1
+        }
+      }
     },
     {
       "name": "seahorse",
@@ -22,8 +30,16 @@
       "height": 192,
       "iterations": 800,
       "renderers": "all",
-      "maxMismatch": 0.06,
-      "maxMeanError": 8.0
+      "tolerances": {
+        "float": {
+          "maxMismatch": 0.06,
+          "maxMeanError": 8
+        },
+        "floatfloat": {
+          "maxMismatch": 0.004,
+          "maxMeanError": 0.3
+        }
+      }
     },
     {
       "name": "floatfloat-1e7",
@@ -34,8 +50,16 @@
       "height": 192,
       "iterations": 2000,
       "renderers": "double",
-      "maxMismatch": 0.07,
-      "maxMeanError": 8.0
+      "tolerances": {
+        "floatfloat": {
+          "maxMismatch": 0.055,
+          "maxMeanError": 4
+        },
+        "gpu:metal-double": {
+          "maxMismatch": 0.045,
+          "maxMeanError": 3.5
+        }
+      }
     },
     {
       "name": "floatfloat-1e10",
@@ -46,8 +70,12 @@
       "height": 128,
       "iterations": 4000,
       "renderers": "double",
-      "maxMismatch": 0.08,
-      "maxMeanError": 16.0
+      "tolerances": {
+        "floatfloat": {
+          "maxMismatch": 0.075,
+          "maxMeanError": 6
+        }
+      }
     }
   ]
 }

@@ -1,0 +1,60 @@
+{
+  "schema": 1,
+  "mapping": "pixel centres, world span 3/scale, anchor (-0.5, 0)",
+  "palette": "ink",
+  "density": 64,
+  "fixtures": [
+    {
+      "name": "whole-centres",
+      "center": [
+        -0.5,
+        0
+      ],
+      "scale": 1,
+      "width": 256,
+      "height": 192,
+      "iterations": 200,
+      "maxMismatch": 0.005,
+      "maxMeanError": 0.5
+    },
+    {
+      "name": "fractional-offset",
+      "center": [
+        -0.4,
+        0.1
+      ],
+      "scale": 1.5,
+      "width": 256,
+      "height": 192,
+      "iterations": 200,
+      "maxMismatch": 0.005,
+      "maxMeanError": 0.5
+    },
+    {
+      "name": "seahorse-centres",
+      "center": [
+        -0.7435,
+        0.1314
+      ],
+      "scale": 128,
+      "width": 256,
+      "height": 192,
+      "iterations": 800,
+      "maxMismatch": 0.01,
+      "maxMeanError": 1.0
+    },
+    {
+      "name": "mip-boundaries",
+      "center": [
+        -0.125,
+        0.375
+      ],
+      "scale": 1.5,
+      "width": 384,
+      "height": 288,
+      "iterations": 200,
+      "maxMismatch": 0.005,
+      "maxMeanError": 0.5
+    }
+  ]
+}

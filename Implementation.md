@@ -75,3 +75,7 @@ or touch quality on those devices.
   drawing, unchanged-demand early returns, pressure-only LRU sorting, and hardware
   presentation timing. Refresh rate comes from the view window. Regression checks
   idle demand, palette wakeups and resume; iOS metadata/build checks pass.
+- Independent product goldens: CPU Double pixel-centre images cover whole-set,
+  offset fractional LOD, Seahorse detail and mip boundaries. References are
+  generated without invoking the app. Legacy fixtures remain unchanged, with
+  tighter precision/location-specific error budgets and explicit headroom.

@@ -335,3 +335,16 @@ Five M1 Pro traces (`evidence/product/review-demand.json`): median last measured
 demand update 0.028 ms. The hardware HUD now measures recent drawable presentation cadence separately
 from GPU duration. Simulator Metal does not expose presentation timestamps.
 Actual phone idle energy use and display pacing still require device measurement.
+
+## Review: independent product image validation
+
+The four CPU-authored pixel-centre fixtures use the ink palette. On M1 Pro,
+whole-set, fractional-offset and mip-boundary images had no pixels with a
+maximum-channel difference above four byte values; their mean maximum-channel
+errors were 0.0199, 0.0432 and 0.0742. Seahorse had 0.3316% above four, with
+mean error 0.1786. The reference independently computes Double orbits, colours,
+filtering and box mipmaps. Existing endpoint-mapped reference images are intact.
+Legacy budgets now distinguish Float from FloatFloat and specific pipelines;
+headroom is retained rather than fitting thresholds exactly to one device.
+Cross-device tolerance calibration remains open until comparable device data
+exists. `make test` includes the new product goldens.

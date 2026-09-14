@@ -56,9 +56,11 @@ class GoldenTests(unittest.TestCase):
                         print(f'{name:20} {variant:17} mismatch={mismatch:.4%} MAE={mean:.4f}', flush=True)
                         # CPU variants must reproduce the reference exactly; GPU FloatFloat
                         # and Float have less precision and a bounded escape-boundary error.
-                        tolerance = fixture['maxMismatch'] if renderer in ['metal-double','metal','float-math','simd4-float'] else 0
-                        self.assertLessEqual(mismatch, tolerance)
-                        self.assertLessEqual(mean, fixture['maxMeanError'] if tolerance else 0)
+                        precision = 'floatfloat' if renderer == 'metal-double' else 'float'
+                        reduced = renderer in ['metal-double','metal','float-math','simd4-float']
+                        tolerance = fixture['tolerances'].get(variant, fixture['tolerances'].get(precision)) if reduced else None
+                        self.assertLessEqual(mismatch, tolerance['maxMismatch'] if tolerance else 0)
+                        self.assertLessEqual(mean, tolerance['maxMeanError'] if tolerance else 0)
                         if variant == 'baseline':
                             self.assertEqual(png, (ROOT / f'{name}.png').read_bytes())
 
