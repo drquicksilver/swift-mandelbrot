@@ -32,6 +32,7 @@ struct ContentView: View {
     @State private var renderVariant: String = "metal"
     @State private var selectionStart: CGPoint?
     @State private var selectionEnd: CGPoint?
+    @State private var showDocs = false
     @State private var activeMode: Mode = .viewer
     @State private var benchmarkRows: [BenchmarkRow] = []
     @State private var benchmarkSizes: [(Int, Int)] = [(128, 64), (256, 128), (512, 256), (1024, 512)]
@@ -116,18 +117,6 @@ struct ContentView: View {
 
                 hudView
 
-                Button("Reset View") {
-                    resetView()
-                }
-                .keyboardShortcut("H", modifiers: [.shift])
-                .opacity(0)
-
-                Button("Toggle Mode") {
-                    toggleMode()
-                }
-                .keyboardShortcut(.tab)
-                .opacity(0)
-
                 if activeMode == .benchmark {
                     Button("Copy as Markdown") {
                         copyBenchmarksAsMarkdown()
@@ -142,17 +131,11 @@ struct ContentView: View {
                     .padding(16)
                 }
 
-                Button("Double Iterations") {
-                    adjustMaxIterations(multiplier: 2.0)
+                if showDocs {
+                    docsOverlay
+                } else {
+                    docsHint
                 }
-                .keyboardShortcut("+")
-                .opacity(0)
-
-                Button("Halve Iterations") {
-                    adjustMaxIterations(multiplier: 0.5)
-                }
-                .keyboardShortcut("-")
-                .opacity(0)
             }
             .frame(width: proxy.size.width, height: proxy.size.height)
             .background(Color.black)
@@ -203,17 +186,7 @@ struct ContentView: View {
 
     @ViewBuilder private var keyCaptureView: some View {
         #if os(macOS)
-        KeyCaptureView(
-            onTab: {
-                toggleMode()
-            },
-            onIncrement: {
-                adjustMaxIterations(multiplier: 2.0)
-            },
-            onDecrement: {
-                adjustMaxIterations(multiplier: 0.5)
-            }
-        )
+        KeyCaptureView(onKeyDown: handleMacKeyDown)
         #else
         EmptyView()
         #endif
@@ -407,6 +380,74 @@ struct ContentView: View {
             .font(.caption)
             .foregroundStyle(.white.opacity(0.9))
 #endif
+    }
+
+    private var docsHint: some View {
+#if os(iOS)
+        let label = "tap ? for docs"
+#else
+        let label = "press ? for docs"
+#endif
+        return Text(label)
+            .font(.caption)
+            .foregroundStyle(.white.opacity(0.85))
+            .padding(8)
+            .background(.black.opacity(0.6))
+            .clipShape(RoundedRectangle(cornerRadius: 8))
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
+            .padding(.trailing, 12)
+            .padding(.top, 12)
+            .padding(.top, 18)
+            .onTapGesture {
+                showDocs = true
+            }
+    }
+
+    private var docsOverlay: some View {
+        ZStack {
+            Color.black.opacity(0.35)
+            ScrollView {
+                VStack(alignment: .leading, spacing: 16) {
+                    Text("Mandelbrot Controls")
+                        .font(.title.bold())
+                        .foregroundStyle(.white)
+                    Text(docsDismissText)
+                        .font(.callout)
+                        .foregroundStyle(.white.opacity(0.8))
+                    if !docsKeyItems.isEmpty {
+                        VStack(alignment: .leading, spacing: 8) {
+                            ForEach(docsKeyItems, id: \.title) { item in
+                                Text("\(item.title): \(item.binding)")
+                                    .font(.callout)
+                                    .foregroundStyle(.white.opacity(0.9))
+                            }
+                        }
+                    }
+                    Text(docsGestureHeading)
+                        .font(.title3)
+                        .foregroundStyle(.white)
+                    VStack(alignment: .leading, spacing: 8) {
+                        ForEach(docsGestureItems, id: \.title) { item in
+                            Text("\(item.title): \(item.binding)")
+                                .font(.callout)
+                                .foregroundStyle(.white.opacity(0.9))
+                        }
+                    }
+                }
+                .padding(24)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .background(.black.opacity(0.6))
+            .clipShape(RoundedRectangle(cornerRadius: 16))
+            .padding(.horizontal, 32)
+            .padding(.vertical, 32)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        #if os(iOS)
+        .onTapGesture {
+            showDocs = false
+        }
+        #endif
     }
 
     private func panGesture(in size: CGSize) -> some Gesture {
@@ -827,6 +868,154 @@ struct ContentView: View {
         pasteboard.setString(markdown, forType: .string)
 #else
         UIPasteboard.general.string = markdown
+#endif
+    }
+
+#if os(macOS)
+    private struct DocItem {
+        let title: String
+        let binding: String
+        let matcher: (NSEvent) -> Bool
+        let action: () -> Void
+    }
+#else
+    private struct DocItem {
+        let title: String
+        let binding: String
+    }
+#endif
+
+    #if os(macOS)
+    private var macKeyDocs: [DocItem] {
+        [
+            DocItem(
+                title: "Toggle mode",
+                binding: "Tab",
+                matcher: { $0.charactersIgnoringModifiers == "\t" },
+                action: { toggleMode() }
+            ),
+            DocItem(
+                title: "Reset view",
+                binding: "Shift+H",
+                matcher: { event in
+                    event.charactersIgnoringModifiers?.lowercased() == "h"
+                        && event.modifierFlags.contains(.shift)
+                },
+                action: { resetView() }
+            ),
+            DocItem(
+                title: "Increase iterations",
+                binding: "+ (or =)",
+                matcher: { event in
+                    if let chars = event.charactersIgnoringModifiers {
+                        return chars == "+" || chars == "="
+                    }
+                    return false
+                },
+                action: { adjustMaxIterations(multiplier: 2.0) }
+            ),
+            DocItem(
+                title: "Decrease iterations",
+                binding: "-",
+                matcher: { event in
+                    event.charactersIgnoringModifiers == "-"
+                },
+                action: { adjustMaxIterations(multiplier: 0.5) }
+            ),
+            DocItem(
+                title: "Show docs",
+                binding: "?",
+                matcher: { event in
+                    event.characters?.contains("?") == true
+                },
+                action: { showDocs = true }
+            ),
+            DocItem(
+                title: "Dismiss docs",
+                binding: "Esc",
+                matcher: { event in
+                    event.keyCode == 53
+                },
+                action: { showDocs = false }
+            )
+        ]
+    }
+
+    private var macGestureDocs: [DocItem] {
+        [
+            DocItem(
+                title: "Pan",
+                binding: "Click + drag",
+                matcher: { _ in false },
+                action: {}
+            ),
+            DocItem(
+                title: "Zoom",
+                binding: "Trackpad pinch",
+                matcher: { _ in false },
+                action: {}
+            ),
+            DocItem(
+                title: "Rect zoom",
+                binding: "Shift + drag rectangle",
+                matcher: { _ in false },
+                action: {}
+            ),
+            DocItem(
+                title: "Renderer menu",
+                binding: "Click HUD renderer label",
+                matcher: { _ in false },
+                action: {}
+            )
+        ]
+    }
+
+    private func handleMacKeyDown(_ event: NSEvent) -> Bool {
+        for item in macKeyDocs {
+            if item.matcher(event) {
+                item.action()
+                return true
+            }
+        }
+        return false
+    }
+#endif
+
+    private var docsDismissText: String {
+#if os(iOS)
+        return "tap to dismiss"
+#else
+        return "press ESC to dismiss"
+#endif
+    }
+
+    private var docsGestureHeading: String {
+#if os(iOS)
+        return "Gestures (iOS)"
+#else
+        return "Gestures (macOS)"
+#endif
+    }
+
+    private var docsKeyItems: [DocItem] {
+#if os(macOS)
+        return macKeyDocs
+#else
+        return []
+#endif
+    }
+
+    private var docsGestureItems: [DocItem] {
+#if os(iOS)
+        return [
+            DocItem(title: "Pan", binding: "Drag"),
+            DocItem(title: "Zoom", binding: "Pinch"),
+            DocItem(title: "Toggle mode", binding: "Quad‑tap center"),
+            DocItem(title: "Increase iterations", binding: "Double‑tap right 25%"),
+            DocItem(title: "Decrease iterations", binding: "Double‑tap left 25%")
+        ]
+#else
+        return macGestureDocs
 #endif
     }
 }
