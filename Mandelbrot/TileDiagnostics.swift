@@ -256,6 +256,10 @@
     static func run() async -> Int32 {
       do {
         guard let gpu = GPUContext.shared else { throw GPUFailure("GPU unavailable") }
+        for palette in Palette.allCases {
+          let first = try gpu.paletteTexture(palette), second = try gpu.paletteTexture(palette)
+          try require(first === second, "Palette GPU texture was rebuilt")
+        }
         try await checkIterationContinuity(gpu)
         try await checkFailureRecovery()
         try await checkColourBlend(gpu)

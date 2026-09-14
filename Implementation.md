@@ -69,3 +69,5 @@ or touch quality on those devices.
 - Iteration changes: retain the detailed working set across repeated changes,
   prefer its detail over coarse new tiles, and fade replacements before releasing
   fallback. Tile records now carry their iteration limit.
+- Palettes: immutable lookup textures shared across all tile recolours; texture
+  identity and sample invariance checked by the headless tests.

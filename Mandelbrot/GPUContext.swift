@@ -60,6 +60,7 @@ final class GPUContext: @unchecked Sendable {
   let imagePipeline: MTLRenderPipelineState
   let tilePipeline: MTLRenderPipelineState
   let library: MTLLibrary
+  private let palettes: [Palette: MTLTexture]
 
   private init() throws {
     guard let device = MTLCreateSystemDefaultDevice(), let queue = device.makeCommandQueue(),
@@ -67,6 +68,9 @@ final class GPUContext: @unchecked Sendable {
     else {
       throw GPUFailure("Metal is unavailable")
     }
+    palettes = Dictionary(uniqueKeysWithValues: try Palette.allCases.map {
+      ($0, try Self.makePaletteTexture($0, device: device))
+    })
     self.device = device
     computeQueue = queue
     displayQueue = display
@@ -173,7 +177,8 @@ final class GPUContext: @unchecked Sendable {
     _ = try await submit(command)
     return output
   }
-  func paletteTexture(_ palette: Palette) throws -> MTLTexture {
+  func paletteTexture(_ palette: Palette) throws -> MTLTexture { palettes[palette]! }
+  private static func makePaletteTexture(_ palette: Palette, device: MTLDevice) throws -> MTLTexture {
     let descriptor = MTLTextureDescriptor()
     descriptor.textureType = .type1D
     descriptor.width = 1024

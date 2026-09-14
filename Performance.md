@@ -316,3 +316,10 @@ has completed its 125 ms fade. Both base and fine colours can blend against
 the previous generation. The regression compares the pre-change and immediate
 post-change PNG pixels exactly, then checks final-generation metadata and cleanup.
 Five M1 Pro traces: median per-run p95 compositor GPU time 0.144 ms; worst observed 0.773 ms. Raw: `evidence/product/review-fallback.json`.
+
+## Review: immutable palette textures
+
+Seven lookup textures are created once during GPU initialisation, not once per
+tile recolour. Identity checks and all palette/sample tests pass. Five M1 Pro
+traces (`evidence/product/review-palette-cache.json`): median elapsed 467.361 ms. The trace includes fixed sleeps, so
+this is a regression measurement rather than an isolated palette speedup claim.
