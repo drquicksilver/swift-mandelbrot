@@ -10,6 +10,7 @@ struct PerturbationMetrics: Codable, Sendable {
   var references = 0
   var batches = 0
   var glitches = 0
+  var avoidedGlitches = 0
   var rebases = 0
   var skippedIterations = 0
   var longestBatchMS = 0.0
@@ -50,7 +51,8 @@ extension GPUContext {
   /// One reference at a time; only glitched pixels are retried. Work is split into
   /// bounded GPU batches, with cancellation on both CPU and GPU boundaries.
   func perturb(
-    into samples: MTLTexture, region: PerturbationRegion, iterations: Int, useBLA: Bool = true
+    into samples: MTLTexture, region: PerturbationRegion, iterations: Int, useBLA: Bool = true,
+    useRebasing: Bool = true
   ) async throws
     -> PerturbationMetrics
   {
@@ -119,7 +121,7 @@ extension GPUContext {
         stepY: ExtendedFloat(region.stepY),
         width: UInt32(region.width), height: UInt32(region.height), iterations: UInt32(iterations),
         referenceCount: UInt32(reference.values.count),
-        start: 0, count: 8, pass: UInt32(pass), padding: useBLA ? 1 : 0)
+        start: 0, count: 8, pass: UInt32(pass), padding: (useBLA ? 1 : 0) | (useRebasing ? 0 : 2))
       let maximumBatch = min(128, max(1, Int(UInt32.max) / (32 * region.width * region.height)))
       var batch = min(8, maximumBatch)
       while p.start < iterations {
@@ -127,6 +129,7 @@ extension GPUContext {
         words[2] = 0
         words[3] = 0
         words[4] = 0
+        words[5] = 0
         p.count = UInt32(min(batch, iterations - Int(p.start)))
         guard let command = computeQueue.makeCommandBuffer(),
           let encoder = command.makeComputeCommandEncoder()
@@ -143,6 +146,7 @@ extension GPUContext {
         metrics.batches += 1
         metrics.kernelSeconds += seconds
         metrics.longestBatchMS = max(metrics.longestBatchMS, seconds * 1000)
+        metrics.avoidedGlitches += Int(words[5])
         metrics.rebases += Int(words[2])
         metrics.skippedIterations += Int(words[3])
         p.start += p.count

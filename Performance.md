@@ -449,3 +449,26 @@ reference reuse, bounded residency, fade/fallback coverage and cancellation.
 [1e1000](evidence/deep/gpu-1e1000.png). These are Mac measurements, not claims
 about frame rates on either iPhone. Simulator and unsigned device builds cover
 compilation and packaging, not physical presentation timing.
+
+## Deep-zoom review: rebase first and harder goldens
+
+The new independent Decimal fixture solves z_936(c)=z_624(c) beside a period-312
+minibrot, at 1e100 and 60,000 iterations. Its 16×12 samples escape between 22,734
+and 34,044 iterations. Rebase-first gives one reference and 1,705 rebases. Disabling
+critical-point rebasing increases sample differences over 0.02 from 7/192 to
+33/192. Default rendering no longer sends those recoverable cancellations through
+a new reference pass; `--rebasing off` explicitly tests the retained recovery path.
+
+This chaotic fixture has finite-precision boundary outliers: with BLA off/on,
+maximum smooth errors are 237.963/115.051, and 6/7 PNG pixels differ by more than
+3/255. Mean channel errors are 1.405/1.435. The declared budgets are at most 5%
+sample/colour outliers, mean sample error below 5 and maximum below 512; these
+are not zero-error claims. The independent 8×6 product PNG includes tile-centre
+sampling, gutters and fractional level blending. Two pixels differ by more than
+3/255, with maximum 9/255; its budget is 5% outliers, maximum 12 and mean channel
+error below 1. The existing c=i goldens retain their strict tolerances.
+
+Generator: `tests/precision/minibrot_reference.py`; test: `tests/test_minibrot.py`.
+Comparable 64×48, three-run/one-warmup measurements of both locations are stored
+in `evidence/review-deep/rebasing.json` and reproduced by
+`tests/precision/measure_review.py APP STAGE`.

@@ -1,0 +1,141 @@
+[
+  {
+    "location": "i",
+    "report": {
+      "centerImag": 1,
+      "centerReal": 0,
+      "iterations": 5000,
+      "preciseCenterImag": "1",
+      "preciseCenterReal": "0",
+      "preciseScale": "1e1000",
+      "results": [
+        {
+          "height": 48,
+          "medianSeconds": 0.112405792,
+          "megapixelsPerSecond": 0.02732955255544127,
+          "perturbation": [
+            {
+              "avoidedGlitches": 0,
+              "batches": 6,
+              "blaSeconds": 7.312488742172718e-05,
+              "glitches": 0,
+              "kernelSeconds": 0.0036551663652062416,
+              "longestBatchMS": 1.2021248694509268,
+              "rebases": 4976,
+              "referenceCacheHits": 0,
+              "referenceSeconds": 0.10323320818133652,
+              "references": 1,
+              "skippedIterations": 7716954
+            },
+            {
+              "avoidedGlitches": 0,
+              "batches": 10,
+              "blaSeconds": 6.833323277533054e-05,
+              "glitches": 0,
+              "kernelSeconds": 0.008475333452224731,
+              "longestBatchMS": 1.063458388671279,
+              "rebases": 4976,
+              "referenceCacheHits": 0,
+              "referenceSeconds": 0.10433508339338005,
+              "references": 1,
+              "skippedIterations": 7716954
+            },
+            {
+              "avoidedGlitches": 0,
+              "batches": 7,
+              "blaSeconds": 7.3291826993227e-05,
+              "glitches": 0,
+              "kernelSeconds": 0.005131958052515984,
+              "longestBatchMS": 0.9429999627172947,
+              "rebases": 4976,
+              "referenceCacheHits": 0,
+              "referenceSeconds": 0.10402299999259412,
+              "references": 1,
+              "skippedIterations": 7716954
+            }
+          ],
+          "samplesSeconds": [
+            0.109708375,
+            0.116456666,
+            0.112405792
+          ],
+          "variant": "perturbation",
+          "width": 64
+        }
+      ],
+      "runs": 3,
+      "timingScope": "gpu-compute-and-colour-no-readback",
+      "warmup": 1
+    }
+  },
+  {
+    "location": "minibrot",
+    "report": {
+      "centerImag": 0.13182590182979556,
+      "centerReal": -0.7436439130937827,
+      "iterations": 60000,
+      "preciseCenterImag": "0.131825901829795556285614749363184601026644941156177737705885863783243014933509791041022680018090649355924958877245256720566473131420650939107528723995056981067345028457750564285687",
+      "preciseCenterReal": "-0.743643913093782735685578505664327465580278375890843525936608151593603260913826197894187695636482037827706527269578155881715384063045188162790549910747393313377742787435621225854959",
+      "preciseScale": "1e100",
+      "results": [
+        {
+          "height": 48,
+          "medianSeconds": 0.469586417,
+          "megapixelsPerSecond": 0.006541926871790246,
+          "perturbation": [
+            {
+              "avoidedGlitches": 0,
+              "batches": 300,
+              "blaSeconds": 0.0006707916036248207,
+              "glitches": 0,
+              "kernelSeconds": 0.2957021265756339,
+              "longestBatchMS": 1.342749921604991,
+              "rebases": 27595,
+              "referenceCacheHits": 0,
+              "referenceSeconds": 0.08308604173362255,
+              "references": 1,
+              "skippedIterations": 58487142
+            },
+            {
+              "avoidedGlitches": 0,
+              "batches": 290,
+              "blaSeconds": 0.0006985415238887072,
+              "glitches": 0,
+              "kernelSeconds": 0.2868141660001129,
+              "longestBatchMS": 1.6893749125301838,
+              "rebases": 27595,
+              "referenceCacheHits": 0,
+              "referenceSeconds": 0.08233650005422533,
+              "references": 1,
+              "skippedIterations": 58487142
+            },
+            {
+              "avoidedGlitches": 0,
+              "batches": 287,
+              "blaSeconds": 0.0007179584354162216,
+              "glitches": 0,
+              "kernelSeconds": 0.2837105842772871,
+              "longestBatchMS": 1.3406251091510057,
+              "rebases": 27595,
+              "referenceCacheHits": 0,
+              "referenceSeconds": 0.08208750002086163,
+              "references": 1,
+              "skippedIterations": 58487142
+            }
+          ],
+          "samplesSeconds": [
+            0.477655792,
+            0.469586417,
+            0.464414209
+          ],
+          "variant": "perturbation",
+          "width": 64
+        }
+      ],
+      "runs": 3,
+      "scale": 1e+100,
+      "timingScope": "gpu-compute-and-colour-no-readback",
+      "warmup": 1
+    }
+  }
+]

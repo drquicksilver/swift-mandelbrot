@@ -226,7 +226,7 @@ final class GPUContext: @unchecked Sendable {
   }
   func render(
     viewport: Viewport, width: Int, height: Int, iterations: Int, renderer: RendererID,
-    settings: ColourSettings = ColourSettings(), useBLA: Bool = true
+    settings: ColourSettings = ColourSettings(), useBLA: Bool = true, useRebasing: Bool = true
   ) async throws -> GPUFrame {
     let samples = try texture(width: width, height: height, format: .r32Float)
     let colour = try texture(width: width, height: height, format: .rgba8Unorm)
@@ -238,7 +238,7 @@ final class GPUContext: @unchecked Sendable {
     if renderer == .perturbation {
       metrics = try await perturb(
         into: samples, region: PerturbationRegion(viewport: viewport, width: width, height: height),
-        iterations: iterations, useBLA: useBLA)
+        iterations: iterations, useBLA: useBLA, useRebasing: useRebasing)
       kernel = metrics!.kernelSeconds
     } else {
       kernel = try await compute(into: samples, parameters: parameters)

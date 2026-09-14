@@ -33,7 +33,9 @@ with tempfile.TemporaryDirectory() as tmp:
     report = json.loads(subprocess.check_output([app, '--benchmark', '--pipeline', 'gpu',
         '--variants', 'perturbation', '--sizes', '7x5', '--runs', '1', '--warmup', '0', '--format', 'json']))
     m = report['results'][0]['perturbation'][0]
-    assert m['glitches'] > 0 and m['references'] > 1, m
+    assert m['glitches'] == 0 and m['references'] == 1 and m['avoidedGlitches'] > 0, m
+    recovery=json.loads(subprocess.check_output([app,'--benchmark','--pipeline','gpu','--variants','perturbation','--sizes','7x5','--runs','1','--warmup','0','--format','json','--rebasing','off']))['results'][0]['perturbation'][0]
+    assert recovery['glitches']>0 and recovery['references']>1,recovery
     print('Pauldelbrot re-referencing:', m['glitches'], 'glitches,', m['references'], 'references')
     for bla in ['off', 'on']:
         report = json.loads(subprocess.check_output([app, '--benchmark', '--pipeline', 'gpu',

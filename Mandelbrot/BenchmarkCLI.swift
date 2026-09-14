@@ -38,6 +38,7 @@
         --offset N         Palette phase (default: 0)
         --samples PATH     Raw float32 GPU samples; -1 means capped/inside
         --pipeline NAME    legacy, gpu or tiles (default: legacy); tiles exports PNGs
+        --rebasing on|off  Critical-point rebasing; off is a recovery diagnostic
         --bla on|off       Perturbation iteration skipping (default: on)
         --timing SCOPE     end-to-end or kernel (GPU benchmark only)
         --help             Show this help
@@ -59,6 +60,7 @@
       var pipeline = "legacy"
       var timing = "end-to-end"
       var useBLA = true
+      var useRebasing = true
       var render = false
       var renderer = "metal"
       var size = (1024, 1024)
@@ -87,6 +89,7 @@
             (renderFlags + benchmarkFlags + [
               "--iterations", "--center-real", "--center-imag", "--scale", "--pipeline", "--timing",
               "--colouring", "--palette", "--density", "--offset", "--samples", "--bla",
+              "--rebasing",
             ]).contains(flag)
           else {
             throw CLIError("Unknown option: \(flag)")
@@ -98,6 +101,11 @@
           let value = arguments[index]
           index += 1
           switch flag {
+          case "--rebasing":
+            guard ["on", "off"].contains(value) else {
+              throw CLIError("Rebasing must be on or off")
+            }
+            useRebasing = value == "on"
           case "--bla":
             guard ["on", "off"].contains(value) else { throw CLIError("BLA must be on or off") }
             useBLA = value == "on"
@@ -421,7 +429,7 @@
             viewport: options.viewport,
             width: width, height: height, iterations: options.iterations,
             renderer: RendererID(rawValue: options.renderer)!, settings: options.colouring,
-            useBLA: options.useBLA)
+            useBLA: options.useBLA, useRebasing: options.useRebasing)
           let image = try await gpu.image(frame.colour)
           let data = NSMutableData()
           guard
@@ -464,7 +472,7 @@
                 viewport: options.viewport,
                 width: width, height: height, iterations: options.iterations,
                 renderer: RendererID(rawValue: variant)!, settings: options.colouring,
-                useBLA: options.useBLA)
+                useBLA: options.useBLA, useRebasing: options.useRebasing)
               let seconds =
                 options.timing == "kernel"
                 ? frame.kernelSeconds : Double(DispatchTime.now().uptimeNanoseconds - start) / 1e9

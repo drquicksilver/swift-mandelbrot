@@ -127,3 +127,11 @@ Final validation: `make test`, `make format-check`, `make ios`, `make ios-device
 and visual inspection of all deep evidence images. Actual iPhone frame pacing
 has not been measured by these headless/build checks. Iteration depth remains
 manual; no automatic-depth or periodicity feature was added ahead of the plan.
+
+### Deep-zoom review, stage 1
+
+Rebase before Pauldelbrot recovery. Keep an explicit rebasing-off diagnostic and
+count avoided glitches separately. Added a period-312, 1e100 long-orbit Decimal
+golden and a numerical/colour golden through the tile compositor. Documented
+boundary-sensitive tolerances alongside the strict existing c=i fixtures. Full
+`make test` passes, including both new paths and diagnostic recovery.

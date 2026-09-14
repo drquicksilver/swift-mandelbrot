@@ -59,18 +59,18 @@ kernel void perturbTile(texture2d<float,access::read_write> output [[texture(0)]
    if(less(xf(65536),magnitude)) {
      output.write(float4(max(0.0f,float(s.n)+1-log2(log2(sqrt(value(magnitude)))))),pos);s.done=1;break;
    }
-   // Pauldelbrot cancellation criterion. Retry at a new high-precision point.
-   if(less(magnitude,times(abs2(orbit[s.ref]),1e-8f))) {
+   // Rebase before cancellation can trigger an expensive new reference.
+   bool candidate=less(magnitude,times(abs2(orbit[s.ref]),1e-8f));
+   if(s.ref+1>=p.referenceCount || (!(p.pad&2u) && less(magnitude,abs2(s.delta)))) {
+     s.delta=total;s.ref=0;rebases++;
+     if(candidate) atomic_fetch_add_explicit(flags+5,1,memory_order_relaxed);
+   } else if(candidate) {
+     // Retained diagnostic/recovery path when critical-point rebasing is disabled.
      output.write(float4(-3),pos);s.done=1;
      atomic_fetch_min_explicit(flags,index,memory_order_relaxed);
      atomic_fetch_add_explicit(flags+1,1,memory_order_relaxed);break;
    }
-   // Rebase onto the critical-point reference before its stored orbit runs out.
-   if(s.ref+1>=p.referenceCount || less(magnitude,abs2(s.delta))) {
-     s.delta=total;s.ref=0;
-     rebases++;
-   }
-   if(p.pad && s.ref>=1 && (s.ref-1)%32==0) {
+   if((p.pad&1u) && s.ref>=1 && (s.ref-1)%32==0) {
      BLA b=blas[(s.ref-1)/32];
      if(b.length>=2 && s.n+b.length<=p.iterations && less(abs2(s.delta),mul(b.radius,b.radius))) {
        s.delta=add(mul(b.a,s.delta),mul(b.b,dc));
