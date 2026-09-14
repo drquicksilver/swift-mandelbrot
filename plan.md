@@ -54,7 +54,7 @@ because several plan items depend on it.
   of the quadtree, so cache use stays bounded.
 - **Precision per tile.** Each tile's level decides its renderer (float,
   double-float, or perturbation). Renderer selection falls out naturally.
-- **Pays off again.** Zoom movies (2.6) are just the chain of ancestor tiles
+- **Pays off again.** Zoom movies (2.7) are just the chain of ancestor tiles
   along a path, rendered as keyframes. This is the technique used by
   zoomasm/Kalles Fraktaler.
 
@@ -171,7 +171,7 @@ capped tile pixels currently restart in bounded worker scratch. Two layers:
 - *Correction from data:* use the coarse pass (or the parent tile) to decide.
   Without detecting interior points you can't tell a genuinely interior pixel
   from one that needed more iterations, so this depends on periodicity checking
-  (2.8). Any pixels that hit the limit are then either known to be inside or
+  (2.9). Any pixels that hit the limit are then either known to be inside or
   genuinely unresolved:
   - raise the limit (to about 2× the current one) while more than about 0.1% of
     pixels are unresolved;
@@ -190,19 +190,57 @@ capped tile pixels currently restart in bounded worker scratch. Two layers:
 - *UI:* the +/− controls become a "detail" multiplier on the automatic value.
   Friends and family never need to touch it.
 
-**2.4 Locations: bookmarks, history, sharing.** A `Location` type (center
+**2.4 Navigation feel: trackpad panning, rotation, gentle bounds.**
+- *Mac two-finger scrolling pans.* When `hasPreciseScrollingDeltas` is true
+  (trackpad, Magic Mouse), `scrollWheel` pans by `scrollingDeltaX/Y` instead of
+  zooming; the deltas already follow the system's natural-scrolling setting.
+  Continue panning through AppKit's momentum events (`momentumPhase`) rather
+  than adding our own inertia, and treat the end of momentum, not finger lift,
+  as the end of the interaction for automatic iteration depth. Physical mouse
+  wheels (imprecise deltas) still zoom at the cursor. ⌘-scroll also zooms on a
+  trackpad.
+- *Twist to rotate, together with pinch.* On iOS, track the two touches directly
+  and solve for the pan, scale and rotation that keep the point under each finger
+  pinned. This replaces three separately updating recognisers with one gesture.
+  On the Mac, handle `rotate(with:)` alongside `magnify(with:)`, which arrive
+  interleaved, and rotate about the cursor. Ignore the first ~10° of twist during
+  a pinch so zooming doesn't leave the view tilted. Snap to 0° (and perhaps 90°)
+  within ±3°, with a haptic tick on iPhone. While rotated, show a compass button
+  that animates back to 0°. Rotation inertia uses the same frame-rate-independent
+  decay as pan and zoom.
+- *Rotation in the architecture.*
+  - `Viewport` gains an `angle`, applied in every conversion: `preciseComplex`,
+    `screen(for:)`, pan, zoom anchors and rectangle-zoom `fit`. Rotation applies
+    to Double offsets from the screen centre, so precision is unaffected at any
+    depth.
+  - Tiles stay axis-aligned in the complex plane, so rotation invalidates nothing.
+    The compositor draws rotated quads; perturbation, BLA, mipmaps and blending
+    don't change.
+  - `visible()` must cover the actual rotated rectangle. Covering its
+    axis-aligned bounding box needs about 2.2× the tiles on a 16:9 screen at 45°.
+  - The angle is stored wherever a view is: bookmarks and share links (2.5),
+    exports and the CLI (`--rotation`), zoom movies (2.7).
+  - Tests: a rotated-compositor golden, and a round trip of the conversions with
+    rotation.
+- *Gentle bounds.* Zooming out past the whole set, or panning far into empty
+  space, springs back so part of the set stays in view. Reaching the precision
+  limit bounces rather than stopping dead. The springs use the same analytic
+  motion model as inertia, so they're frame-rate independent and combine with a
+  fling.
+
+**2.5 Locations: bookmarks, history, sharing.** A `Location` type (center
 stored as an arbitrary-precision decimal string, scale, iterations, palette).
 Back and forward history. A universal link or `mandelbrot://` URL scheme, and
 the share sheet. A starter gallery of famous spots, which doubles as onboarding
 for friends and family.
 
-**2.5 Julia companion.** A picture-in-picture panel (iPad and Mac:
+**2.6 Julia companion.** A picture-in-picture panel (iPad and Mac:
 side-by-side, iPhone: a corner inset) showing the Julia set for the point under
 the cursor or finger, updated live. It's cheap: one small float render per
 frame. Tap to swap the main and companion views. The Julia view reuses the same
 tile cache and palettes.
 
-**2.6 Zoom movies.** Pick a start location (by default the whole set) and an
+**2.7 Zoom movies.** Pick a start location (by default the whole set) and an
 end location (the current view or a bookmark). Render the keyframe chain (one
 image per zoom level of 2× along the path, straight from the quadtree). Then
 compose an exponential zoom video by interpolating between keyframes, and
@@ -210,15 +248,15 @@ write it with AVAssetWriter (HEVC/H.264). Options: duration, resolution
 (1080p/4K), palette cycling, ease in and out. Render in the background with
 progress, and share the result. This is the feature people will post.
 
-**2.7 High-resolution still export.** Tiled supersampled render at any size.
+**2.8 High-resolution still export.** Tiled supersampled render at any size.
 PNG with the location embedded in the metadata. Shares code with the CLI
 `--render`.
 
-**2.8 Cheap performance wins.** Skip the main cardioid and the period-2 bulb,
+**2.9 Cheap performance wins.** Skip the main cardioid and the period-2 bulb,
 and use periodicity checking for points inside the set. Measure each as a
 benchmark variant.
 
-**2.9 Ready for the App Store and for employers.**
+**2.10 Ready for the App Store and for employers.**
 - *App Store:* iPhone and iPad layouts, app icon variants, launch screen,
   first-run hint ("pinch to zoom"), the privacy label (no data collected),
   and TestFlight for friends and family first.
@@ -252,8 +290,10 @@ benchmark variant.
    changes are safe) → 1.6.
 2. **Looks and feel:** 1.4 → 1.5 → 1.7 → 1.8. At this point you can ship to
    friends on TestFlight.
-3. **Smooth motion:** 2.1 (a–d); 2.8 (periodicity checking) → 2.3.
+3. **Smooth motion:** 2.1 (a–d); 2.9 (periodicity checking) → 2.3.
    The depth-based starting guess from 2.3 can land at any time, even now.
 4. **Deep:** 2.2 (library spike first).
-5. **Share:** 2.4 → 2.6 → 2.5 → 2.7.
-6. **Ship:** 2.9 → App Store.
+5. **Feel:** 2.4 (Mac panning, rotation, gentle bounds). Do it before 2.5, so
+   bookmarks store the angle from the start.
+6. **Share:** 2.5 → 2.7 → 2.6 → 2.8.
+7. **Ship:** 2.10 → App Store.
