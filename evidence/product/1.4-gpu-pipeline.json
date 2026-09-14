@@ -1,0 +1,136 @@
+{
+  "kernel": {
+    "centerImag": 0.13182597420533,
+    "centerReal": -0.743643987037151,
+    "iterations": 2000,
+    "results": [
+      {
+        "height": 512,
+        "medianSeconds": 0.00435075000859797,
+        "megapixelsPerSecond": 60.25260000734355,
+        "samplesSeconds": [
+          0.005949333310127258,
+          0.004723791498690844,
+          0.00418141670525074,
+          0.0041773749981075525,
+          0.00435075000859797
+        ],
+        "variant": "metal",
+        "width": 512
+      },
+      {
+        "height": 512,
+        "medianSeconds": 0.020093541825190187,
+        "megapixelsPerSecond": 13.046181817053489,
+        "samplesSeconds": [
+          0.020248250104486942,
+          0.019568249816074967,
+          0.020093541825190187,
+          0.01950937509536743,
+          0.020199625054374337
+        ],
+        "variant": "metal-double",
+        "width": 512
+      },
+      {
+        "height": 1024,
+        "medianSeconds": 0.016561625059694052,
+        "megapixelsPerSecond": 63.31359369751188,
+        "samplesSeconds": [
+          0.016514708288013935,
+          0.016748666763305664,
+          0.016561625059694052,
+          0.01692345831543207,
+          0.01632958324626088
+        ],
+        "variant": "metal",
+        "width": 1024
+      },
+      {
+        "height": 1024,
+        "medianSeconds": 0.07532350020483136,
+        "megapixelsPerSecond": 13.9209675220688,
+        "samplesSeconds": [
+          0.07532350020483136,
+          0.07531595835462213,
+          0.07557483320124447,
+          0.07574795838445425,
+          0.07469895831309259
+        ],
+        "variant": "metal-double",
+        "width": 1024
+      }
+    ],
+    "runs": 5,
+    "scale": 10000000,
+    "timingScope": "gpu-compute-only",
+    "warmup": 1
+  },
+  "end-to-end": {
+    "centerImag": 0.13182597420533,
+    "centerReal": -0.743643987037151,
+    "iterations": 2000,
+    "results": [
+      {
+        "height": 512,
+        "medianSeconds": 0.0049625,
+        "megapixelsPerSecond": 52.82498740554156,
+        "samplesSeconds": [
+          0.004916291,
+          0.0050645,
+          0.0049625,
+          0.004973125,
+          0.004919292
+        ],
+        "variant": "metal",
+        "width": 512
+      },
+      {
+        "height": 512,
+        "medianSeconds": 0.020655834,
+        "megapixelsPerSecond": 12.691039248282106,
+        "samplesSeconds": [
+          0.020290416,
+          0.020718959,
+          0.020655834,
+          0.020463958,
+          0.020833583
+        ],
+        "variant": "metal-double",
+        "width": 512
+      },
+      {
+        "height": 1024,
+        "medianSeconds": 0.01770475,
+        "megapixelsPerSecond": 59.22568802157614,
+        "samplesSeconds": [
+          0.017501625,
+          0.018388709,
+          0.01770475,
+          0.018072708,
+          0.017640083
+        ],
+        "variant": "metal",
+        "width": 1024
+      },
+      {
+        "height": 1024,
+        "medianSeconds": 0.076024917,
+        "megapixelsPerSecond": 13.792530677803963,
+        "samplesSeconds": [
+          0.075798708,
+          0.075995084,
+          0.080246542,
+          0.076284291,
+          0.076024917
+        ],
+        "variant": "metal-double",
+        "width": 1024
+      }
+    ],
+    "runs": 5,
+    "scale": 10000000,
+    "timingScope": "gpu-compute-and-colour-no-readback",
+    "warmup": 1
+  }
+}

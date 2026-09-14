@@ -160,3 +160,24 @@ Corrected FloatFloat costs 104.593 ms at 1024² versus 35.664 ms for the incorre
 shader. Precision is required; keep safe math enabled. CPU-precomputed FloatFloat
 coordinates will be introduced with the shared GPU pipeline, with new measurements,
 rather than adding a second temporary parameter layout to the legacy lab kernels.
+
+## 1.4: GPU-resident product pipeline
+
+M1 Pro, Release, coverage disabled, same 1e7 viewport and 2000 iterations as the
+FloatFloat investigation; median of five samples after one warmup. Raw samples:
+`evidence/product/1.4-gpu-pipeline.json`. Legacy counts and all four goldens pass.
+CPU-precomputed FloatFloat coordinates remove per-pixel divisions. The product
+viewer performs no image readback; MTKView samples the GPU colour texture.
+
+| Scope | Renderer | 512² ms | 1024² ms |
+| --- | --- | ---: | ---: |
+| kernel | metal | 4.351 | 16.562 |
+| kernel | metal-double | 20.094 | 75.324 |
+| end-to-end | metal | 4.962 | 17.705 |
+| end-to-end | metal-double | 20.656 | 76.025 |
+
+Kernel time is the compute command buffer GPU duration; end-to-end includes
+allocation, submission, computation and GPU colouring to a completed texture. It
+excludes display synchronization and PNG readback. Use `--pipeline gpu --timing
+kernel` or `--timing end-to-end`; the legacy lab path remains the default for
+backward-compatible CLI comparisons.

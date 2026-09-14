@@ -6,6 +6,8 @@ import SwiftUI
     @Published var iterations = 200 { didSet { requestRender() } }
     @Published var rendererOverride: RendererID? { didSet { requestRender() } }
     @Published var image: CGImage?
+    @Published var gpuFrame: GPUFrame?
+    private var gpuBusy = false
     @Published var imageViewport = Viewport()
     @Published var duration = 0.0
     @Published var progress = 0.0
@@ -55,6 +57,26 @@ import SwiftUI
         let view = viewport, renderer = renderer, iterations = iterations
         let width = max(1, Int(size.width * displayScale)), height = max(1, Int(size.height * displayScale))
         renderTask = Task { [weak self] in
+            if renderer.isGPU {
+                guard let self, let gpu = GPUContext.shared else { return }
+                do {
+                    while self.gpuBusy { try await Task.sleep(for: .milliseconds(8)) }
+                    try Task.checkCancellation()
+                    self.gpuBusy = true
+                    defer { self.gpuBusy = false }
+                    let start = DispatchTime.now().uptimeNanoseconds
+                    for divisor in [8, 1] {
+                        try Task.checkCancellation()
+                        let frame = try await gpu.render(viewport:view,width:max(1,width/divisor),height:max(1,height/divisor),
+                                                         iterations:iterations,renderer:renderer)
+                        try Task.checkCancellation()
+                        self.gpuFrame = frame; self.imageViewport = view; self.error = nil
+                    }
+                    self.duration = Double(DispatchTime.now().uptimeNanoseconds-start)/1e9
+                    self.progress = 1
+                } catch is CancellationError { } catch { self.error = error.localizedDescription }
+                return
+            }
             let start = ContinuousClock.now
             for block in [32, 8, 2, 1] {
                 guard !Task.isCancelled else { return }

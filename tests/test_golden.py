@@ -19,9 +19,9 @@ FIXTURES = json.loads((ROOT / 'manifest.json').read_text())['fixtures']
 DOUBLE = ['baseline', 'scalar-tight', 'coord-precompute', 'unsafe-buffer', 'parallel', 'metal-double']
 ALL = DOUBLE + ['float-math', 'simd4-float', 'metal']
 
-def render(fixture, renderer, folder):
+def render(fixture, renderer, folder, pipeline="legacy"):
     png, raw = folder / 'image.png', folder / 'counts.u16'
-    subprocess.run([APP, '--render', '--renderer', renderer, '--size', f'{fixture["width"]}x{fixture["height"]}',
+    subprocess.run([APP, '--render', '--pipeline', pipeline, '--renderer', renderer, '--size', f'{fixture["width"]}x{fixture["height"]}',
                     '--center-real', str(fixture['centerReal']), '--center-imag', str(fixture['centerImag']),
                     '--scale', str(fixture['scale']), '--iterations', str(fixture['iterations']),
                     '--output', str(png), '--counts', str(raw)], check=True, capture_output=True,
@@ -43,9 +43,11 @@ class GoldenTests(unittest.TestCase):
                 reference = array.array('H', (ROOT / f'{name}.u16').read_bytes())
                 if sys.byteorder != 'little': reference.byteswap()
                 self.assertGreater(len(set(reference)), 20, name + ' must contain detail')
-                for variant in ALL if fixture['renderers'] == 'all' else DOUBLE:
+                for variant in (ALL if fixture['renderers'] == 'all' else DOUBLE) + (['gpu:metal','gpu:metal-double'] if fixture['renderers'] == 'all' else ['gpu:metal-double']):
                     with self.subTest(location=name, renderer=variant):
-                        counts, png, _ = render(fixture, variant, folder)
+                        pipeline = 'gpu' if variant.startswith('gpu:') else 'legacy'
+                        renderer = variant.removeprefix('gpu:')
+                        counts, png, _ = render(fixture, renderer, folder, pipeline)
                         errors = [abs(a-b) for a,b in zip(counts, reference)]
                         self.assertEqual(len(counts), len(reference))
                         self.assertEqual(struct.unpack('>II', png[16:24]), (fixture['width'], fixture['height']))
@@ -54,7 +56,7 @@ class GoldenTests(unittest.TestCase):
                         print(f'{name:20} {variant:17} mismatch={mismatch:.4%} MAE={mean:.4f}', flush=True)
                         # CPU variants must reproduce the reference exactly; GPU FloatFloat
                         # and Float have less precision and a bounded escape-boundary error.
-                        tolerance = fixture['maxMismatch'] if variant in ['metal-double','metal','float-math','simd4-float'] else 0
+                        tolerance = fixture['maxMismatch'] if renderer in ['metal-double','metal','float-math','simd4-float'] else 0
                         self.assertLessEqual(mismatch, tolerance)
                         self.assertLessEqual(mean, fixture['maxMeanError'] if tolerance else 0)
                         if variant == 'baseline':

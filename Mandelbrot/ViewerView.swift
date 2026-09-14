@@ -9,7 +9,9 @@ struct ViewerView: View {
             let imageCenter = model.viewport.screen(for: model.imageViewport.center, in: geometry.size)
             ZStack {
                 Color.black
-                if let image = model.image {
+                if model.renderer.isGPU {
+                    GPUCanvas(model: model)
+                } else if let image = model.image {
                     Image(decorative: image, scale: 1).resizable().interpolation(.none)
                         .scaleEffect(model.viewport.scale / model.imageViewport.scale)
                         .offset(x: imageCenter.x - geometry.size.width/2, y: imageCenter.y - geometry.size.height/2)

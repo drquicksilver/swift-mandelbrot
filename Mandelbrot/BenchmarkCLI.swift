@@ -30,6 +30,8 @@ enum BenchmarkCLI {
       --output PATH     PNG destination (required for --render)
       --counts PATH     Optional raw UInt16 little-endian iteration counts,
                         row-major, top to bottom; only with --render
+      --pipeline NAME    legacy or gpu (default: legacy); gpu requires Metal renderers
+      --timing SCOPE     end-to-end or kernel (GPU benchmark only)
       --help             Show this help
 
     Renderers: \(variants.joined(separator: ", "))
@@ -44,6 +46,8 @@ enum BenchmarkCLI {
         var runs = 3
         var warmup = 1
         var format = "markdown"
+        var pipeline = "legacy"
+        var timing = "end-to-end"
         var render = false
         var renderer = "metal"
         var size = (1024, 1024)
@@ -66,7 +70,7 @@ enum BenchmarkCLI {
                 let flag = arguments[index]
                 index += 1
                 if flag == "--benchmark" || flag == "--render" { continue }
-                guard (renderFlags + benchmarkFlags + ["--iterations", "--center-real", "--center-imag", "--scale"]).contains(flag) else {
+                guard (renderFlags + benchmarkFlags + ["--iterations", "--center-real", "--center-imag", "--scale", "--pipeline", "--timing"]).contains(flag) else {
                     throw CLIError("Unknown option: \(flag)")
                 }
                 guard !(render ? benchmarkFlags : renderFlags).contains(flag) else {
@@ -76,6 +80,12 @@ enum BenchmarkCLI {
                 let value = arguments[index]
                 index += 1
                 switch flag {
+                case "--pipeline":
+                    guard ["legacy", "gpu"].contains(value) else { throw CLIError("Pipeline must be legacy or gpu") }
+                    pipeline = value
+                case "--timing":
+                    guard ["end-to-end", "kernel"].contains(value) else { throw CLIError("Timing must be end-to-end or kernel") }
+                    timing = value
                 case "--center-real", "--center-imag", "--scale":
                     guard let number = Double(value), number.isFinite,
                           (flag == "--scale" ? (1e-6...1e14).contains(number) : (-4.0...4.0).contains(number)) else {
@@ -126,6 +136,10 @@ enum BenchmarkCLI {
                     }
                 }
             }
+            if pipeline == "gpu" && !(render ? [renderer] : variants).allSatisfy({ RendererID(rawValue:$0)?.isGPU == true }) {
+                throw CLIError("The GPU pipeline requires metal or metal-double renderers")
+            }
+            if timing == "kernel" && (pipeline != "gpu" || render) { throw CLIError("Kernel timing requires a GPU benchmark") }
             if render && output == nil { throw CLIError("--render requires --output") }
             if let output, let counts,
                URL(fileURLWithPath: output).standardizedFileURL == URL(fileURLWithPath: counts).standardizedFileURL {
@@ -174,7 +188,7 @@ enum BenchmarkCLI {
         let centerReal: Double
         let centerImag: Double
         let scale: Double
-        let timingScope = "iterations-and-colorization"
+        var timingScope = "iterations-and-colorization"
         let results: [Result]
     }
 
@@ -191,6 +205,7 @@ enum BenchmarkCLI {
             return 2
         }
 
+        if options.pipeline == "gpu" { return await runGPU(options) }
         if options.render { return await renderPNG(options) }
         var results: [Result] = []
         for (width, height) in options.sizes {
@@ -237,6 +252,63 @@ enum BenchmarkCLI {
             }
         }
         return 0
+    }
+
+    private static func runGPU(_ options: Options) async -> Int32 {
+        guard let gpu = GPUContext.shared else { writeError("Metal is unavailable"); return 1 }
+        do {
+            if options.render {
+                let (width,height) = options.size
+                let frame = try await gpu.render(viewport:Viewport(center:options.center,scale:options.scale),
+                    width:width,height:height,iterations:options.iterations,renderer:RendererID(rawValue:options.renderer)!)
+                let image = try await gpu.image(frame.colour)
+                let data = NSMutableData()
+                guard let destination = CGImageDestinationCreateWithData(data,UTType.png.identifier as CFString,1,nil) else { throw CLIError("PNG encoder unavailable") }
+                CGImageDestinationAddImage(destination,image,nil)
+                guard CGImageDestinationFinalize(destination) else { throw CLIError("PNG encoding failed") }
+                try (data as Data).write(to:URL(fileURLWithPath:options.output!),options:.atomic)
+                if let path = options.counts {
+                    let samples = try await gpu.readback(frame.samples)
+                    let raw = samples.withUnsafeBytes { buffer -> Data in
+                        var result = Data()
+                        for sample in buffer.bindMemory(to:Float.self) {
+                            let count = sample < 0 ? options.iterations : Int(sample)
+                            result.append(UInt8(count & 255));result.append(UInt8((count >> 8) & 255))
+                        }
+                        return result
+                    }
+                    try raw.write(to:URL(fileURLWithPath:path),options:.atomic)
+                }
+                print("Wrote \(options.output!) using GPU computation and colouring")
+                return 0
+            }
+            var rows: [Result] = []
+            for (width,height) in options.sizes {
+                for variant in options.variants {
+                    var samples: [Double] = []
+                    for run in 0..<(options.runs+options.warmup) {
+                        let start = DispatchTime.now().uptimeNanoseconds
+                        let frame = try await gpu.render(viewport:Viewport(center:options.center,scale:options.scale),
+                            width:width,height:height,iterations:options.iterations,renderer:RendererID(rawValue:variant)!)
+                        let seconds = options.timing == "kernel" ? frame.kernelSeconds : Double(DispatchTime.now().uptimeNanoseconds-start)/1e9
+                        if run >= options.warmup { samples.append(seconds) }
+                    }
+                    rows.append(Result(variant:variant,width:width,height:height,samplesSeconds:samples))
+                }
+            }
+            let report = Report(iterations:options.iterations,runs:options.runs,warmup:options.warmup,
+                centerReal:options.centerReal,centerImag:options.centerImag,scale:options.scale,
+                timingScope:options.timing == "kernel" ? "gpu-compute-only" : "gpu-compute-and-colour-no-readback",results:rows)
+            if options.format == "json" {
+                let encoder = JSONEncoder();encoder.outputFormatting = [.prettyPrinted,.sortedKeys]
+                print(String(decoding:try encoder.encode(report),as:UTF8.self))
+            } else {
+                print("GPU \(report.timingScope); median of \(options.runs) runs")
+                print("| Renderer | Size | Seconds | Mpx/s |\n| --- | --- | ---: | ---: |")
+                for row in rows { print(String(format:"| %@ | %dx%d | %.6f | %.2f |",row.variant,row.width,row.height,row.medianSeconds,row.megapixelsPerSecond)) }
+            }
+            return 0
+        } catch { writeError(String(describing:error));return 1 }
     }
 
     private static func renderPNG(_ options: Options) async -> Int32 {
