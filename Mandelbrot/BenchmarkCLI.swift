@@ -6,10 +6,7 @@ import UniformTypeIdentifiers
 
 /// Runs before SwiftUI starts, using the same full-image path as the GUI benchmarks.
 enum BenchmarkCLI {
-    static let variants = [
-        "baseline", "scalar-tight", "coord-precompute", "unsafe-buffer",
-        "float-math", "parallel", "simd4-float", "metal", "metal-double"
-    ]
+    static let variants = RendererID.allCases.map(\.rawValue)
 
     static let help = """
     Usage: Mandelbrot --benchmark [options]

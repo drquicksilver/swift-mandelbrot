@@ -26,5 +26,6 @@ struct MandelbrotApp: App {
         WindowGroup {
             ContentView()
         }
+        .commands { ExplorerCommands() }
     }
 }
