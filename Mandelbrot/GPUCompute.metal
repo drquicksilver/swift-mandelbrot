@@ -136,3 +136,65 @@ fragment float4 tileFragment(QuadOutput in [[stage_in]],texture2d<float> coarse 
     }
     return float4(rgb,1);
 }
+
+// Resumable tile work bounds both pixels and iterations per command. -2 means
+// unfinished; -1 means capped. Only the worker sees an unfinished texture.
+struct TileWorkParameters { GPUParameters image; uint start, count, padding0, padding1; };
+kernel void resumeTile(texture2d<float,access::read_write> out [[texture(0)]],
+                       device float4 *states [[buffer(1)]],
+                       constant TileWorkParameters &work [[buffer(0)]],uint2 point [[thread_position_in_grid]]) {
+    constant GPUParameters &p=work.image;
+    if(point.x>=p.width || point.y>=p.height) return;
+    uint index=point.y*p.width+point.x;
+    if(work.start>0 && out.read(point).x != -2.0f) return;
+    float4 state=work.start==0 ? float4(0) : states[index];
+    uint n=work.start,end=min(p.maxIterations,work.start+work.count);
+    float magnitude=0;bool escaped=false;
+    if(p.precision==0) {
+        float cr=p.realMin.x+float(point.x)*p.stepX.x,ci=p.imagMax.x-float(point.y)*p.stepY.x;
+        float zr=state.x,zi=state.z;
+        while(n<end) {
+            magnitude=zr*zr+zi*zi;
+            if(magnitude>65536.0f) { escaped=true;break; }
+            float next=zr*zr-zi*zi+cr;zi=2.0f*zr*zi+ci;zr=next;++n;
+        }
+        state=float4(zr,0,zi,0);
+    } else {
+        float2 cr=dd_add(p.realMin,dd_mul_float(p.stepX,float(point.x)));
+        float2 ci=dd_sub(p.imagMax,dd_mul_float(p.stepY,float(point.y)));
+        float2 zr=state.xy,zi=state.zw;
+        while(n<end) {
+            float2 zr2=dd_mul(zr,zr),zi2=dd_mul(zi,zi),mag=dd_add(zr2,zi2);
+            magnitude=mag.x+mag.y;
+            if(mag.x>65536.0f || (mag.x==65536.0f && mag.y>0)) { escaped=true;break; }
+            float2 next=dd_add(dd_sub(zr2,zi2),cr);
+            zi=dd_add(dd_mul_float(dd_mul(zr,zi),2),ci);zr=next;++n;
+        }
+        state=float4(zr,zi);
+    }
+    states[index]=state;
+    float value=escaped ? max(0.0f,float(n)+1-log2(log2(sqrt(magnitude)))) : (n==p.maxIterations ? -1.0f : -2.0f);
+    out.write(float4(value),point);
+}
+
+// Child ordering is top-left, top-right, bottom-left, bottom-right. Each parent
+// interior pixel is the exact box average of four coloured child pixels.
+// Keep the directly sampled gutter: neighbours may not be cached yet.
+kernel void averageChildren(texture2d<float,access::read> a [[texture(0)]],
+                            texture2d<float,access::read> b [[texture(1)]],
+                            texture2d<float,access::read> c [[texture(2)]],
+                            texture2d<float,access::read> d [[texture(3)]],
+                            texture2d<float,access::read> parent [[texture(4)]],
+                            texture2d<float,access::write> out [[texture(5)]],
+                            uint2 gid [[thread_position_in_grid]]) {
+    if(gid.x>=258 || gid.y>=258) return;
+    if(gid.x==0 || gid.y==0 || gid.x==257 || gid.y==257) { out.write(parent.read(gid),gid);return; }
+    uint2 full=(gid-1)*2,local=full%256+1;
+    uint quadrant=(full.x/256)+(full.y/256)*2;
+    float4 sum=0;
+    for(uint y=0;y<2;++y) for(uint x=0;x<2;++x) {
+        uint2 point=local+uint2(x,y);
+        switch(quadrant) { case 0:sum+=a.read(point);break;case 1:sum+=b.read(point);break;case 2:sum+=c.read(point);break;default:sum+=d.read(point); }
+    }
+    out.write(sum*0.25f,gid);
+}

@@ -102,7 +102,10 @@ class HeadlessTests(unittest.TestCase):
         for arguments in [[], ["--output", "x.png", "--renderer", "unknown"],
                           ["--output", "x.png", "--size", "8x8,16x16"],
                           ["--output", "x.png", "--counts", "./x.png"],
-                          ["--output", "x.png", "--benchmark"]]:
+                          ["--output", "x.png", "--benchmark"],
+                          ["--output", "x.png", "--pipeline", "tiles", "--scale", "1e14"],
+                          ["--output", "x.png", "--pipeline", "tiles", "--scale", "0.001"],
+                          ["--output", "x.png", "--pipeline", "tiles", "--colouring", "legacy"]]:
             with self.subTest(arguments=arguments):
                 self.assertEqual(self.run_cli("--render", *arguments).returncode, 2)
         with tempfile.TemporaryDirectory() as folder:

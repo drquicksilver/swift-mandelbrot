@@ -36,6 +36,21 @@ Completed:
 - 2.1(c): colour-space level blending, 125 ms refinement fades, and GPU tile
   borders/level labels. Shader integration verifies known RGB blend weights.
 
-Next: tile stage 2.1(d). No perturbation or automatic iteration-depth
-heuristic is included in this milestone. Colour mipmaps are disposable
-palette-dependent display data; raw sample tiles remain authoritative.
+- 2.1(d): exact interior colour mip averaging, direction-aware prefetch, protected
+  ancestors, LRU device budgets, resumable iteration batches, lifecycle cancellation
+  and GPU cache/frame statistics. Budget pressure lowers sampling LOD without
+  changing the camera. Palette-dependent mipmaps are disposable; raw data stays
+  authoritative. The cache and numerical integration regressions pass.
+
+All implementation points through 2.1 are complete. No perturbation (2.2) or
+automatic iteration-depth heuristic (2.3) is included. Navigation has the agreed
+graceful FloatFloat precision cap. Each numbered point or tile stage has a commit;
+1.6 preceded 1.4 to establish the shared models before the GPU presentation change.
+
+Final verification: `make test`, `make ios`, unsigned generic physical-iOS Release
+build, five isolated headless tile traces, and visual inspection of the deep tiled
+PNG. `Architecture.md` explains the cache, precision and memory decisions.
+Interactive GUI inspection could not proceed because Computer Use permissions
+remained pending; no physical phone measurements were obtained. Hands-on testing
+on iPhone 11 Pro and iPhone 16 Pro remains necessary before claiming frame pacing
+or touch quality on those devices.

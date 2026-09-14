@@ -28,3 +28,25 @@ menu available. The main view uses automatic precision; the developer panel has
 renderer overrides, benchmark sharing, a HUD, and tile overlays. Benchmark scope
 can be GPU compute only or end-to-end (GPU computation/colouring; CPU legacy
 rendering). Reports include the device and exact viewport.
+
+The viewer now uses a GPU quadtree cache with parent fallback, colour-level
+blending, refinement fades, upward mip averaging, prefetching and LRU budgets.
+See [Architecture.md](Architecture.md) for the data flow and precision limits.
+Until perturbation is implemented, navigation stops gracefully at the FloatFloat
+precision limit. Iteration depth remains a manual control.
+
+Export the same tiled compositor without opening a window:
+
+```sh
+/tmp/mandelbrot-development/Build/Products/Release/Mandelbrot.app/Contents/MacOS/Mandelbrot \
+  --render --pipeline tiles --renderer metal-double --size 1024x768 \
+  --center-real -0.743643987037151 --center-imag 0.13182597420533 \
+  --scale 10000000 --iterations 2000 --palette blue-gold --output deep.png
+```
+
+![Deep tiled rendering](evidence/product/tiles-deep.png)
+
+Physical iPhone frame pacing and interactive GUI inspection have not been verified
+in this implementation session. The reproducible headless tests and both iOS
+build targets pass; the [implementation record](Implementation.md) states the
+remaining device validation explicitly.

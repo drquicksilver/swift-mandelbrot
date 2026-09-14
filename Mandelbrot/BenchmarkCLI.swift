@@ -4,7 +4,7 @@ import CoreGraphics
 import ImageIO
 import UniformTypeIdentifiers
 
-/// Runs before SwiftUI starts, using the same full-image path as the GUI benchmarks.
+/// Runs before SwiftUI starts; full-image benchmarks and tiled exports share the product kernels.
 enum BenchmarkCLI {
     static let variants = RendererID.allCases.map(\.rawValue)
 
@@ -12,8 +12,8 @@ enum BenchmarkCLI {
     Usage: Mandelbrot --benchmark [options]
            Mandelbrot --render --output image.png [options]
 
-    Runs without starting the GUI. Timings include iteration computation and CPU
-    colour conversion at full resolution. PNG writing is not benchmarked.
+    Runs without starting the GUI. Legacy timings include CPU colour conversion;
+    GPU timings select kernel or completed coloured texture. PNG writing is excluded.
 
       --variants LIST    Comma-separated renderers (default: baseline,parallel,metal)
                          Use 'all' for every renderer, including FloatFloat metal-double.
@@ -166,6 +166,13 @@ enum BenchmarkCLI {
             }
             if timing == "kernel" && (pipeline != "gpu" || render) { throw CLIError("Kernel timing requires a GPU benchmark") }
             if pipeline == "tiles" && (!render || counts != nil || samples != nil) { throw CLIError("Tile pipeline exports composited PNGs; use --render without --counts or --samples") }
+            if pipeline == "tiles" {
+                guard colouring.smooth else { throw CLIError("Tiles use smooth samples; use --pipeline gpu for legacy colouring") }
+                let view=Viewport(center:center,scale:scale)
+                guard scale>=0.5,scale<=view.maximumScale(pixelWidth:Double(size.0)) else {
+                    throw CLIError("Tile scale is outside the viewer's FloatFloat precision range")
+                }
+            }
             if render && output == nil { throw CLIError("--render requires --output") }
             if let output, let counts,
                URL(fileURLWithPath: output).standardizedFileURL == URL(fileURLWithPath: counts).standardizedFileURL {

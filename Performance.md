@@ -242,3 +242,45 @@ Five M1 Pro runs: median 134.249 ms, longest compute batch 0.641 ms.
 Raw runs: `evidence/product/2.1c-blending.json`. This is offscreen integration
 time, not a measurement of display refresh rate. `make test` passes, including
 an actual GPU render with known coarse/base/fine colours and blend weights.
+
+## 2.1(d): bounded refinement, mipmaps and LRU cache
+
+Five isolated Release runs on Apple M1 Pro, using `tests/measure_tiles.py`. Raw
+results: `evidence/product/2.1d-cache.json`. All numerical and cache assertions
+passed. The trace now adds 40 fractional-zoom frames with 8 ms sleeps while
+refinement/prefetch run, so its 487.619 ms median duration is deliberately not a
+speed comparison with earlier traces.
+
+| Measurement | Result |
+| --- | ---: |
+| Median per-run p95 compositor GPU duration | 0.250 ms |
+| Worst compositor GPU duration across runs | 1.339 ms |
+| Worst ordinary refinement batch | 1.432 ms |
+| Cold 1e10 refinement, 256², 4000 iterations (median) | 1488.170 ms |
+| Worst batch during that deep refinement | 2.370 ms |
+| Resident cache after animated trace | 101.5625 MiB |
+| Resident cache after deep refinement | 115.625 MiB |
+
+The deep viewport is `(-0.743643887037151, 0.13182590390533)`, with automatic
+per-tile precision. Cold refinement includes the entire ancestor chain; it is
+not a full-image kernel benchmark. GPU duration excludes drawable scheduling,
+display synchronization and CPU overhead, and is not proof of 120 fps on a phone.
+The 40 MiB constrained-cache regression recorded 24 LRU evictions, 16 prefetched
+tiles and 12 mipmap builds, while preserving visible tiles and ancestors.
+
+Row-only slicing has been replaced with resumable iteration batches targeting
+1 ms, bounded to 8–512 iterations per 258² tile. Both Float and FloatFloat resumed
+results match the full smooth kernel byte-for-byte in a 2000-iteration regression.
+The actual mip kernel matches CPU 2×2 averaging within byte rounding for every
+interior pixel; gutters are deliberately retained from direct parent colouring.
+Palette changes rebuild mipmaps while preserving the exact raw sample textures.
+
+Cache budgets are 150 MiB on iOS and 500 MiB on Mac, with reserved transient
+headroom. These numbers cover cache policy, not total process allocation.
+`evidence/product/tiles-deep.png` is a 1024×768 tiled FloatFloat export at the
+original 1e7 accuracy-reference location, 2000 iterations, blue-gold palette.
+
+Validation: `make test`, `make ios`, and an unsigned generic physical-iOS Release
+build pass. Interactive GUI inspection was unavailable because Computer Use
+permissions remained pending. Physical iPhone 11 Pro (60 Hz) and iPhone 16 Pro
+(120 Hz) pacing and touch feel remain to be measured.

@@ -1,167 +1,338 @@
-import Foundation
 import Combine
 import CoreGraphics
+import Foundation
 import Metal
 
 struct TileStatistics: Equatable, Codable {
-    var tiles=0, bytes=0, computed=0, cancelled=0, batches=0, cacheHits=0, evictions=0
-    var longestBatchMS=0.0
+  var tiles = 0, bytes = 0, computed = 0, cancelled = 0, batches = 0, cacheHits = 0, evictions = 0
+  var mipmaps = 0, prefetched = 0, pending = 0, budgetBytes = 0
+  var longestBatchMS = 0.0, frameMS = 0.0, frameP95MS = 0.0, frameMaxMS = 0.0
 }
 @MainActor final class TileRecord {
-    let key: TileKey
-    let bounds: TileBounds
-    let samples: MTLTexture
-    var colour: MTLTexture
-    let readyAt: Double
-    var lastUsed: UInt64 = 0
-    init(key: TileKey,bounds: TileBounds,samples: MTLTexture,colour: MTLTexture,readyAt: Double) {
-        self.key=key;self.bounds=bounds;self.samples=samples;self.colour=colour;self.readyAt=readyAt
-    }
-    var bytes: Int { samples.allocatedSize+colour.allocatedSize }
+  let key: TileKey
+  let bounds: TileBounds
+  let samples: MTLTexture
+  var colour: MTLTexture
+  let readyAt: Double
+  var lastUsed: UInt64 = 0
+  var isMip = false
+  init(key: TileKey, bounds: TileBounds, samples: MTLTexture, colour: MTLTexture, readyAt: Double) {
+    self.key = key
+    self.bounds = bounds
+    self.samples = samples
+    self.colour = colour
+    self.readyAt = readyAt
+  }
+  var bytes: Int { samples.allocatedSize + colour.allocatedSize }
 }
 
-/// One asynchronous worker owns refinement. Camera movement only changes demand;
-/// overlapping work survives, while invisible work is cancelled between GPU batches.
+/// The single worker owns refinement and yields between bounded iteration batches.
+/// Display commands only read complete textures. Palette swaps are transactional.
 @MainActor final class TileStore: ObservableObject {
-    @Published private(set) var statistics=TileStatistics()
-    var grid=TileGrid(anchor:CGPoint(x:-0.5,y:0))
-    private(set) var records: [TileKey:TileRecord] = [:]
-    private(set) var visible: [TileKey] = []
-    private(set) var needed: Set<TileKey> = []
-    private(set) var viewport=Viewport()
-    private(set) var size=CGSize(width:1,height:1)
-    private(set) var colouring=ColourSettings()
-    private(set) var iterations=200
-    private var override: RendererID?
-    private var worker: Task<Void,Never>?
-    private var generation: UInt64 = 0
-    private var failed: Set<TileKey> = []
-    private(set) var lod = 0.0
-    private(set) var fallback: [TileRecord] = []
-    let minimumLevel = -2
-    private var counters=TileStatistics()
-    var error: String?
-    var isIdle: Bool { worker == nil }
-    var allVisibleReady: Bool { visible.allSatisfy { records[$0] != nil } }
+  @Published private(set) var statistics = TileStatistics()
+  var grid = TileGrid(anchor: CGPoint(x: -0.5, y: 0))
+  private(set) var records: [TileKey: TileRecord] = [:]
+  private(set) var visible: [TileKey] = []
+  private(set) var needed: Set<TileKey> = []
+  private(set) var prefetch: Set<TileKey> = []
+  private(set) var viewport = Viewport()
+  private(set) var size = CGSize(width: 1, height: 1)
+  private(set) var colouring = ColourSettings()
+  private(set) var iterations = 200
+  private var override: RendererID?
+  private var worker: Task<Void, Never>?
+  private var generation: UInt64 = 0
+  private var failed: Set<TileKey> = []
+  private(set) var lod = 0.0
+  private(set) var fallback: [TileRecord] = []
+  let minimumLevel = -2
+  let budgetBytes: Int
+  // Reserve a third for transactional recolouring, one orbit-state buffer,
+  // mip replacements and the two in-flight display frames.
+  private var residentLimit: Int { (budgetBytes - 2 * 1024 * 1024) * 2 / 3 }
+  private var tileCost = 1024 * 1024
+  private var tick: UInt64 = 0
+  private var counters = TileStatistics()
+  private var needsRecolour = false
+  private var suspended = false
+  private var lastFramePublish = 0.0
+  private var frameTimes: [Double] = []
+  private(set) var error: String?
+  var isIdle: Bool { worker == nil }
+  var allVisibleReady: Bool { !visible.isEmpty && visible.allSatisfy { records[$0] != nil } }
+  var residentBytes: Int {
+    records.values.reduce(0) { $0 + $1.bytes } + fallback.reduce(0) { $0 + $1.bytes }
+  }
 
-    func update(viewport: Viewport,size: CGSize,pixelWidth: Double,iterations: Int,
-                override: RendererID?,colouring: ColourSettings,zoomDirection: Int = 0) {
-        guard size.width>0,size.height>0 else { return }
-        self.viewport=viewport;self.size=size
-        if self.iterations != iterations || self.override != override {
-            generation &+= 1;worker?.cancel();worker=nil
-            fallback=Array(records.values);records.removeAll();failed.removeAll()
-        }
-        self.iterations=iterations;self.override=override
-        lod=max(Double(minimumLevel),min(45,grid.idealLevel(viewport:viewport,pixelWidth:pixelWidth)))
-        let level=Int(ceil(lod))
-        visible=grid.visible(viewport:viewport,size:size,level:level)
-        if visible.contains(where:{abs($0.x) > (1 << 30) || abs($0.y) > (1 << 30)}) {
-            generation &+= 1;worker?.cancel();worker=nil
-            fallback=Array(records.values);records.removeAll();failed.removeAll()
-            grid.rebase(to:viewport.center)
-            visible=grid.visible(viewport:viewport,size:size,level:level)
-        }
-        needed=Set(visible.flatMap { key in (minimumLevel...key.level).map { key.ancestor(at:$0) } })
-        if self.colouring != colouring {
-            self.colouring=colouring
-            generation &+= 1;worker?.cancel();worker=nil
-            // Keep raw data; appearance changes recolour, never recompute samples.
-            recolourRecords()
-        }
-        startWorker()
+  init(budgetBytes: Int? = nil) {
+    #if os(iOS)
+      let defaultBudget = 150 * 1024 * 1024
+    #else
+      let defaultBudget = 500 * 1024 * 1024
+    #endif
+    self.budgetBytes = max(8 * 1024 * 1024, budgetBytes ?? defaultBudget)
+  }
+  private func invalidate() {
+    generation &+= 1
+    worker?.cancel()
+    failed.removeAll()
+    error = nil
+    // Retain coarse coverage across repeated changes, even if the interrupted
+    // generation had not finished a tile yet. World bounds survive rebasing.
+    let roots = records.values.filter { $0.key.level == minimumLevel }
+    if !roots.isEmpty { fallback = Array(roots) }
+    records.removeAll()
+  }
+  func update(
+    viewport: Viewport, size: CGSize, pixelWidth: Double, iterations: Int,
+    override: RendererID?, colouring: ColourSettings, zoomDirection: Int = 0
+  ) {
+    guard size.width > 0, size.height > 0 else { return }
+    suspended = false
+    tick &+= 1
+    self.viewport = viewport
+    self.size = size
+    if self.iterations != iterations || self.override != override { invalidate() }
+    self.iterations = iterations
+    self.override = override
+    lod = max(
+      Double(minimumLevel), min(45, grid.idealLevel(viewport: viewport, pixelWidth: pixelWidth)))
+    var level = Int(ceil(lod))
+    visible = grid.visible(viewport: viewport, size: size, level: level)
+    if visible.isEmpty
+      || visible.contains(where: { abs($0.x) > (1 << 30) || abs($0.y) > (1 << 30) })
+    {
+      invalidate()
+      grid.rebase(to: viewport.center)
+      visible = grid.visible(viewport: viewport, size: size, level: level)
     }
-    func cancel() { generation &+= 1;worker?.cancel();worker=nil }
-    private func nextKey() -> TileKey? {
-        needed.filter { records[$0] == nil && !failed.contains($0) }.min {
-            if $0.level != $1.level { return $0.level < $1.level }
-            let a=grid.bounds($0).center,b=grid.bounds($1).center
-            return hypot(a.x-viewport.center.x,a.y-viewport.center.y)<hypot(b.x-viewport.center.x,b.y-viewport.center.y)
-        }
+    func ancestors() -> Set<TileKey> {
+      Set(visible.flatMap { key in (minimumLevel...key.level).map { key.ancestor(at: $0) } })
     }
-    private func publish() {
-        counters.tiles=records.count;counters.bytes=records.values.reduce(0) {$0+$1.bytes}
-        statistics=counters
+    needed = ancestors()
+    // On unusually large drawables or a constrained cache, lower sampling LOD
+    // rather than evicting visible ancestors or exceeding the memory budget.
+    while needed.count * tileCost > residentLimit && level > minimumLevel {
+      level -= 1
+      lod = Double(level)
+      visible = grid.visible(viewport: viewport, size: size, level: level)
+      needed = ancestors()
     }
-    private func recolourRecords() {
-        guard let gpu=GPUContext.shared else { return }
-        let generation=self.generation,settings=colouring,records=Array(records.values)
-        worker=Task { [weak self] in
-            do {
-                var replacements: [(TileRecord,MTLTexture)] = []
-                for record in records {
-                    try Task.checkCancellation()
-                    let colour=try gpu.texture(width:TileGrid.textureSize,height:TileGrid.textureSize,format:.rgba8Unorm)
-                    _ = try await gpu.colour(record.samples,into:colour,settings:settings)
-                    replacements.append((record,colour))
-                }
-                guard let self,self.generation==generation else { return }
-                // Swap as a transaction: a frame never shows a patchwork of palettes.
-                for (record,colour) in replacements { record.colour=colour }
-                self.worker=nil;self.publish();self.startWorker()
-            } catch {
-                guard let self,self.generation==generation else { return }
-                self.worker=nil;self.startWorker()
+    prefetch = zoomDirection > 0 && level < 45 ? Set(visible.flatMap(\.children)) : []
+    // Zoom-out's next level is already protected in the ancestor chain.
+    for key in needed {
+      if let record = records[key] {
+        if record.lastUsed != tick - 1 { counters.cacheHits += 1 }
+        record.lastUsed = tick
+      }
+    }
+    if self.colouring != colouring {
+      self.colouring = colouring
+      needsRecolour = true
+      generation &+= 1
+      worker?.cancel()
+    }
+    evict(reserving: 0)
+    startWorker()
+  }
+  func cancel() {
+    suspended = true
+    generation &+= 1
+    worker?.cancel()
+  }
+  private func nextKey() -> TileKey? {
+    let primary = needed.filter { records[$0] == nil && !failed.contains($0) }
+    let candidates =
+      primary.isEmpty ? prefetch.filter { records[$0] == nil && !failed.contains($0) } : primary
+    guard !primary.isEmpty || needed.count * tileCost + tileCost <= residentLimit else {
+      return nil
+    }
+    if primary.isEmpty && residentBytes + tileCost > residentLimit
+      && !records.keys.contains(where: { !needed.contains($0) && !prefetch.contains($0) })
+    {
+      return nil
+    }
+    return candidates.min {
+      if $0.level != $1.level { return $0.level < $1.level }
+      let a = grid.bounds($0).center
+      let b = grid.bounds($1).center
+      return hypot(a.x - viewport.center.x, a.y - viewport.center.y)
+        < hypot(b.x - viewport.center.x, b.y - viewport.center.y)
+    }
+  }
+  private func evict(reserving bytes: Int) {
+    for record in records.values.filter({ !needed.contains($0.key) }).sorted(by: {
+      $0.lastUsed < $1.lastUsed
+    }) {
+      if residentBytes + bytes <= residentLimit { break }
+      records.removeValue(forKey: record.key)
+      counters.evictions += 1
+    }
+    // Drop obsolete-generation coverage only once new roots cover the view.
+    if needed.filter({ $0.level == minimumLevel }).allSatisfy({ records[$0] != nil }) {
+      fallback.removeAll()
+    }
+    while residentBytes + bytes > residentLimit && !fallback.isEmpty { fallback.removeLast() }
+  }
+  private func publish() {
+    counters.tiles = records.count
+    counters.bytes = residentBytes
+    counters.budgetBytes = budgetBytes
+    counters.pending = needed.filter { records[$0] == nil }.count
+    statistics = counters
+  }
+  func recordFrame(seconds: Double, now: Double) {
+    counters.frameMS = seconds * 1000
+    frameTimes.append(seconds * 1000)
+    if frameTimes.count > 120 { frameTimes.removeFirst() }
+    let sorted = frameTimes.sorted()
+    counters.frameP95MS = sorted[min(sorted.count - 1, Int(Double(sorted.count) * 0.95))]
+    counters.frameMaxMS = sorted.last ?? 0
+    if now - lastFramePublish > 0.25 {
+      lastFramePublish = now
+      publish()
+    }
+  }
+  private func recolour(_ gpu: GPUContext, generation: UInt64) async throws {
+    let settings = colouring
+    let all = Array(records.values) + fallback
+    var replacements: [(TileRecord, MTLTexture)] = []
+    for record in all {
+      try Task.checkCancellation()
+      let colour = try gpu.texture(width: 258, height: 258, format: .rgba8Unorm)
+      _ = try await gpu.colour(record.samples, into: colour, settings: settings)
+      replacements.append((record, colour))
+    }
+    try Task.checkCancellation()
+    guard self.generation == generation else { throw CancellationError() }
+    for (record, colour) in replacements {
+      record.colour = colour
+      record.isMip = false
+    }
+    needsRecolour = false
+    // Rebuild bottom-up from the new palette, never reuse old colour mipmaps.
+    for key in Set(records.keys.map(\.parent)).sorted(by: { $0.level > $1.level }) {
+      try await averageParent(of: key.children[0], gpu: gpu, generation: generation, cascade: false)
+    }
+  }
+  private func averageParent(
+    of child: TileKey, gpu: GPUContext, generation: UInt64, cascade: Bool = true
+  ) async throws {
+    var key = child.parent
+    while key.level >= minimumLevel, let parent = records[key] {
+      let children = key.children.compactMap { records[$0] }
+      guard children.count == 4 else { break }
+      try Task.checkCancellation()
+      let colour = try await gpu.average(children: children.map(\.colour), parent: parent.colour)
+      try Task.checkCancellation()
+      guard self.generation == generation else { throw CancellationError() }
+      parent.colour = colour
+      parent.isMip = true
+      counters.mipmaps += 1
+      if !cascade { break }
+      key = key.parent
+    }
+  }
+  private func startWorker() {
+    guard !suspended, worker == nil, let gpu = GPUContext.shared, needsRecolour || nextKey() != nil
+    else { return }
+    let generation = self.generation
+    worker = Task { [weak self] in
+      guard let self else { return }
+      defer {
+        self.worker = nil
+        self.publish()
+        self.startWorker()
+      }
+      do {
+        if self.needsRecolour { try await self.recolour(gpu, generation: generation) }
+        while !Task.isCancelled, self.generation == generation, let key = self.nextKey() {
+          let resolution = TileGrid.textureSize
+          self.evict(reserving: self.tileCost)
+          // Prefetch never churns other prefetch entries endlessly.
+          if !self.needed.contains(key) && self.residentBytes + self.tileCost > self.residentLimit {
+            self.prefetch.remove(key)
+            continue
+          }
+          let bounds = self.grid.bounds(key)
+          let step = bounds.span / Double(TileGrid.samples)
+          let samples = try gpu.texture(width: resolution, height: resolution, format: .r32Float)
+          let colour = try gpu.texture(width: resolution, height: resolution, format: .rgba8Unorm)
+          guard
+            let states = gpu.device.makeBuffer(
+              length: resolution * resolution * 16, options: .storageModePrivate)
+          else { throw GPUFailure("Orbit allocation failed") }
+          let renderer =
+            self.override
+            ?? Viewport(center: bounds.center, scale: 3 / bounds.span).recommendedRenderer(
+              pixelWidth: 256)
+          var params = GPUParameters(
+            viewport: Viewport(center: bounds.center, scale: 3 / bounds.span), width: resolution,
+            height: resolution, iterations: self.iterations, renderer: renderer)
+          params.realMin = GPUParameters.split(bounds.left - step / 2)
+          params.imagMax = GPUParameters.split(bounds.top + step / 2)
+          params.stepX = GPUParameters.split(step)
+          params.stepY = params.stepX
+          params.smooth = 1
+          var start = 0
+          var batch = 64
+          var cancelled = false
+          while start < self.iterations {
+            if Task.isCancelled || (!self.needed.contains(key) && !self.prefetch.contains(key)) {
+              cancelled = true
+              break
             }
+            let count = min(batch, self.iterations - start)
+            let time = try await gpu.resume(
+              into: samples, states: states, parameters: params, start: start, count: count)
+            start += count
+            self.counters.batches += 1
+            self.counters.longestBatchMS = max(self.counters.longestBatchMS, time * 1000)
+            // Target 1 ms of measured GPU work; even the worst interior
+            // batch is limited to 512 iterations over one 258² tile.
+            batch = max(8, min(512, Int(Double(count) * min(2, 0.001 / max(time, 0.00001)))))
+          }
+          if cancelled {
+            self.counters.cancelled += 1
+            continue
+          }
+          _ = try await gpu.colour(samples, into: colour, settings: self.colouring)
+          try Task.checkCancellation()
+          guard self.generation == generation else { throw CancellationError() }
+          let record = TileRecord(
+            key: key, bounds: bounds, samples: samples, colour: colour,
+            readyAt: ProcessInfo.processInfo.systemUptime)
+          record.lastUsed = self.tick
+          self.records[key] = record
+          self.tileCost = max(samples.allocatedSize + colour.allocatedSize, self.tileCost)
+          self.counters.computed += 1
+          if !self.needed.contains(key) {
+            self.counters.prefetched += 1
+            self.prefetch.remove(key)
+          }
+          try await self.averageParent(of: key, gpu: gpu, generation: generation)
+          self.publish()
         }
+      } catch is CancellationError { self.counters.cancelled += 1 } catch {
+        self.error = String(describing: error)
+        self.suspended = true
+      }
     }
-    private func startWorker() {
-        guard worker==nil,let gpu=GPUContext.shared,nextKey() != nil else { return }
-        let generation=self.generation
-        worker=Task { [weak self] in
-            guard let self else { return }
-            while !Task.isCancelled,self.generation==generation,let key=self.nextKey() {
-                do {
-                    let resolution=TileGrid.textureSize
-                    let bounds=self.grid.bounds(key),step=bounds.span/Double(TileGrid.samples)
-                    let samples=try gpu.texture(width:resolution,height:resolution,format:.r32Float)
-                    let colour=try gpu.texture(width:resolution,height:resolution,format:.rgba8Unorm)
-                    let renderer=self.override ?? Viewport(center:bounds.center,scale:3/bounds.span).recommendedRenderer(pixelWidth:256)
-                    var params=GPUParameters(viewport:Viewport(center:bounds.center,scale:3/bounds.span),width:resolution,height:resolution,iterations:self.iterations,renderer:renderer)
-                    params.realMin=GPUParameters.split(bounds.left-step/2)
-                    params.imagMax=GPUParameters.split(bounds.top+step/2)
-                    params.stepX=GPUParameters.split(step);params.stepY=params.stepX
-                    params.smooth=1
-                    var cancelled=false
-                    for row in stride(from:0,to:resolution,by:16) {
-                        if Task.isCancelled || !self.needed.contains(key) { cancelled=true;break }
-                        params.rowStart=UInt32(row);params.rowCount=UInt32(min(16,resolution-row))
-                        let time=try await gpu.compute(into:samples,parameters:params)
-                        self.counters.batches += 1;self.counters.longestBatchMS=max(self.counters.longestBatchMS,time*1000)
-                    }
-                    if cancelled { self.counters.cancelled += 1;continue }
-                    _ = try await gpu.colour(samples,into:colour,settings:self.colouring)
-                    guard self.generation==generation,!Task.isCancelled else { break }
-                    self.records[key]=TileRecord(key:key,bounds:bounds,samples:samples,colour:colour,readyAt:ProcessInfo.processInfo.systemUptime)
-                    self.counters.computed += 1
-                    // A conservative temporary limit; byte-budgeted LRU comes in stage d.
-                    if self.records.count>256,let victim=self.records.keys.first(where:{!self.needed.contains($0)}) { self.records.removeValue(forKey:victim) }
-                    self.publish()
-                } catch {
-                    if Task.isCancelled { break }
-                    self.failed.insert(key);self.error=String(describing:error)
-                }
-            }
-            if self.generation==generation {
-                self.worker=nil
-                if self.allVisibleReady { self.fallback.removeAll() }
-                self.publish()
-            }
-        }
+  }
+  func bestAvailable(for key: TileKey) -> TileRecord? {
+    for level in stride(from: key.level, through: minimumLevel, by: -1) {
+      if let record = records[key.ancestor(at: level)] { return record }
     }
-    func bestAvailable(for key: TileKey) -> TileRecord? {
-        for level in stride(from:key.level,through:minimumLevel,by:-1) {
-            if let record=records[key.ancestor(at:level)] { return record }
-        }
-        let cell=grid.bounds(key)
-        return fallback.filter { record in
-            let b=record.bounds
-            return b.left <= cell.left && b.top >= cell.top && b.left+b.span >= cell.left+cell.span && b.top-b.span <= cell.top-cell.span
-        }.min { $0.bounds.span < $1.bounds.span }
-    }
-    func waitUntilReady() async throws {
-        while !isIdle { try await Task.sleep(for:.milliseconds(2)) }
-        if let error { throw GPUFailure(error) }
-        guard allVisibleReady else { throw GPUFailure("Tile refinement incomplete") }
-    }
+    let cell = grid.bounds(key)
+    return fallback.filter { record in
+      let b = record.bounds
+      return b.left <= cell.left && b.top >= cell.top && b.left + b.span >= cell.left + cell.span
+        && b.top - b.span <= cell.top - cell.span
+    }.min { $0.bounds.span < $1.bounds.span }
+  }
+  func waitUntilReady() async throws {
+    while !isIdle { try await Task.sleep(for: .milliseconds(2)) }
+    if let error { throw GPUFailure(error) }
+    guard allVisibleReady else { throw GPUFailure("Tile refinement incomplete") }
+  }
 }
