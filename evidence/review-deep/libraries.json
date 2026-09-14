@@ -1,0 +1,152 @@
+{
+  "pins": {
+    "multiprecision": "529dfac199191a7eb8a5eb7f47256eff6d0db993",
+    "config": "a7d5a9b05d70c9cfea980dc3539ca3d3461411b3"
+  },
+  "measurements": [
+    {
+      "library": "BigInt-5.7.0-fixed",
+      "digits": 100,
+      "bits": 397,
+      "seconds": [
+        0.025400249985978007,
+        0.02335620834492147,
+        0.022495166631415486,
+        0.023021958535537124,
+        0.022874541580677032
+      ],
+      "checksum": -10.369520378753805,
+      "experiment": "spike"
+    },
+    {
+      "library": "BigInt-5.7.0-fixed",
+      "digits": 1000,
+      "bits": 3386,
+      "seconds": [
+        0.6144099582452327,
+        0.6227129166945815,
+        0.6196289584040642,
+        0.6245027082040906,
+        0.6248874166049063
+      ],
+      "checksum": -10.369520378753805,
+      "experiment": "spike"
+    },
+    {
+      "library": "Boost-1.90-cpp_bin_float",
+      "digits": 100,
+      "bits": 397,
+      "seconds": [
+        0.00458108,
+        0.00480488,
+        0.00460333,
+        0.00474096,
+        0.00454996
+      ],
+      "checksum": -10.3695,
+      "experiment": "spike"
+    },
+    {
+      "library": "Boost-1.90-cpp_bin_float",
+      "digits": 1000,
+      "bits": 3386,
+      "seconds": [
+        0.0698381,
+        0.0694828,
+        0.0690934,
+        0.069967,
+        0.069707
+      ],
+      "checksum": -10.3695,
+      "experiment": "spike"
+    },
+    {
+      "library": "BigInt-5.7.0-saved-reference",
+      "bits": 461,
+      "seconds": [
+        0.11435158341191709,
+        0.11146762501448393,
+        0.11197087517939508,
+        0.11277937493287027,
+        0.112037249840796
+      ],
+      "lengths": [
+        32789,
+        32789,
+        32789,
+        32789,
+        32789
+      ],
+      "checksum": -202725.7225716114,
+      "experiment": "reference_spike"
+    },
+    {
+      "library": "BigInt-5.7.0-saved-reference",
+      "bits": 512,
+      "seconds": [
+        0.13549458351917565,
+        0.13561904174275696,
+        0.13434029160998762,
+        0.13560958323068917,
+        0.13355987495742738
+      ],
+      "lengths": [
+        37280,
+        37280,
+        37280,
+        37280,
+        37280
+      ],
+      "checksum": -230503.09401273727,
+      "experiment": "reference_spike"
+    },
+    {
+      "library": "Boost-1.90-saved-reference",
+      "bits": 461,
+      "seconds": [
+        0.0212313,
+        0.0209601,
+        0.0208787,
+        0.020924,
+        0.0208128
+      ],
+      "lengths": [
+        32205,
+        32205,
+        32205,
+        32205,
+        32205
+      ],
+      "checksum": -199082,
+      "experiment": "reference_spike"
+    },
+    {
+      "library": "Boost-1.90-saved-reference",
+      "bits": 512,
+      "seconds": [
+        0.0239648,
+        0.0238352,
+        0.0241735,
+        0.0237127,
+        0.0235516
+      ],
+      "lengths": [
+        37251,
+        37251,
+        37251,
+        37251,
+        37251
+      ],
+      "checksum": -230263,
+      "experiment": "reference_spike"
+    }
+  ],
+  "swiftFlags": [
+    "-O",
+    "-whole-module-optimization"
+  ],
+  "cppFlags": [
+    "-O3",
+    "-std=c++17"
+  ]
+}

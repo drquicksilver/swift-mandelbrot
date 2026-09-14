@@ -151,3 +151,37 @@ Cached immutable bounds, added exact integer-key same-anchor relationships and
 one high-precision camera conversion per draw. Added CPU preparation counters and
 120-frame deep integration coverage. All existing and hard product goldens pass.
 Physical iPhone profiling could not run: neither target device was available.
+
+### Deep-zoom review, stage 4
+
+Added extended-range BLA construction and an aligned merge hierarchy, with
+`--bla off|fixed|on` controls on full-image and tile paths. A guard-bit allowance
+per merge keeps the existing hard tiled error budget. Tests cover coefficients
+beyond Double range; actual jumps reach 16,384 iterations at the minibrot.
+BLA memory is reserved and skipped-iteration totals use two words.
+
+### Deep-zoom review, stage 5
+
+Replaced combined Float samples with exact integer counts and separate smooth
+corrections; palette phase preserves the correction at one million iterations.
+Raised the product GPU cap, added raw record export, retained legacy limits,
+and implemented the depth-based first estimate from 2.3 with unified manual/detail
+controls and gesture/idle hysteresis. Tests cover high-count colour, exports,
+clamped smooth values, actual totals above UInt32, reference capacity accounting,
+and input-driven depth changes. Full pixel adaptation and periodicity are not done.
+
+### Deep-zoom review, stage 6 and final verification
+
+Added visible Settings acknowledgements using the already bundled MIT notice,
+verified the resource in both iOS builds, and documented signed truncation.
+Added a pinned Boost fetch/build script and a saved-reference minibrot comparison,
+with the measured backend decision in Performance.md. Updated current architecture,
+usage and plan status. Final PNGs and off/fixed/hierarchical measurements are in
+`evidence/review-deep`.
+
+Final `make test`, `make format-check`, `make ios` and `make ios-device` all pass.
+The test suite includes 21 core tests, legacy and GPU goldens, high-count colour
+and CLI exports, tile cache/resumption/mip/recovery checks, strict c=i deep goldens,
+and hard minibrot numerical and tiled goldens. The final 128×96 minibrot PNG was
+visually inspected. Both physical target phones were unavailable; frame pacing,
+CPU preparation and touch feel on iPhone 11 Pro/16 Pro remain device validation.

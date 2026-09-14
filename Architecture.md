@@ -157,9 +157,10 @@ The automatic ladder selects perturbation when pixel spacing needs more than
 about 40 coordinate bits. Existing lab Float/FloatFloat renderers remain available.
 Reference orbits run in cancellable detached CPU tasks using MIT BigInt fixed
 point. Metal computes FloatFloat perturbations with an independent exponent for
-each real component. Pauldelbrot cancellation detection marks affected pixels;
-subsequent passes recompute only those pixels from a new reference. Critical-point
-rebasing also handles exhausted reference orbits. Sixteen reference attempts form
+each real component. Critical-point rebasing precedes cancellation detection,
+counts avoided glitches, and handles exhausted reference orbits. With rebasing
+disabled for diagnostics, Pauldelbrot detection marks affected pixels and
+subsequent passes recompute only those pixels from a new reference. Sixteen reference attempts form
 a bounded failure, reported through the existing tile retry UI rather than
 publishing known-glitched samples. No per-pixel sample readback occurs in the viewer.
 
@@ -176,10 +177,24 @@ compare ordinary perturbation, 32-step leaves, and the hierarchy respectively.
 Counters include the longest applied jump and a two-word skipped-iteration sum.
 CPU construction and GPU table storage are reserved in the tile memory budget.
 
-Tiles prefer their shared high-precision grid anchor as a reference. A separate
-actor caches at most three reference orbits, with a 4 MiB orbit-data cap. Reference
-work and BLA preparation are cancellable and off the main actor. At deep zoom the
-tile budget reserves up to 12 MiB for reference/cache/state resources before its
-existing transactional colour/display headroom. Full-image benchmarks create
-fresh references, so end-to-end results do not disguise reference latency with
-cache hits. Iteration state retention and pixel-driven adaptation remain 2.3.
+Tiles prefer a nearby cached reference within four tile spans of the viewport
+centre, independently of the grid anchor. The cache bands precision to 256 bits
+and accepts longer prefixes and completed escaped orbits. It keeps at most three
+references within one quarter of the device tile allowance (capped at 64 MiB),
+accounting for array capacity. Pending compatible requests share cancellable
+background work; cache hits do not wait behind unrelated misses. Each worker
+reuses a private perturbation-state buffer.
+
+The tile budget reserves reference/cache, GPU orbit, BLA construction/upload and
+state storage before transactional colour/display headroom. Same-anchor tile
+geometry uses integer keys; bounds are cached, and the compositor performs one
+precise camera transform per frame. Old-anchor fallback geometry still uses
+fixed-point arithmetic. HUD CPU preparation timing is separate from GPU timing.
+Full-image benchmarks create fresh references, so end-to-end results do not hide
+reference latency with cache hits. Iteration state retention and pixel-driven
+adaptation remain 2.3.
+
+Settings → About → Acknowledgements displays the bundled BigInt MIT notice and
+algorithm credits. The existing licence resource is verified in built iOS apps.
+Boost remains benchmark-only; `tests/precision/reproduce.py` fetches pinned
+revisions and rebuilds both arithmetic and saved-reference comparisons.

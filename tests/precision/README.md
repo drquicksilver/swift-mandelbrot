@@ -16,3 +16,28 @@ ceil(log2(10) * decimal depth) + 64 bits. Decimal construction is outside the
 timer; checksum keeps the result observable. This measures arithmetic, not
 GPU work, BLA construction or allocation of a saved reference orbit. Swift
 fixed point truncates products, whereas Boost rounds floating-point products.
+
+Reproduce from a clean checkout on a Mac with Xcode command-line tools, Python 3
+and Git:
+
+```sh
+python3 tests/precision/reproduce.py
+```
+
+The script fetches the exact commits above into `/tmp/mandelbrot-boost-repro`,
+checks the revisions and rejects modified dependency trees. It compiles Swift
+with `-O -whole-module-optimization` (matching the app’s Release compilation mode)
+and C++ with `-O3`, and writes `evidence/review-deep/libraries.json`.
+Use `--cache PATH` or `--output PATH` to choose other locations. Run on an idle
+machine. Boost is fetched for these benchmarks only and is not linked into or
+copied into the app.
+
+`reference_spike.swift` calls the actual saved-reference generator at the
+period-312 minibrot fixture, with a 60,000-iteration cap and 461/512 bits (full
+image / cache precision band). `reference_spike.cpp` includes orbit storage,
+FloatFloat mantissa/exponent conversion and the same bailout/cap. Both record
+five timings and actual orbit lengths. Boost uses floating-point rounding rather
+than fixed-point truncation, so chaotic escape lengths and checksums can differ;
+compare per-iteration times as well as total latency. This is closer to the
+application's workload than the original arithmetic-only spike, but does not
+validate a replacement backend or include the GPU, cache or BLA.

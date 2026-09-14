@@ -44,6 +44,7 @@ struct AppearanceView: View {
         }
         Section("About") {
           Text("Mandelbrot")
+          NavigationLink("Acknowledgements") { AcknowledgementsView() }
           Text(
             "Version \(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0")"
           )

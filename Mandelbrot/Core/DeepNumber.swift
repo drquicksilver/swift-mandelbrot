@@ -41,6 +41,8 @@ struct DeepNumber: Equatable, Sendable {
       raw = (integer * BigInt(10).power(-places)) << bits
     }
   }
+  // Sign-and-magnitude right shifts truncate toward zero, including negatives;
+  // coordinate/reference calculations retain 128 guard bits.
   func rounded(to bits: Int) -> Self { Self(raw: raw << (bits - self.bits), bits: bits) }
   static func + (a: Self, b: Self) -> Self {
     let bits = max(a.bits, b.bits)

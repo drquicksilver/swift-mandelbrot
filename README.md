@@ -37,7 +37,11 @@ blending, refinement fades, upward mip averaging, prefetching and LRU budgets.
 See [Architecture.md](Architecture.md) for the data flow and precision limits.
 Precision now steps automatically from Float to FloatFloat to GPU perturbation.
 The camera retains high-precision coordinates and supports zooms through 2^13000
-(about 1e3913). Iteration depth remains a manual control; automatic depth is 2.3.
+(about 1e3913). Settings → Detail defaults to a depth-based iteration estimate.
+Use the detail multiplier, or turn automatic off to enter a manual limit, up to
+1,000,000 GPU iterations. The keyboard increase/decrease commands use the same
+controls. Pixel-driven adaptation remains future work. Settings → About →
+Acknowledgements contains the BigInt MIT notice and algorithm credits.
 
 Export the same tiled compositor without opening a window:
 
@@ -70,7 +74,8 @@ APP=/tmp/mandelbrot-development/Build/Products/Release/Mandelbrot.app/Contents/M
   --runs 3 --warmup 1 --bla on --format json
 ```
 
-Use `--bla off` for a controlled comparison. Kernel timing excludes CPU reference
+Use `--bla off` for no approximation, `--bla fixed` for 32-step blocks, or
+`--bla on` (the default) for the hierarchy. Kernel timing excludes CPU reference
 preparation; end-to-end timing includes it. JSON preserves decimal coordinate and
 scale strings, and omits the numeric scale when it exceeds Double range.
 
@@ -81,3 +86,12 @@ Decimal direct iteration. Reproduce them deliberately with
 `python3 tests/precision/oracle.py` followed by
 `python3 tests/precision/colour_goldens.py`. The renderer comparison and evidence
 capture script is `python3 tests/precision/measure.py "$APP"`.
+
+The review adds a non-flat period-312 minibrot golden at 1e100 with orbits above
+20,000 iterations, including an independent tiled PNG. Final measurements and
+[rendered evidence](evidence/review-deep/final-gpu.png) are in
+[Performance.md](Performance.md). `--sample-records PATH` exports exact UInt32
+counts with separate Float32 corrections for high iteration limits; legacy
+UInt16 counts and combined `--samples` exports remain limited to 65,535.
+Reproduce the benchmark-only Boost comparison with
+`python3 tests/precision/reproduce.py`.

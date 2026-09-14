@@ -544,3 +544,66 @@ accounting now includes array capacity, and an early-escaping million-iteration
 request no longer reserves a million reference entries. The mip/palette test's
 cache increases from 40 to 64 MiB to keep complete sibling groups resident with
 the larger raw records; separate constrained-cache and eviction tests remain.
+
+## Deep-zoom review: reproducible library decision
+
+`python3 tests/precision/reproduce.py` fetches the pinned Boost 1.90 repositories,
+verifies clean revisions, and builds both comparisons. Swift now explicitly uses
+`-O -whole-module-optimization`, matching the app's Release compilation mode;
+C++ uses `-O3`. This is a different Swift compilation mode from the historical
+arithmetic-only numbers above. Raw five-run results and pins are in
+`evidence/review-deep/libraries.json`.
+
+Saved-reference generation at the exact period-312 minibrot fixture, cap 60,000:
+
+| Precision | Swift median | Boost median | Swift / Boost orbit length | Per-iteration speedup |
+| --- | ---: | ---: | ---: | ---: |
+| 461 bits | 112.04 ms | 20.92 ms | 32,789 / 32,205 | 5.26× |
+| 512 bits | 135.49 ms | 23.84 ms | 37,280 / 37,251 | 5.68× |
+
+Both include saving FloatFloat mantissas with separate exponents. Different
+rounding changes these chaotic escape lengths, so the last column normalises
+by actual stored length. The original arithmetic workload also favours Boost:
+about 5.0× at 100 digits and 8.9× at 1,000 digits with whole-module optimisation.
+
+Decision: retain the validated Swift backend for this review, but treat a Boost
+reference backend as a worthwhile follow-up for cold deep views, not a speculative
+micro-optimisation. In the hierarchy benchmark the minibrot spends about 83 ms
+preparing its reference and 280 ms on the GPU; cache hits remove reference work
+entirely, so a library change will not multiply steady-state product throughput
+by the arithmetic speedup. The c=i cold render remains reference-dominated, and
+higher iteration limits make that latency more important. A backend replacement
+needs the same hard numerical/tiled goldens, cancellation and cache tests, plus
+measurements on iPhone 11 Pro and iPhone 16 Pro. Neither phone was available in
+this session; no on-device frame-rate claim is made.
+
+## Final review validation
+
+Final M1 Pro runs after separate sample storage, same 64×48 scenes, median of
+three measured runs after one warmup, fresh references, completed GPU colour:
+
+| Location | BLA off | Fixed 32 | Hierarchy |
+| --- | ---: | ---: | ---: |
+| c=i, 1e1000, 5,000 iterations | 176.77 ms | 118.66 ms | 112.58 ms |
+| minibrot, 1e100, 60,000 iterations | 791.34 ms | 476.73 ms | 489.47 ms |
+
+`evidence/review-deep/final.json` includes every timing and component counter.
+The hierarchy is about 1.6× faster than BLA off in both scenes. It improves the
+c=i GPU portion from 9.09 to 5.45 ms compared with fixed blocks; at the minibrot,
+fixed/hierarchical end-to-end timings are similar and their three-run ranges
+overlap. Long jumps alone do not establish an end-to-end win over fixed blocks
+there. The earlier stage measurements above remain historical evidence.
+
+The final 120-frame deep CPU preparation p95 is 0.021 ms, maximum 0.032 ms, on
+this Mac. These are CPU compositor timings, not phone FPS. Full tile counters,
+including 27 reference cache hits, are in `evidence/review-deep/final-tiles.json`.
+A separate 1024×2048 render records **5,430,400,581 skipped iterations** in
+`counter64.json`, exercising the widened counter. That large full-frame command
+is a counter test, not a claim about the product's tile batch latency.
+
+Final images: [minibrot, full GPU](evidence/review-deep/final-gpu.png) and
+[independent-golden-sized tiled output](evidence/review-deep/final-tiles.png).
+All existing error budgets pass, including maximum 8/255 error on the hard tiled
+PNG. Mac tests, strict formatting, iOS Simulator and physical-target builds pass;
+both iOS builds include the verified MIT notice. Neither target phone was available
+for actual frame-pacing measurements.
