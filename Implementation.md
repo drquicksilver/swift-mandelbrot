@@ -23,7 +23,10 @@ Completed:
 - 1.7: hidden developer access, automatic/default clean viewer, renderer overrides,
   HUD/overlay toggles, device-tagged benchmark sharing and timing scope.
 
-Next: platform
-input (1.8), then tile stages 2.1(a–d). No perturbation or automatic iteration-depth
+- 1.8: native anchored gestures, double/two-finger taps, cursor zoom, rectangle
+  selection, arrows, and analytically integrated pan/pinch inertia. Mac tests and
+  iPhone/iPad simulator compilation pass.
+
+Next: tile stages 2.1(a–d). No perturbation or automatic iteration-depth
 heuristic is included in this milestone. Colour mipmaps are disposable
 palette-dependent display data; raw sample tiles remain authoritative.

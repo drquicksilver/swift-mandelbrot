@@ -36,6 +36,7 @@ struct GPUCanvas: UIViewRepresentable {
     }
     func mtkView(_ view: MTKView,drawableSizeWillChange size: CGSize) {}
     func draw(in view: MTKView) {
+        model.advanceMotion(now:ProcessInfo.processInfo.systemUptime)
         guard framesInFlight<2,let gpu=GPUContext.shared,let frame=model.gpuFrame,
               let descriptor=view.currentRenderPassDescriptor,let drawable=view.currentDrawable,
               let command=gpu.displayQueue.makeCommandBuffer(),let encoder=command.makeRenderCommandEncoder(descriptor:descriptor) else { return }
@@ -53,7 +54,7 @@ struct GPUCanvas: UIViewRepresentable {
         encoder.drawPrimitives(type:.triangle,vertexStart:0,vertexCount:6)
         encoder.endEncoding();command.present(drawable)
         framesInFlight += 1
-        command.addCompletedHandler { [weak self] _ in Task { @MainActor in self?.framesInFlight -= 1 } }
+        command.addCompletedHandler { [weak self] _ in Task { @MainActor [weak self] in self?.framesInFlight -= 1 } }
         command.commit()
     }
 }

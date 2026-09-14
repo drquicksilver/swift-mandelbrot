@@ -46,8 +46,6 @@ struct MandelbrotRenderer {
         let realSpan = baseSpan / scale
         let imagSpan = realSpan * Double(height) / Double(width)
         let realMin = center.x - realSpan / 2.0
-        let realMax = center.x + realSpan / 2.0
-        let imagMin = center.y - imagSpan / 2.0
         let imagMax = center.y + imagSpan / 2.0
 
         var values = [Int](repeating: 0, count: width * height)
@@ -104,8 +102,6 @@ struct MandelbrotRenderer {
         let realSpan = baseSpan / scale
         let imagSpan = realSpan * Double(height) / Double(width)
         let realMin = center.x - realSpan / 2.0
-        let realMax = center.x + realSpan / 2.0
-        let imagMin = center.y - imagSpan / 2.0
         let imagMax = center.y + imagSpan / 2.0
 
         var values = [Int](repeating: 0, count: width * height)
@@ -170,8 +166,6 @@ struct MandelbrotRenderer {
         let realSpan = baseSpan / scale
         let imagSpan = realSpan * Double(height) / Double(width)
         let realMin = center.x - realSpan / 2.0
-        let realMax = center.x + realSpan / 2.0
-        let imagMin = center.y - imagSpan / 2.0
         let imagMax = center.y + imagSpan / 2.0
 
         var values = [Int](repeating: 0, count: width * height)
@@ -231,8 +225,6 @@ struct MandelbrotRenderer {
         let realSpan = baseSpan / scale
         let imagSpan = realSpan * Double(height) / Double(width)
         let realMin = center.x - realSpan / 2.0
-        let realMax = center.x + realSpan / 2.0
-        let imagMin = center.y - imagSpan / 2.0
         let imagMax = center.y + imagSpan / 2.0
 
         var values = [Int](repeating: 0, count: width * height)
@@ -296,8 +288,6 @@ struct MandelbrotRenderer {
         let realSpan = baseSpan / Float(scale)
         let imagSpan = realSpan * Float(height) / Float(width)
         let realMin = Float(center.x) - realSpan / 2.0
-        let realMax = Float(center.x) + realSpan / 2.0
-        let imagMin = Float(center.y) - imagSpan / 2.0
         let imagMax = Float(center.y) + imagSpan / 2.0
 
         var values = [Int](repeating: 0, count: width * height)
@@ -353,8 +343,6 @@ struct MandelbrotRenderer {
         let realSpan = baseSpan / scale
         let imagSpan = realSpan * Double(height) / Double(width)
         let realMin = center.x - realSpan / 2.0
-        let realMax = center.x + realSpan / 2.0
-        let imagMin = center.y - imagSpan / 2.0
         let imagMax = center.y + imagSpan / 2.0
 
         let count = width * height
@@ -436,8 +424,6 @@ struct MandelbrotRenderer {
         let realSpan = baseSpan / Float(scale)
         let imagSpan = realSpan * Float(height) / Float(width)
         let realMin = Float(center.x) - realSpan / 2.0
-        let realMax = Float(center.x) + realSpan / 2.0
-        let imagMin = Float(center.y) - imagSpan / 2.0
         let imagMax = Float(center.y) + imagSpan / 2.0
 
         var values = [Int](repeating: 0, count: width * height)

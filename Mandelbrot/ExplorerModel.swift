@@ -34,6 +34,27 @@ import SwiftUI
     @Published var showDeveloper = false
     @Published var showHUD = false
     @Published var showTileOverlay = false
+    @Published var selection: CGRect?
+    var motion = Motion()
+    var motionAnchor: CGPoint?
+    private var lastMotionTime: Double?
+    var zoomDirection = 0
+    func stopMotion() { motion.stop(); lastMotionTime = nil }
+    func fling(pan: CGPoint = .zero, zoom: Double = 0, anchor: CGPoint? = nil) {
+        motion.velocity = SIMD2(max(-4000,min(4000,pan.x)),max(-4000,min(4000,pan.y)))
+        motion.zoomVelocity = max(-4,min(4,zoom)); motionAnchor = anchor
+        lastMotionTime = ProcessInfo.processInfo.systemUptime
+    }
+    func advanceMotion(now: Double) {
+        guard motion.active else { lastMotionTime = nil; zoomDirection = 0; return }
+        let dt = now - (lastMotionTime ?? now); lastMotionTime = now
+        let delta = motion.step(seconds:dt)
+        var next = viewport
+        next.pan(by:delta.pan,in:size)
+        atPrecisionLimit = next.zoom(by:delta.zoom,at:motionAnchor ?? CGPoint(x:size.width/2,y:size.height/2),in:size,pixelWidth:pixelWidth)
+        if atPrecisionLimit { motion.zoomVelocity = 0 }
+        viewport = next
+    }
     @Published var atPrecisionLimit = false
     var size = CGSize(width: 900, height: 600)
     var displayScale = 1.0
@@ -50,10 +71,12 @@ import SwiftUI
     }
     func pan(_ delta: CGSize) { viewport.pan(by: delta, in: size) }
     func zoom(_ factor: Double, at point: CGPoint? = nil) {
+        zoomDirection = factor > 1 ? 1 : (factor < 1 ? -1 : 0)
         atPrecisionLimit = viewport.zoom(by: factor, at: point ?? CGPoint(x: size.width/2,y: size.height/2),
                                           in: size, pixelWidth: pixelWidth)
     }
     func perform(_ command: ExplorerCommand) {
+        stopMotion()
         switch command {
         case .reset: viewport = Viewport(); atPrecisionLimit = false
         case .zoomIn: zoom(2)

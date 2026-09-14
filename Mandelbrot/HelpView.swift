@@ -6,7 +6,11 @@ struct HelpView: View {
         NavigationStack {
             List {
                 Section("Explore") {
-                    Text("Drag to move. Pinch to zoom around your fingers.")
+                    #if os(macOS)
+                    Text("Drag to move. Scroll or pinch to zoom at the pointer. Double-click to zoom in. Shift-drag to frame a region.")
+                    #else
+                    Text("Drag to move. Pinch around your fingers to zoom. Double-tap to zoom in; tap with two fingers to zoom out.")
+                    #endif
                     Text("Finer detail appears as you explore. A small notice appears when you reach the current precision limit.")
                 }
                 #if os(macOS)

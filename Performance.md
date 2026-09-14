@@ -202,3 +202,13 @@ Samples: `evidence/product/1.5-smooth-palettes.json`; PNG:
 `evidence/product/smooth-blue-gold.png`. GPU rendering defaults to smooth colouring.
 Use `--colouring legacy` for unchanged integer-count exports, or `--samples file.f32`
 for float32 smooth samples. `--palette`, `--density`, and `--offset` control appearance.
+
+## 1.8: frame-rate-independent navigation
+
+Pan/zoom inertia integrates exponential decay analytically. The unit test compares
+half a second of motion at 60 and 120 Hz: displacement and scale differ by less
+than 1e-9. GPU presentation requests each screen's maximum refresh rate; the iPhone
+ProMotion entitlement-style Info.plist opt-in is enabled. This is configuration
+and numerical validation, not a measured claim of 120 fps on a physical phone.
+Both macOS tests and the iPhone/iPad simulator build pass. Physical testing on the
+iPhone 11 Pro and iPhone 16 Pro remains necessary for touch feel and frame pacing.
