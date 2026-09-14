@@ -32,9 +32,10 @@ enum RendererRegistry {
     case .floatMath: cpu = MandelbrotRenderer.iterationsFloatMath
     case .parallel: cpu = MandelbrotRenderer.iterationsParallel
     case .simd4Float: cpu = MandelbrotRenderer.iterationsSIMD4Float
-    case .metal, .metalDouble: cpu = nil
+    case .metal, .metalDouble, .perturbation: cpu = nil
     }
     return RegisteredRenderer(id: id) { request in
+      guard id != .perturbation else { return nil }
       if let cpu {
         return cpu(
           request.width, request.height, request.viewport.center,

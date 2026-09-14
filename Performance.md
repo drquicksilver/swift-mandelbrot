@@ -394,3 +394,23 @@ that reference latency is negligible, especially at high iteration limits.
 Sources, pinned versions and reproduction instructions are in
 [tests/precision](tests/precision/README.md); raw measurements are in
 [evidence/deep](evidence/deep). No LGPL dependencies ship in the app.
+
+## 2.2b — validated GPU perturbation before BLA
+
+A 256×192 endpoint-sampled image centred on c=i at 1e1000, 5,000 iterations,
+three runs after one warmup: median **356.553 ms end to end**, including CPU
+reference creation, GPU computation and colour (no PNG/readback). Median GPU
+compute was **199.281 ms**, reference generation **101.608 ms**. This is the
+unaccelerated reference for the next BLA stage; raw data is
+[perturbation-before-bla.json](evidence/deep/perturbation-before-bla.json).
+Its `preciseScale` is authoritative; the old numeric `scale` field in this
+initial measurement saturates at Double range. Subsequent reports omit that
+numeric field when the scale cannot be represented.
+
+Independent Python Decimal direct orbits (depth + 80 decimal digits) validate
+32×24 non-flat images at 1e50, 1e200 and 1e1000. Maximum smooth-count errors were
+0.0000153, 0.0000610 and 0 respectively; each image has over 400 distinct counts
+rounded to 0.01. The full 256×192 tile-compositor example at 1e1000 uses 12 tiles,
+including its two nearby ancestor levels. A 7×5 whole-set diagnostic triggers
+three cancellation glitches and three reference orbits. `make test` includes
+the deep comparisons and verifies that re-referencing actually runs.

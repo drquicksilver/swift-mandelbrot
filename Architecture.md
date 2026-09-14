@@ -129,3 +129,27 @@ buffer costs about 1 MiB per tile. Design bounded/selective state retention with
 2.3; storing coordinates alone only enables recomputation. Larger GPU batches and
 multi-tile commands remain measured follow-ups, not prerequisites for the corrected
 working-set policy. Do not assume a separate display queue guarantees preemption.
+
+### Deep coordinates and perturbation (2.2)
+
+The camera promotes to fixed-point coordinates before Double navigation loses a
+pixel. Zoom is stored logarithmically; spans use a normalized Double mantissa
+and a separate binary exponent. Deep tile origins are fixed-point and tile
+indices remain local to the anchor. The compositor divides relative distances
+by extended spans before converting to screen-space floats. The current explicit
+resource limit is 2^13000 zoom (roughly 1e3913), with 128 guard bits, rather than
+an accidental FloatFloat or Double underflow limit.
+
+The automatic ladder selects perturbation when pixel spacing needs more than
+about 40 coordinate bits. Existing lab Float/FloatFloat renderers remain available.
+Reference orbits run in cancellable detached CPU tasks using MIT BigInt fixed
+point. Metal computes FloatFloat perturbations with an independent exponent for
+each real component. Pauldelbrot cancellation detection marks affected pixels;
+subsequent passes recompute only those pixels from a new reference. Critical-point
+rebasing also handles exhausted reference orbits. Sixteen reference attempts form
+a bounded failure, reported through the existing tile retry UI rather than
+publishing known-glitched samples. No per-pixel sample readback occurs in the viewer.
+
+Algorithm sources (equations reimplemented here, no source code copied):
+[Claude Heiland-Allen, deep zoom theory and practice](https://mathr.co.uk/blog/2021-05-14_deep_zoom_theory_and_practice.html)
+and [rebasing and bilinear approximation](https://mathr.co.uk/blog/2022-02-21_deep_zoom_theory_and_practice_again.html).

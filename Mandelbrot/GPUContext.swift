@@ -36,6 +36,7 @@ struct GPUFrame {
   let colour: MTLTexture
   let kernelSeconds: Double
   let colourSeconds: Double
+  var perturbation: PerturbationMetrics? = nil
 }
 struct DrawUniforms {
   var rect = SIMD4<Float>(-1, 1, 1, -1)
@@ -54,6 +55,7 @@ final class GPUContext: @unchecked Sendable {
   let computeQueue: MTLCommandQueue
   let displayQueue: MTLCommandQueue
   let samplePipeline: MTLComputePipelineState
+  let perturbPipeline: MTLComputePipelineState
   let resumePipeline: MTLComputePipelineState
   let mipPipeline: MTLComputePipelineState
   let colourPipeline: MTLComputePipelineState
@@ -78,6 +80,8 @@ final class GPUContext: @unchecked Sendable {
     self.library = library
     samplePipeline = try device.makeComputePipelineState(
       function: library.makeFunction(name: "renderSamples")!)
+    perturbPipeline = try device.makeComputePipelineState(
+      function: library.makeFunction(name: "perturbTile")!)
     resumePipeline = try device.makeComputePipelineState(
       function: library.makeFunction(name: "resumeTile")!)
     mipPipeline = try device.makeComputePipelineState(
@@ -229,9 +233,20 @@ final class GPUContext: @unchecked Sendable {
     var parameters = GPUParameters(
       viewport: viewport, width: width, height: height, iterations: iterations, renderer: renderer)
     parameters.smooth = settings.smooth ? 1 : 0
-    let kernel = try await compute(into: samples, parameters: parameters)
+    var metrics: PerturbationMetrics?
+    let kernel: Double
+    if renderer == .perturbation {
+      metrics = try await perturb(
+        into: samples, region: PerturbationRegion(viewport: viewport, width: width, height: height),
+        iterations: iterations)
+      kernel = metrics!.kernelSeconds
+    } else {
+      kernel = try await compute(into: samples, parameters: parameters)
+    }
     let shading = try await self.colour(samples, into: colour, settings: settings)
-    return GPUFrame(samples: samples, colour: colour, kernelSeconds: kernel, colourSeconds: shading)
+    return GPUFrame(
+      samples: samples, colour: colour, kernelSeconds: kernel, colourSeconds: shading,
+      perturbation: metrics)
   }
   // Readback exists only for export and numerical tests, never for presentation.
   func readback(_ texture: MTLTexture) async throws -> Data {

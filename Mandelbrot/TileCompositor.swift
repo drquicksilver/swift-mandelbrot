@@ -18,9 +18,7 @@ struct TileDrawUniforms {
 
 @MainActor enum TileCompositor {
   static func uv(cell: TileBounds, source: TileBounds) -> SIMD4<Float> {
-    let u = (cell.left - source.left) / source.span
-    let v = (source.top - cell.top) / source.span
-    let extent = cell.span / source.span
+    let (u, v, extent) = cell.relative(to: source)
     let resolution = Double(TileGrid.textureSize)
     let interior = Double(TileGrid.samples)
     return SIMD4(
@@ -49,8 +47,8 @@ struct TileDrawUniforms {
       let oldFine = store.fallbackAvailable(for: key)
       let previousFine = (oldFine !== fine ? oldFine : nil) ?? fine
       let cell = store.grid.bounds(key)
-      let center = viewport.screen(for: cell.center, in: size)
-      let width = cell.span / viewport.span * size.width
+      let center = viewport.screen(for: cell.preciseCenter, in: size)
+      let width = cell.wideSpan / viewport.wideSpan * size.width
       var params = TileDrawUniforms()
       params.rect = SIMD4(
         Float((center.x - width / 2) / size.width * 2 - 1),

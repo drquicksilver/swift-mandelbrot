@@ -13,10 +13,11 @@
              Mandelbrot --render --output image.png [options]
 
       Runs without starting the GUI. Legacy timings include CPU colour conversion;
-      GPU timings select kernel or completed coloured texture. PNG writing is excluded.
+      GPU timings select kernel or completed coloured texture. Perturbation end-to-end
+      timings also include CPU reference preparation. PNG writing is excluded.
 
         --variants LIST    Comma-separated renderers (default: baseline,parallel,metal)
-                           Use 'all' for every renderer, including FloatFloat metal-double.
+                           Use 'all' for every renderer supported by the selected pipeline.
         --sizes LIST       Comma-separated WIDTHxHEIGHT (default: 1024x512,2048x1024)
         --iterations N     Iteration limit, 1...65535 (default: 200)
         --runs N           Measured runs per renderer/size (default: 3)
@@ -24,7 +25,8 @@
         --format FORMAT    markdown or json (default: markdown)
         --center-real X    Viewport center real coordinate (default: -0.5)
         --center-imag Y    Viewport center imaginary coordinate (default: 0)
-        --scale Z         Zoom factor; horizontal span = 3/Z (default: 1)
+        --scale Z         Zoom factor; horizontal span = 3/Z (default: 1).
+                          Perturbation accepts decimal exponents through 2^13000.
         --renderer NAME   Single renderer for --render (default: metal)
         --size WxH        PNG resolution (default: 1024x1024)
         --output PATH     PNG destination (required for --render)
@@ -63,6 +65,8 @@
       var centerReal = -0.5
       var centerImag = 0.0
       var scale = 1.0
+      var realText = "-0.5", imagText = "0", scaleText = "1"
+      var viewport = Viewport()
       var center: CGPoint { CGPoint(x: centerReal, y: centerImag) }
 
       init(arguments: [String]) throws {
@@ -117,18 +121,12 @@
             }
             timing = value
           case "--center-real", "--center-imag", "--scale":
-            guard let number = Double(value), number.isFinite,
-              flag == "--scale" ? (1e-6...1e14).contains(number) : (-4.0...4.0).contains(number)
-            else {
-              throw CLIError(
-                "Invalid \(flag): center must be within [-4,4], scale within [1e-6,1e14]")
-            }
             if flag == "--center-real" {
-              centerReal = number
+              realText = value
             } else if flag == "--center-imag" {
-              centerImag = number
+              imagText = value
             } else {
-              scale = number
+              scaleText = value
             }
           case "--renderer":
             guard BenchmarkCLI.variants.contains(value) else {
@@ -181,6 +179,20 @@
             }
           }
         }
+        viewport = try Viewport(real: realText, imag: imagText, zoom: scaleText)
+        centerReal = viewport.center.x
+        centerImag = viewport.center.y
+        scale = viewport.scale
+        if pipeline == "legacy" && arguments.contains("all") {
+          variants.removeAll { $0 == "perturbation" }
+        }
+        let selected = render ? [renderer] : variants
+        if selected.contains("perturbation") && (pipeline == "legacy" || !colouring.smooth) {
+          throw CLIError("Perturbation requires --pipeline gpu or tiles with smooth colouring")
+        }
+        if viewport.logScale > log2(1e14) && selected.contains(where: { $0 != "perturbation" }) {
+          throw CLIError("Scales beyond 1e14 require the perturbation renderer")
+        }
         if let samples {
           guard render, pipeline == "gpu", !samples.isEmpty else {
             throw CLIError("--samples requires GPU PNG rendering")
@@ -213,8 +225,10 @@
           guard colouring.smooth else {
             throw CLIError("Tiles use smooth samples; use --pipeline gpu for legacy colouring")
           }
-          let view = Viewport(center: center, scale: scale)
-          guard scale >= 0.5, scale <= view.maximumScale(pixelWidth: Double(size.0)) else {
+          let view = viewport
+          guard scale >= 0.5,
+            renderer == "perturbation" || scale <= view.maximumScale(pixelWidth: Double(size.0))
+          else {
             throw CLIError("Tile scale is outside the viewer's FloatFloat precision range")
           }
         }
@@ -238,6 +252,7 @@
       let width: Int
       let height: Int
       let samplesSeconds: [Double]
+      var perturbation: [PerturbationMetrics]? = nil
       var medianSeconds: Double {
         let sorted = samplesSeconds.sorted()
         let middle = sorted.count / 2
@@ -248,10 +263,12 @@
       var megapixelsPerSecond: Double { Double(width * height) / medianSeconds / 1_000_000 }
 
       enum CodingKeys: String, CodingKey {
-        case variant, width, height, samplesSeconds, medianSeconds, megapixelsPerSecond
+        case variant, width, height, samplesSeconds, medianSeconds, megapixelsPerSecond,
+          perturbation
       }
       func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encodeIfPresent(perturbation, forKey: .perturbation)
         try container.encode(variant, forKey: .variant)
         try container.encode(width, forKey: .width)
         try container.encode(height, forKey: .height)
@@ -267,8 +284,11 @@
       let warmup: Int
       let centerReal: Double
       let centerImag: Double
-      let scale: Double
+      let scale: Double?
       var timingScope = "iterations-and-colorization"
+      var preciseCenterReal: String? = nil
+      var preciseCenterImag: String? = nil
+      var preciseScale: String? = nil
       let results: [Result]
     }
 
@@ -346,7 +366,7 @@
     @MainActor private static func renderTiles(_ options: Options) async -> Int32 {
       do {
         guard let gpu = GPUContext.shared else { throw GPUFailure("GPU unavailable") }
-        let view = Viewport(center: options.center, scale: options.scale)
+        let view = options.viewport
         let size = options.size
         let store = TileStore()
         store.update(
@@ -386,7 +406,7 @@
         if options.render {
           let (width, height) = options.size
           let frame = try await gpu.render(
-            viewport: Viewport(center: options.center, scale: options.scale),
+            viewport: options.viewport,
             width: width, height: height, iterations: options.iterations,
             renderer: RendererID(rawValue: options.renderer)!, settings: options.colouring)
           let image = try await gpu.image(frame.colour)
@@ -424,26 +444,35 @@
         for (width, height) in options.sizes {
           for variant in options.variants {
             var samples: [Double] = []
+            var metrics: [PerturbationMetrics] = []
             for run in 0..<(options.runs + options.warmup) {
               let start = DispatchTime.now().uptimeNanoseconds
               let frame = try await gpu.render(
-                viewport: Viewport(center: options.center, scale: options.scale),
+                viewport: options.viewport,
                 width: width, height: height, iterations: options.iterations,
                 renderer: RendererID(rawValue: variant)!, settings: options.colouring)
               let seconds =
                 options.timing == "kernel"
                 ? frame.kernelSeconds : Double(DispatchTime.now().uptimeNanoseconds - start) / 1e9
-              if run >= options.warmup { samples.append(seconds) }
+              if run >= options.warmup {
+                samples.append(seconds)
+                if let value = frame.perturbation { metrics.append(value) }
+              }
             }
             rows.append(
-              Result(variant: variant, width: width, height: height, samplesSeconds: samples))
+              Result(
+                variant: variant, width: width, height: height, samplesSeconds: samples,
+                perturbation: metrics.isEmpty ? nil : metrics))
           }
         }
         let report = Report(
           iterations: options.iterations, runs: options.runs, warmup: options.warmup,
-          centerReal: options.centerReal, centerImag: options.centerImag, scale: options.scale,
+          centerReal: options.centerReal, centerImag: options.centerImag,
+          scale: options.viewport.logScale > 1023 ? nil : options.scale,
           timingScope: options.timing == "kernel"
-            ? "gpu-compute-only" : "gpu-compute-and-colour-no-readback", results: rows)
+            ? "gpu-compute-only" : "gpu-compute-and-colour-no-readback",
+          preciseCenterReal: options.realText, preciseCenterImag: options.imagText,
+          preciseScale: options.scaleText, results: rows)
         if options.format == "json" {
           let encoder = JSONEncoder()
           encoder.outputFormatting = [.prettyPrinted, .sortedKeys]

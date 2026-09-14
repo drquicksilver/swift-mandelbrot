@@ -118,14 +118,8 @@ struct TileStatistics: Equatable, Codable {
     // The same key can have two iteration generations; newest complete data wins.
     var retained = Dictionary(fallback.map { ($0.key, $0) }, uniquingKeysWith: { _, new in new })
     for record in records.values where needed.contains(record.key) { retained[record.key] = record }
-    let halfWidth = viewport.span / 2
-    let halfHeight = halfWidth * size.height / max(1, size.width)
-    fallback = retained.values.filter {
-      let b = $0.bounds
-      return b.left < viewport.center.x + halfWidth
-        && b.left + b.span > viewport.center.x - halfWidth
-        && b.top > viewport.center.y - halfHeight && b.top - b.span < viewport.center.y + halfHeight
-    }.sorted { $0.bounds.span < $1.bounds.span }
+    fallback = retained.values.filter { $0.bounds.intersects(viewport: viewport, size: size) }
+      .sorted { $0.key.level > $1.key.level }
     records.removeAll()
   }
   func update(
@@ -150,14 +144,15 @@ struct TileStatistics: Equatable, Codable {
     self.iterations = iterations
     self.override = override
     lod = max(
-      Double(minimumLevel), min(45, grid.idealLevel(viewport: viewport, pixelWidth: pixelWidth)))
+      Double(minimumLevel),
+      min(Viewport.maximumLogScale, grid.idealLevel(viewport: viewport, pixelWidth: pixelWidth)))
     var level = Int(ceil(lod))
     visible = grid.visible(viewport: viewport, size: size, level: level)
     if visible.isEmpty
       || visible.contains(where: { abs($0.x) > (1 << 30) || abs($0.y) > (1 << 30) })
     {
       invalidate()
-      grid.rebase(to: viewport.center)
+      grid.rebase(to: viewport.preciseCenter)
       visible = grid.visible(viewport: viewport, size: size, level: level)
     }
     func ancestors() -> Set<TileKey> {
@@ -178,7 +173,9 @@ struct TileStatistics: Equatable, Codable {
       visible = grid.visible(viewport: viewport, size: size, level: level)
       needed = ancestors()
     }
-    prefetch = zoomDirection > 0 && level < 45 ? Set(visible.flatMap(\.children)) : []
+    prefetch =
+      zoomDirection > 0 && level < Int(Viewport.maximumLogScale)
+      ? Set(visible.flatMap(\.children)) : []
     // Zoom-out's next level is already protected in the ancestor chain.
     for key in needed {
       if let record = records[key] {
@@ -249,10 +246,10 @@ struct TileStatistics: Equatable, Codable {
     }
     return candidates.min {
       if $0.level != $1.level { return $0.level < $1.level }
-      let a = grid.bounds($0).center
-      let b = grid.bounds($1).center
-      return hypot(a.x - viewport.center.x, a.y - viewport.center.y)
-        < hypot(b.x - viewport.center.x, b.y - viewport.center.y)
+      let a = viewport.screen(for: grid.bounds($0).preciseCenter, in: size)
+      let b = viewport.screen(for: grid.bounds($1).preciseCenter, in: size)
+      return hypot(a.x - size.width / 2, a.y - size.height / 2)
+        < hypot(b.x - size.width / 2, b.y - size.height / 2)
     }
   }
   private func evict(reserving bytes: Int) {
@@ -379,42 +376,56 @@ struct TileStatistics: Equatable, Codable {
             continue
           }
           let bounds = self.grid.bounds(key)
-          let step = bounds.span / Double(TileGrid.samples)
           let samples = try gpu.texture(width: resolution, height: resolution, format: .r32Float)
           let colour = try gpu.texture(width: resolution, height: resolution, format: .rgba8Unorm)
-          guard
-            let states = gpu.device.makeBuffer(
-              length: resolution * resolution * 16, options: .storageModePrivate)
-          else { throw GPUFailure("Orbit allocation failed") }
           let renderer =
             self.override
-            ?? Viewport(center: bounds.center, scale: 3 / bounds.span).recommendedRenderer(
-              pixelWidth: 256)
-          var params = GPUParameters(
-            viewport: Viewport(center: bounds.center, scale: 3 / bounds.span), width: resolution,
-            height: resolution, iterations: self.iterations, renderer: renderer)
-          params.realMin = GPUParameters.split(bounds.left - step / 2)
-          params.imagMax = GPUParameters.split(bounds.top + step / 2)
-          params.stepX = GPUParameters.split(step)
-          params.stepY = params.stepX
-          params.smooth = 1
-          var start = 0
-          var batch = 64
+            ?? (key.level > 32
+              ? .perturbation
+              : Viewport(center: bounds.center, scale: 3 / bounds.span).recommendedRenderer(
+                pixelWidth: 256))
           var cancelled = false
-          while start < self.iterations {
-            if Task.isCancelled || (!self.needed.contains(key) && !self.prefetch.contains(key)) {
-              cancelled = true
-              break
+          if renderer == .perturbation {
+            let bits = max(192, key.level + 128)
+            let step = bounds.wideSpan * (1 / Double(TileGrid.samples))
+            let topLeft = bounds.preciseOrigin.offset(x: step * -0.5, y: step * 0.5, bits: bits)
+            let metrics = try await gpu.perturb(
+              into: samples,
+              region: PerturbationRegion(
+                topLeft: topLeft, step: step, width: resolution, height: resolution, bits: bits),
+              iterations: self.iterations)
+            self.counters.longestBatchMS = max(self.counters.longestBatchMS, metrics.longestBatchMS)
+          } else {
+            let step = bounds.span / Double(TileGrid.samples)
+            guard
+              let states = gpu.device.makeBuffer(
+                length: resolution * resolution * 16, options: .storageModePrivate)
+            else { throw GPUFailure("Orbit allocation failed") }
+            var params = GPUParameters(
+              viewport: Viewport(center: bounds.center, scale: 3 / bounds.span), width: resolution,
+              height: resolution, iterations: self.iterations, renderer: renderer)
+            params.realMin = GPUParameters.split(bounds.left - step / 2)
+            params.imagMax = GPUParameters.split(bounds.top + step / 2)
+            params.stepX = GPUParameters.split(step)
+            params.stepY = params.stepX
+            params.smooth = 1
+            var start = 0
+            var batch = 64
+            while start < self.iterations {
+              if Task.isCancelled || (!self.needed.contains(key) && !self.prefetch.contains(key)) {
+                cancelled = true
+                break
+              }
+              let count = min(batch, self.iterations - start)
+              let time = try await gpu.resume(
+                into: samples, states: states, parameters: params, start: start, count: count)
+              start += count
+              self.counters.batches += 1
+              self.counters.longestBatchMS = max(self.counters.longestBatchMS, time * 1000)
+              // Target 1 ms of measured GPU work; even the worst interior
+              // batch is limited to 512 iterations over one 258² tile.
+              batch = max(8, min(512, Int(Double(count) * min(2, 0.001 / max(time, 0.00001)))))
             }
-            let count = min(batch, self.iterations - start)
-            let time = try await gpu.resume(
-              into: samples, states: states, parameters: params, start: start, count: count)
-            start += count
-            self.counters.batches += 1
-            self.counters.longestBatchMS = max(self.counters.longestBatchMS, time * 1000)
-            // Target 1 ms of measured GPU work; even the worst interior
-            // batch is limited to 512 iterations over one 258² tile.
-            batch = max(8, min(512, Int(Double(count) * min(2, 0.001 / max(time, 0.00001)))))
           }
           if cancelled {
             self.counters.cancelled += 1
@@ -456,21 +467,22 @@ struct TileStatistics: Equatable, Codable {
     let cell = grid.bounds(key)
     return fallback.filter { record in
       let b = record.bounds
+      let r = cell.relative(to: b)
       return record.key.level <= (maximumLevel ?? key.level)
-        && b.left <= cell.left && b.top >= cell.top && b.left + b.span >= cell.left + cell.span
-        && b.top - b.span <= cell.top - cell.span
-    }.min { $0.bounds.span < $1.bounds.span }
+        && r.x >= -1e-12 && r.y >= -1e-12 && r.x + r.extent <= 1 + 1e-12
+        && r.y + r.extent <= 1 + 1e-12
+    }.min { $0.key.level > $1.key.level }
   }
   func bestAvailable(for key: TileKey) -> TileRecord? {
     var current: TileRecord?
-    for level in stride(from: key.level, through: minimumLevel, by: -1) {
+    for level in stride(from: key.level, through: max(minimumLevel, key.level - 62), by: -1) {
       if let record = records[key.ancestor(at: level)] {
         current = record
         break
       }
     }
     guard let old = fallbackAvailable(for: key) else { return current }
-    if let current, current.bounds.span <= old.bounds.span { return current }
+    if let current, current.key.level >= old.key.level { return current }
     return old
   }
   func waitUntilReady() async throws {

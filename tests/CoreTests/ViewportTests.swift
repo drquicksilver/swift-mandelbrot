@@ -22,8 +22,10 @@ import Testing
   #expect(abs(before.x - after.x) < 1e-14)
   #expect(abs(before.y - after.y) < 1e-14)
   let capped = view.zoom(by: 1e100, at: anchor, in: size, pixelWidth: 1800)
-  #expect(capped)
-  #expect(view.scale <= view.maximumScale(pixelWidth: 1800) * 1.01)
+  #expect(!capped)
+  #expect(view.deepCenter != nil)
+  #expect(view.recommendedRenderer(pixelWidth: 1800) == .perturbation)
+  #expect(view.logScale > 300)
   let invalid = view.zoom(by: .nan, at: anchor, in: size, pixelWidth: 1800)
   #expect(!invalid)
 }

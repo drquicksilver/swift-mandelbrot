@@ -1,0 +1,13 @@
+{
+  "width": 32,
+  "height": 24,
+  "centerReal": "0",
+  "centerImag": "1",
+  "iterations": 5000,
+  "depths": [
+    50,
+    200,
+    1000
+  ],
+  "oracle": "Python Decimal direct iteration, depth + 80 decimal digits; endpoint sampling"
+}

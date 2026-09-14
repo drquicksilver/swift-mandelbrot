@@ -1,0 +1,55 @@
+{
+  "centerImag" : 1,
+  "centerReal" : 0,
+  "iterations" : 5000,
+  "preciseCenterImag" : "1",
+  "preciseCenterReal" : "0",
+  "preciseScale" : "1e1000",
+  "results" : [
+    {
+      "height" : 192,
+      "medianSeconds" : 0.356552834,
+      "megapixelsPerSecond" : 0.13785334265496263,
+      "perturbation" : [
+        {
+          "glitches" : 0,
+          "kernelSeconds" : 0.2148955832235515,
+          "longestBatchMS" : 4.446541657671332,
+          "rebases" : 79745,
+          "referenceSeconds" : 0.10088612511754036,
+          "references" : 1,
+          "skippedIterations" : 0
+        },
+        {
+          "glitches" : 0,
+          "kernelSeconds" : 0.19721950008533895,
+          "longestBatchMS" : 7.343875011429191,
+          "rebases" : 79745,
+          "referenceSeconds" : 0.10160812479443848,
+          "references" : 1,
+          "skippedIterations" : 0
+        },
+        {
+          "glitches" : 0,
+          "kernelSeconds" : 0.19928066548891366,
+          "longestBatchMS" : 7.339499890804291,
+          "rebases" : 79745,
+          "referenceSeconds" : 0.10444991663098335,
+          "references" : 1,
+          "skippedIterations" : 0
+        }
+      ],
+      "samplesSeconds" : [
+        0.371509833,
+        0.351140709,
+        0.356552834
+      ],
+      "variant" : "perturbation",
+      "width" : 256
+    }
+  ],
+  "runs" : 3,
+  "scale" : 8.98846567431158e+307,
+  "timingScope" : "gpu-compute-and-colour-no-readback",
+  "warmup" : 1
+}

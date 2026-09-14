@@ -16,7 +16,9 @@ tiles: build
 	$(APP) --test-tiles
 product: build
 	python3 tests/test_product_golden.py $(APP)
-test: unit cli golden smooth tiles product
+deep: build
+	python3 tests/test_deep.py $(APP)
+test: unit cli golden smooth tiles product deep
 ios:
 	xcodebuild -quiet -project Mandelbrot.xcodeproj -scheme Mandelbrot -configuration Release -destination 'generic/platform=iOS Simulator' -derivedDataPath $(BUILD_DIR)-ios CODE_SIGNING_ALLOWED=NO ENABLE_CODE_COVERAGE=NO build
 

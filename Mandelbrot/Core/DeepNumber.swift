@@ -1,3 +1,4 @@
+import CoreGraphics
 import Foundation
 
 /// Binary fixed point for camera coordinates and CPU reference orbits. Precision is
@@ -5,11 +6,17 @@ import Foundation
 struct DeepNumber: Equatable, Sendable {
   var raw: BigInt
   var bits: Int
-  init(raw: BigInt, bits: Int) { self.raw = raw; self.bits = bits }
+  init(raw: BigInt, bits: Int) {
+    self.raw = raw
+    self.bits = bits
+  }
   init(_ value: Double, bits: Int) {
     precondition(value.isFinite)
     self.bits = bits
-    if value == 0 { raw = 0; return }
+    if value == 0 {
+      raw = 0
+      return
+    }
     let exponent = value.exponent
     raw = BigInt((value.sign == .minus ? -1 : 1) * value.significand * pow(2, 52))
     raw = raw << (bits + exponent - 52)
@@ -17,16 +24,22 @@ struct DeepNumber: Equatable, Sendable {
   init(decimal: String, bits: Int) throws {
     let parts = decimal.lowercased().split(separator: "e", omittingEmptySubsequences: false)
     guard parts.count <= 2, let exponent = parts.count == 2 ? Int(parts[1]) : 0,
-      abs(exponent) <= 5000 else { throw PrecisionError("Invalid decimal exponent") }
-    let mantissa = String(parts[0]); let fraction = mantissa.split(separator: ".", omittingEmptySubsequences: false)
+      abs(exponent) <= 5000
+    else { throw PrecisionError("Invalid decimal exponent") }
+    let mantissa = String(parts[0])
+    let fraction = mantissa.split(separator: ".", omittingEmptySubsequences: false)
     guard fraction.count <= 2, mantissa.count <= 5100,
-      let integer = BigInt(mantissa.replacingOccurrences(of: ".", with: "")) else {
+      let integer = BigInt(mantissa.replacingOccurrences(of: ".", with: ""))
+    else {
       throw PrecisionError("Invalid decimal coordinate")
     }
     let places = (fraction.count == 2 ? fraction[1].count : 0) - exponent
     self.bits = bits
-    if places >= 0 { raw = (integer << bits) / BigInt(10).power(places) }
-    else { raw = (integer * BigInt(10).power(-places)) << bits }
+    if places >= 0 {
+      raw = (integer << bits) / BigInt(10).power(places)
+    } else {
+      raw = (integer * BigInt(10).power(-places)) << bits
+    }
   }
   func rounded(to bits: Int) -> Self { Self(raw: raw << (bits - self.bits), bits: bits) }
   static func + (a: Self, b: Self) -> Self {
@@ -43,8 +56,15 @@ struct DeepNumber: Equatable, Sendable {
   }
   var wide: WideReal {
     if raw == 0 { return WideReal(0) }
-    let shift = max(0, raw.magnitude.bitWidth - 54)
-    return WideReal(Double(raw >> shift), exponent: shift - bits)
+    let magnitude = raw.magnitude
+    let shift = max(0, magnitude.bitWidth - 53)
+    var leading = UInt64(magnitude >> shift)
+    if shift > 0 {
+      let remainder = magnitude - ((magnitude >> shift) << shift)
+      let half = BigUInt(1) << (shift - 1)
+      if remainder > half || (remainder == half && leading & 1 == 1) { leading += 1 }
+    }
+    return WideReal((raw.sign == .minus ? -1 : 1) * Double(leading), exponent: shift - bits)
   }
   var double: Double { wide.double }
 }
@@ -59,8 +79,13 @@ struct WideReal: Equatable, Sendable {
   var exponent: Int
   init(_ value: Double, exponent: Int = 0) {
     precondition(value.isFinite)
-    if value == 0 { mantissa = 0; self.exponent = 0 }
-    else { mantissa = (value.sign == .minus ? -1 : 1) * value.significand; self.exponent = exponent + value.exponent }
+    if value == 0 {
+      mantissa = 0
+      self.exponent = 0
+    } else {
+      mantissa = (value.sign == .minus ? -1 : 1) * value.significand
+      self.exponent = exponent + value.exponent
+    }
   }
   init(log2: Double) {
     let exponent = Int(floor(log2))
@@ -77,10 +102,18 @@ struct WideReal: Equatable, Sendable {
 }
 struct DeepPoint: Equatable, Sendable {
   var x: DeepNumber, y: DeepNumber
-  init(_ point: CGPoint, bits: Int) { x = DeepNumber(point.x, bits: bits); y = DeepNumber(point.y, bits: bits) }
-  init(x: DeepNumber, y: DeepNumber) { self.x = x; self.y = y }
+  init(_ point: CGPoint, bits: Int) {
+    x = DeepNumber(point.x, bits: bits)
+    y = DeepNumber(point.y, bits: bits)
+  }
+  init(x: DeepNumber, y: DeepNumber) {
+    self.x = x
+    self.y = y
+  }
   func offset(x: WideReal, y: WideReal, bits: Int) -> Self {
-    Self(x: self.x.rounded(to: bits) + x.fixed(bits: bits), y: self.y.rounded(to: bits) + y.fixed(bits: bits))
+    Self(
+      x: self.x.rounded(to: bits) + x.fixed(bits: bits),
+      y: self.y.rounded(to: bits) + y.fixed(bits: bits))
   }
   var point: CGPoint { CGPoint(x: x.double, y: y.double) }
 }

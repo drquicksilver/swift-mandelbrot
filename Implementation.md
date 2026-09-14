@@ -101,3 +101,13 @@ Final stabilisation verification: `make test`, `make format-check`, `make ios`,
 `make ios-device`, final tile checks and five isolated trace runs passed. Product
 PNG inspection at the mip-boundary fixture showed no visible tile seam. Final
 measurements and their limits are recorded in Performance.md.
+
+### 2.2a–b: precision foundation and perturbation
+
+Compared pinned MIT BigInt and Boost cpp_bin_float at 1e100/1e1000 precision;
+selected Swift fixed point with the measured latency tradeoff in Performance.md.
+Added precise camera/anchor-relative tile geometry, logarithmic zoom,
+extended-exponent FloatFloat Metal perturbation, bounded glitch re-referencing,
+and critical-point rebasing. CLI accepts exact decimal centres and deep scale
+strings with `--pipeline gpu|tiles --renderer perturbation`. Independent Decimal
+sample goldens at 1e50, 1e200 and 1e1000 now run in `make test`.
