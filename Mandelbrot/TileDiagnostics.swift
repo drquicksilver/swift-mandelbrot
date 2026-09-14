@@ -50,6 +50,17 @@
       }
     }
     static func checkHighIterationColour(_ gpu: GPUContext) async throws {
+      let far = try gpu.texture(width: 1, height: 1, format: .rg32Uint)
+      var params = GPUParameters(
+        viewport: Viewport(center: CGPoint(x: 1e20, y: 0), scale: 1),
+        width: 1, height: 1, iterations: 10, renderer: .metal)
+      params.smooth = 1
+      _ = try await gpu.compute(into: far, parameters: params)
+      let raw = try await gpu.readback(far)
+      let record = raw.withUnsafeBytes { $0.load(as: SampleRecord.self) }
+      try require(
+        record.iteration == 1 && record.legacyFloat == 0,
+        "Clamping the smooth value changed the integer escape count")
       let values = [
         SampleRecord(iteration: 1_000_000, correction: 0.003),
         SampleRecord(iteration: 1_000_000, correction: 0.02),
