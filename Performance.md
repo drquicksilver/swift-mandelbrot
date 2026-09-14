@@ -224,3 +224,13 @@ Tiles have 256² interior samples plus a one-sample gutter for seam-free filteri
 The first stage deliberately holds the selected level fixed for panning; multilevel
 fallback is the next stage. `--render --pipeline tiles` exercises the compositor
 without opening a window. `make test` includes its headless integration checks.
+
+## 2.1(b): multilevel fallback
+
+The trace now includes a zoom snapshot taken before refinement finishes. A magenta
+clear sentinel detects uncovered pixels: zero holes in every run. Median complete
+trace: 173.095 ms; maximum observed GPU batch:
+0.370 ms. This longer trace is not directly comparable to stage (a).
+Samples: `evidence/product/2.1b-parent-fallback.json`. Coarse tiles precede fine tiles;
+one ancestor lookup per screen cell avoids drawing every ancestor over the screen.
+Anchor rebasing retains previous coverage while replacement tiles are computed.

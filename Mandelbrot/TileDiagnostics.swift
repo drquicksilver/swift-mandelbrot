@@ -35,6 +35,16 @@ import CoreGraphics
             let recoloured=try await TileCompositor.snapshot(store:store,viewport:view,width:512,height:320)
             let colourData=try await gpu.readback(recoloured)
             try require(colourData != data,"Palette recolouring did not change output")
+            // Snapshot immediately after zooming, before the worker can refine.
+            view.zoom(by:1.7,at:CGPoint(x:256,y:160),in:size,pixelWidth:512)
+            store.update(viewport:view,size:size,pixelWidth:512,iterations:200,override:nil,colouring:ColourSettings(palette:.fire))
+            let fallback=try await TileCompositor.snapshot(store:store,viewport:view,width:512,height:320,sentinel:true)
+            let pixels=try await gpu.readback(fallback)
+            var holes=0
+            for i in stride(from:0,to:pixels.count,by:4) { if pixels[i]==255 && pixels[i+1]==0 && pixels[i+2]==255 { holes += 1 } }
+            try require(holes==0,"Parent fallback left \(holes) uncovered pixels")
+            try await store.waitUntilReady()
+            try require(store.statistics.computed>computed,"Zoom did not refine new levels")
             let elapsed=Double(DispatchTime.now().uptimeNanoseconds-start)/1e9
             let encoder=JSONEncoder();encoder.outputFormatting=[.prettyPrinted,.sortedKeys]
             print(String(decoding:try encoder.encode(store.statistics),as:UTF8.self))

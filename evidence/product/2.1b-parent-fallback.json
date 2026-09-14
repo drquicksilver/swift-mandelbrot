@@ -1,0 +1,57 @@
+[
+  {
+    "batches": 442,
+    "bytes": 21299200,
+    "cacheHits": 0,
+    "cancelled": 0,
+    "computed": 26,
+    "evictions": 0,
+    "longestBatchMS": 0.31287502497434616,
+    "tiles": 26,
+    "elapsedSeconds": 0.175390208
+  },
+  {
+    "batches": 442,
+    "bytes": 21299200,
+    "cacheHits": 0,
+    "cancelled": 0,
+    "computed": 26,
+    "evictions": 0,
+    "longestBatchMS": 0.3370833583176136,
+    "tiles": 26,
+    "elapsedSeconds": 0.173090708
+  },
+  {
+    "batches": 442,
+    "bytes": 21299200,
+    "cacheHits": 0,
+    "cancelled": 0,
+    "computed": 26,
+    "evictions": 0,
+    "longestBatchMS": 0.30037504620850086,
+    "tiles": 26,
+    "elapsedSeconds": 0.173095459
+  },
+  {
+    "batches": 442,
+    "bytes": 21299200,
+    "cacheHits": 0,
+    "cancelled": 0,
+    "computed": 26,
+    "evictions": 0,
+    "longestBatchMS": 0.3128747921437025,
+    "tiles": 26,
+    "elapsedSeconds": 0.17061075
+  },
+  {
+    "batches": 442,
+    "bytes": 21299200,
+    "cacheHits": 0,
+    "cancelled": 0,
+    "computed": 26,
+    "evictions": 0,
+    "longestBatchMS": 0.3700000233948231,
+    "tiles": 26,
+    "elapsedSeconds": 0.173617375
+  }
+]

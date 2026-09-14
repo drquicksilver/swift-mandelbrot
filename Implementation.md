@@ -30,6 +30,9 @@ Completed:
 - 2.1(a): anchor-relative fixed-level tiles, a per-frame Metal compositor, sample
   reuse during pan, transactional recolouring, and headless integration checks.
 
-Next: tile stages 2.1(b–d). No perturbation or automatic iteration-depth
+- 2.1(b): multiple levels, coarse-first scheduling, parent fallback with zero-hole
+  zoom tests, and anchor rebasing with retained coverage.
+
+Next: tile stages 2.1(c–d). No perturbation or automatic iteration-depth
 heuristic is included in this milestone. Colour mipmaps are disposable
 palette-dependent display data; raw sample tiles remain authoritative.

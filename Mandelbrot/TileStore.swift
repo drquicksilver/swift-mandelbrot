@@ -9,12 +9,13 @@ struct TileStatistics: Equatable, Codable {
 }
 @MainActor final class TileRecord {
     let key: TileKey
+    let bounds: TileBounds
     let samples: MTLTexture
     var colour: MTLTexture
     let readyAt: Double
     var lastUsed: UInt64 = 0
-    init(key: TileKey,samples: MTLTexture,colour: MTLTexture,readyAt: Double) {
-        self.key=key;self.samples=samples;self.colour=colour;self.readyAt=readyAt
+    init(key: TileKey,bounds: TileBounds,samples: MTLTexture,colour: MTLTexture,readyAt: Double) {
+        self.key=key;self.bounds=bounds;self.samples=samples;self.colour=colour;self.readyAt=readyAt
     }
     var bytes: Int { samples.allocatedSize+colour.allocatedSize }
 }
@@ -35,7 +36,9 @@ struct TileStatistics: Equatable, Codable {
     private var worker: Task<Void,Never>?
     private var generation: UInt64 = 0
     private var failed: Set<TileKey> = []
-    private var fixedLevel: Int?
+    private(set) var lod = 0.0
+    private(set) var fallback: [TileRecord] = []
+    let minimumLevel = -2
     private var counters=TileStatistics()
     var error: String?
     var isIdle: Bool { worker == nil }
@@ -46,13 +49,20 @@ struct TileStatistics: Equatable, Codable {
         guard size.width>0,size.height>0 else { return }
         self.viewport=viewport;self.size=size
         if self.iterations != iterations || self.override != override {
-            generation &+= 1;worker?.cancel();worker=nil;records.removeAll();failed.removeAll()
+            generation &+= 1;worker?.cancel();worker=nil
+            fallback=Array(records.values);records.removeAll();failed.removeAll()
         }
         self.iterations=iterations;self.override=override
-        let level=fixedLevel ?? max(-2,min(45,Int(floor(grid.idealLevel(viewport:viewport,pixelWidth:pixelWidth)))))
-        fixedLevel=level
+        lod=max(Double(minimumLevel),min(45,grid.idealLevel(viewport:viewport,pixelWidth:pixelWidth)))
+        let level=Int(ceil(lod))
         visible=grid.visible(viewport:viewport,size:size,level:level)
-        needed=Set(visible)
+        if visible.contains(where:{abs($0.x) > (1 << 30) || abs($0.y) > (1 << 30)}) {
+            generation &+= 1;worker?.cancel();worker=nil
+            fallback=Array(records.values);records.removeAll();failed.removeAll()
+            grid.rebase(to:viewport.center)
+            visible=grid.visible(viewport:viewport,size:size,level:level)
+        }
+        needed=Set(visible.flatMap { key in (minimumLevel...key.level).map { key.ancestor(at:$0) } })
         if self.colouring != colouring {
             self.colouring=colouring
             generation &+= 1;worker?.cancel();worker=nil
@@ -64,6 +74,7 @@ struct TileStatistics: Equatable, Codable {
     func cancel() { generation &+= 1;worker?.cancel();worker=nil }
     private func nextKey() -> TileKey? {
         needed.filter { records[$0] == nil && !failed.contains($0) }.min {
+            if $0.level != $1.level { return $0.level < $1.level }
             let a=grid.bounds($0).center,b=grid.bounds($1).center
             return hypot(a.x-viewport.center.x,a.y-viewport.center.y)<hypot(b.x-viewport.center.x,b.y-viewport.center.y)
         }
@@ -121,7 +132,7 @@ struct TileStatistics: Equatable, Codable {
                     if cancelled { self.counters.cancelled += 1;continue }
                     _ = try await gpu.colour(samples,into:colour,settings:self.colouring)
                     guard self.generation==generation,!Task.isCancelled else { break }
-                    self.records[key]=TileRecord(key:key,samples:samples,colour:colour,readyAt:ProcessInfo.processInfo.systemUptime)
+                    self.records[key]=TileRecord(key:key,bounds:bounds,samples:samples,colour:colour,readyAt:ProcessInfo.processInfo.systemUptime)
                     self.counters.computed += 1
                     // A conservative temporary limit; byte-budgeted LRU comes in stage d.
                     if self.records.count>256,let victim=self.records.keys.first(where:{!self.needed.contains($0)}) { self.records.removeValue(forKey:victim) }
@@ -131,8 +142,22 @@ struct TileStatistics: Equatable, Codable {
                     self.failed.insert(key);self.error=String(describing:error)
                 }
             }
-            if self.generation==generation { self.worker=nil;self.publish() }
+            if self.generation==generation {
+                self.worker=nil
+                if self.allVisibleReady { self.fallback.removeAll() }
+                self.publish()
+            }
         }
+    }
+    func bestAvailable(for key: TileKey) -> TileRecord? {
+        for level in stride(from:key.level,through:minimumLevel,by:-1) {
+            if let record=records[key.ancestor(at:level)] { return record }
+        }
+        let cell=grid.bounds(key)
+        return fallback.filter { record in
+            let b=record.bounds
+            return b.left <= cell.left && b.top >= cell.top && b.left+b.span >= cell.left+cell.span && b.top-b.span <= cell.top-cell.span
+        }.min { $0.bounds.span < $1.bounds.span }
     }
     func waitUntilReady() async throws {
         while !isIdle { try await Task.sleep(for:.milliseconds(2)) }
