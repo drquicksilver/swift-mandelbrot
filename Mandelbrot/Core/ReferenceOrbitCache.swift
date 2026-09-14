@@ -12,6 +12,7 @@ actor ReferenceOrbitCache {
   }
   private var pending: [UUID: Pending] = [:]
   private(set) var computations = 0
+  private(set) var extensions = 0
   init(byteLimit: Int = 4 * 1024 * 1024) { self.byteLimit = max(1024, byteLimit) }
   var bytes: Int {
     entries.reduce(0) { $0 + $1.storageBytes }
@@ -46,6 +47,12 @@ actor ReferenceOrbitCache {
     if matching != nil {
       pending[key]!.waiters.insert(waiter)
     } else {
+      let candidate = entries.indices.filter {
+        entries[$0].bits >= bits && entries[$0].finalX != nil
+          && nearby(entries[$0].point, point, radius: radius)
+      }.max { entries[$0].iterations < entries[$1].iterations }
+      let prefix = candidate.map { entries[$0] }
+      if prefix != nil { extensions += 1 }
       // Reserve for the incoming orbit before allocating it; keep the cache bounded.
       let reserve = min(byteLimit, (iterations + 1) * MemoryLayout<ExtendedComplex>.stride)
       while !entries.isEmpty && bytes + reserve > byteLimit { entries.removeFirst() }
@@ -53,7 +60,8 @@ actor ReferenceOrbitCache {
       pending[key] = Pending(
         point: point, bits: bits, iterations: iterations,
         task: Task.detached(priority: .userInitiated) {
-          try ReferenceOrbit.compute(point: point, iterations: iterations, bits: bits)
+          if let prefix { return try prefix.extended(to: iterations) }
+          return try ReferenceOrbit.compute(point: point, iterations: iterations, bits: bits)
         }, waiters: [waiter])
     }
     let task = pending[key]!.task
@@ -64,6 +72,9 @@ actor ReferenceOrbitCache {
         Task { await self.cancel(waiter: waiter, key: key) }
       }
       if pending.removeValue(forKey: key) != nil {
+        entries.removeAll {
+          $0.point == orbit.point && $0.bits == orbit.bits && $0.iterations <= orbit.iterations
+        }
         let cost = orbit.storageBytes
         while !entries.isEmpty && (entries.count >= 3 || bytes + cost > byteLimit) {
           entries.removeFirst()

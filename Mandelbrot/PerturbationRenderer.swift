@@ -4,6 +4,9 @@ import Metal
 
 struct PerturbationMetrics: Codable, Sendable {
   var referenceSeconds = 0.0
+  var referenceExtensions = 0
+  var referenceSteps = 0
+  var maximumReferenceLength = 0
   var blaSeconds = 0.0
   var referenceCacheHits = 0
   var referenceBytes = 0
@@ -65,7 +68,7 @@ extension GPUContext {
     let pool = resources ?? PerturbationResources(referenceBudget: 4 * 1024 * 1024)
     let states = try pool.acquire(device: device, length: region.width * region.height * 48)
     defer { pool.recycle(states) }
-    guard let flags = device.makeBuffer(length: 32, options: .storageModeShared) else {
+    guard let flags = device.makeBuffer(length: 40, options: .storageModeShared) else {
       throw GPUFailure("Perturbation status allocation failed")
     }
     var referencePoint =
@@ -73,62 +76,77 @@ extension GPUContext {
     for pass in 0..<16 {
       try Task.checkCancellation()
       let requestedPoint = referencePoint
-      let task = Task.detached(priority: .userInitiated) {
-        let reference: ReferenceOrbit
-        let hit: Bool
+      func reference(upTo limit: Int, prefix: ReferenceOrbit?) async throws -> (
+        ReferenceOrbit, Bool
+      ) {
+        let point = prefix?.point ?? requestedPoint
         if pass == 0 && resources != nil {
-          (reference, hit) = try await pool.references.reference(
-            point: requestedPoint, iterations: iterations, bits: region.bits,
-            radius: region.stepX * Double(region.width * 4))
-        } else {
-          reference = try ReferenceOrbit.compute(
-            point: requestedPoint, iterations: iterations, bits: region.bits)
-          hit = false
+          return try await pool.references.reference(
+            point: point, iterations: limit, bits: region.bits,
+            radius: prefix == nil ? region.stepX * Double(region.width * 4) : WideReal(0))
         }
-        let point = reference.point
-        let start = ProcessInfo.processInfo.systemUptime
-        let far = region.point(x: region.width - 1, y: region.height - 1)
-        let dx = max(
-          abs((region.topLeft.x - point.x).wide / region.stepX),
-          abs((far.x - point.x).wide / region.stepX))
-        let dy = max(
-          abs((region.topLeft.y - point.y).wide / region.stepX),
-          abs((far.y - point.y).wide / region.stepX))
-        let table =
-          useBLA
-          ? try BilinearApproximation.build(
-            orbit: reference, maximumDelta: region.stepX * (hypot(dx, dy) * 1.01),
-            iterations: iterations) : BilinearApproximation.disabled
-        return (reference, hit, table, ProcessInfo.processInfo.systemUptime - start)
+        let task = Task.detached(priority: .userInitiated) {
+          if let prefix { return try prefix.extended(to: limit) }
+          return try ReferenceOrbit.compute(point: point, iterations: limit, bits: region.bits)
+        }
+        let result = try await withTaskCancellationHandler {
+          try await task.value
+        } onCancel: {
+          task.cancel()
+        }
+        return (result, false)
       }
-      let (reference, hit, table, blaSeconds) = try await withTaskCancellationHandler {
-        try await task.value
-      } onCancel: {
-        task.cancel()
-      }
-      metrics.referenceSeconds += hit ? 0 : reference.seconds
-      metrics.referenceCacheHits += hit ? 1 : 0
-      metrics.blaSeconds += blaSeconds
+      // End prefixes on a BLA leaf boundary: do not split a 32-step jump.
+      var (ref, hit) = try await reference(upTo: min(iterations, 4097), prefix: nil)
       metrics.references += 1
-      metrics.referenceBytes = await pool.references.bytes
-      let point = reference.point
-      let referenceCount = min(reference.values.count, iterations + 1)
-      guard
-        let orbit = device.makeBuffer(
-          bytes: reference.values,
-          length: referenceCount * MemoryLayout<ExtendedComplex>.stride,
-          options: .storageModeShared)
-      else { throw GPUFailure("Reference allocation failed") }
-      guard
-        let blas = device.makeBuffer(
-          bytes: table.entries, length: table.entries.count * MemoryLayout<BLAEntry>.stride,
-          options: .storageModeShared)
-      else { throw GPUFailure("BLA allocation failed") }
-      let words = flags.contents().bindMemory(to: UInt32.self, capacity: 8)
+      func account(_ ref: ReferenceOrbit, _ hit: Bool) async {
+        metrics.referenceSeconds += hit ? 0 : ref.seconds
+        metrics.referenceSteps += hit ? 0 : ref.computedSteps
+        metrics.referenceCacheHits += hit ? 1 : 0
+        metrics.maximumReferenceLength = max(metrics.maximumReferenceLength, ref.values.count)
+        metrics.referenceBytes = await pool.references.bytes
+      }
+      await account(ref, hit)
+      let point = ref.point
+      let far = region.point(x: region.width - 1, y: region.height - 1)
+      let dx = max(
+        abs((region.topLeft.x - point.x).wide / region.stepX),
+        abs((far.x - point.x).wide / region.stepX))
+      let dy = max(
+        abs((region.topLeft.y - point.y).wide / region.stepX),
+        abs((far.y - point.y).wide / region.stepX))
+      let maximumDelta = region.stepX * (hypot(dx, dy) * 1.01)
+      func upload(_ ref: ReferenceOrbit) async throws -> (MTLBuffer, MTLBuffer, BLATable, Int) {
+        let task = Task.detached(priority: .userInitiated) {
+          let start = ProcessInfo.processInfo.systemUptime
+          let table =
+            useBLA
+            ? try BilinearApproximation.build(
+              orbit: ref, maximumDelta: maximumDelta, iterations: iterations)
+            : BilinearApproximation.disabled
+          return (table, ProcessInfo.processInfo.systemUptime - start)
+        }
+        let (table, seconds) = try await withTaskCancellationHandler {
+          try await task.value
+        } onCancel: {
+          task.cancel()
+        }
+        metrics.blaSeconds += seconds
+        let count = min(ref.values.count, iterations + 1)
+        guard
+          let orbit = device.makeBuffer(
+            bytes: ref.values, length: count * MemoryLayout<ExtendedComplex>.stride,
+            options: .storageModeShared),
+          let blas = device.makeBuffer(
+            bytes: table.entries, length: table.entries.count * MemoryLayout<BLAEntry>.stride,
+            options: .storageModeShared)
+        else { throw GPUFailure("Reference/BLA allocation failed") }
+        return (orbit, blas, table, count)
+      }
+      var (orbit, blas, table, referenceCount) = try await upload(ref)
+      let words = flags.contents().bindMemory(to: UInt32.self, capacity: 10)
       words[0] = UInt32.max
       words[1] = 0
-      words[2] = 0
-      words[3] = 0
       let delta = DeepPoint(x: region.topLeft.x - point.x, y: region.topLeft.y - point.y)
       var p = PerturbationParameters(
         origin: ExtendedComplex(delta), stepX: ExtendedFloat(region.stepX),
@@ -141,15 +159,11 @@ extension GPUContext {
         blaBase: UInt32(table.leafOffset))
       let maximumBatch = min(128, max(1, Int(UInt32.max) / (32 * region.width * region.height)))
       var batch = min(8, maximumBatch)
-      while p.start < iterations {
+      while true {
         try Task.checkCancellation()
-        words[2] = 0
-        words[3] = 0
-        words[4] = 0
-        words[5] = 0
-        words[6] = 0
-        words[7] = 0
-        p.count = UInt32(min(batch, iterations - Int(p.start)))
+        for index in 2...8 { words[index] = 0 }
+        p.padding = (p.padding & ~16) | ((ref.escaped || ref.iterations >= iterations) ? 16 : 0)
+        p.count = UInt32(batch)
         guard let command = computeQueue.makeCommandBuffer(),
           let encoder = command.makeComputeCommandEncoder()
         else { throw GPUFailure("Perturbation queue unavailable") }
@@ -169,8 +183,17 @@ extension GPUContext {
         metrics.rebases += Int(words[2])
         metrics.skippedIterations += Int(words[3]) + (Int(words[6]) << 32)
         metrics.longestBLASkip = max(metrics.longestBLASkip, Int(words[7]))
-        p.start += p.count
+        p.start = 1  // State is initialised once, regardless of pauses and BLA work counts.
         if words[4] == 0 { break }
+        if words[8] > 0 {
+          let next = min(iterations, max(Int(words[8]), (ref.values.count - 2) * 2 + 1))
+          (ref, hit) = try await reference(upTo: next, prefix: ref)
+          metrics.referenceExtensions += 1
+          await account(ref, hit)
+          (orbit, blas, table, referenceCount) = try await upload(ref)
+          p.referenceCount = UInt32(referenceCount)
+          p.blaBase = UInt32(table.leafOffset)
+        }
         batch = max(
           1, min(maximumBatch, Int(Double(p.count) * min(2, 0.001 / max(seconds, 0.00001)))))
       }

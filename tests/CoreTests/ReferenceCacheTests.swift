@@ -59,3 +59,21 @@ import Testing
   let again = try await cache.reference(point: point, iterations: 1_000_000, bits: 256)
   #expect(again.1)
 }
+
+@Test func referenceExtensionMatchesOneShot() async throws {
+  let point = DeepPoint(CGPoint(x: -0.1, y: 0.65), bits: 512)
+  let prefix = try ReferenceOrbit.compute(point: point, iterations: 32, bits: 512)
+  let extended = try prefix.extended(to: 100)
+  let full = try ReferenceOrbit.compute(point: point, iterations: 100, bits: 512)
+  #expect(extended.finalX == full.finalX && extended.finalY == full.finalY)
+  #expect(extended.values.count == full.values.count)
+  for (a, b) in zip(extended.values, full.values) {
+    #expect(a.x.mantissa == b.x.mantissa && a.y.mantissa == b.y.mantissa)
+    #expect(a.x.exponent == b.x.exponent && a.y.exponent == b.y.exponent)
+  }
+  #expect(extended.computedSteps == full.values.count - prefix.values.count)
+  let cache = ReferenceOrbitCache(byteLimit: 1024 * 1024)
+  _ = try await cache.reference(point: point, iterations: 32, bits: 512)
+  _ = try await cache.reference(point: point, iterations: 100, bits: 512)
+  #expect(await cache.extensions == 1)
+}

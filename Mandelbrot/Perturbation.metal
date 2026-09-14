@@ -62,6 +62,12 @@ kernel void perturbTile(texture2d<uint,access::read_write> output [[texture(0)]]
    if(less(xf(65536),magnitude)) {
      output.write(escapeSample(s.n,1-log2(log2(sqrt(value(magnitude))))),pos);s.done=1;break;
    }
+   // A streamed prefix is not an exhausted reference. Pause this pixel until
+   // its next reference value arrives; other pixels may keep finishing.
+   if(s.ref+1>=p.referenceCount && !(p.pad&16u) &&
+      ((p.pad&2u) || !less(magnitude,abs2(s.delta)))) {
+     atomic_fetch_max_explicit(flags+8,s.ref+1,memory_order_relaxed);break;
+   }
    // Rebase before cancellation can trigger an expensive new reference.
    bool candidate=less(magnitude,times(abs2(orbit[s.ref]),1e-8f));
    if(s.ref+1>=p.referenceCount || (!(p.pad&2u) && less(magnitude,abs2(s.delta)))) {

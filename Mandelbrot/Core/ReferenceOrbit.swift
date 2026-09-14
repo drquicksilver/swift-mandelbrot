@@ -27,18 +27,34 @@ struct ReferenceOrbit: Sendable {
   let bits: Int
   let iterations: Int
   let escaped: Bool
-  var storageBytes: Int { values.capacity * MemoryLayout<ExtendedComplex>.stride }
+  var finalX: BigInt? = nil
+  var finalY: BigInt? = nil
+  var computedSteps: Int = 0
+  var storageBytes: Int {
+    values.capacity * MemoryLayout<ExtendedComplex>.stride + (bits + 7) / 8 * 4
+  }
   static func compute(point: DeepPoint, iterations: Int, bits: Int) throws -> Self {
+    try generate(point: point, iterations: iterations, bits: bits, prefix: nil)
+  }
+  func extended(to iterations: Int) throws -> Self {
+    if escaped || iterations <= self.iterations { return self }
+    return try Self.generate(point: point, iterations: iterations, bits: bits, prefix: self)
+  }
+  private static func generate(point: DeepPoint, iterations: Int, bits: Int, prefix: Self?) throws
+    -> Self
+  {
     let start = ProcessInfo.processInfo.systemUptime
     let cr = point.x.rounded(to: bits).raw
     let ci = point.y.rounded(to: bits).raw
-    var x = BigInt(0)
-    var y = BigInt(0)
+    var x = prefix?.finalX ?? BigInt(0)
+    var y = prefix?.finalY ?? BigInt(0)
     let escape = BigInt(65536) << (2 * bits)
-    var values: [ExtendedComplex] = []
+    var values: [ExtendedComplex] = prefix?.values ?? []
     var escaped = false
     values.reserveCapacity(min(iterations + 1, 4096))
-    for n in 0...iterations {
+    let first = prefix?.iterations ?? 0
+    if prefix != nil { values.removeLast() }
+    for n in first...iterations {
       if n.isMultiple(of: 32) { try Task.checkCancellation() }
       values.append(
         ExtendedComplex(
@@ -55,6 +71,7 @@ struct ReferenceOrbit: Sendable {
     }
     return Self(
       point: point, values: values, seconds: ProcessInfo.processInfo.systemUptime - start,
-      bits: bits, iterations: iterations, escaped: escaped)
+      bits: bits, iterations: iterations, escaped: escaped, finalX: x, finalY: y,
+      computedSteps: max(0, values.count - 1 - first))
   }
 }

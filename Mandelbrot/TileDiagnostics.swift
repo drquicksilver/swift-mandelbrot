@@ -480,6 +480,7 @@
         try await checkDepthControls()
         try await checkIterationReuse(gpu)
         try await checkNavigationRoundTrip()
+        try await checkStreamedReferences(gpu)
         try await checkResumption(gpu)
         try await checkMipmaps(gpu)
         let cacheMetrics = try await checkCache()

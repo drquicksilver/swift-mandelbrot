@@ -206,3 +206,18 @@ coverage as a fresh session. Regression traces exercise returns from 1e12 and
 1e1000 and a 201-view 1x–1e30–1x trip with fixed versus automatic limits. They
 check anchor demotion, fresh-session tile work, and sampling counts rather than
 flaky timing thresholds; timings are printed for profiling. Tile integration passes.
+
+### Follow-up review: extendable, streamed references
+
+Reference orbits retain their final BigInt state and extend by an exact suffix;
+unit tests compare every packed value against one-shot computation. The cache
+reuses compatible prefixes, retains completed prefixes while extensions are in
+flight, and budgets saved state. GPU work starts with at most 4,097 reference
+iterations, pauses at a temporary frontier, then resumes after geometric prefix
+growth. Frontiers align with BLA leaves and do not masquerade as escaped references.
+
+A cold product view at c=i, 1e1000, using the actual automatic limit of 266,000,
+produced its first deep tile in 35 ms and settled in 231 ms on the M1 Pro. It
+needed only 4,098 reference values. These are headless tile-readiness timings,
+not phone frame-pacing measurements. An exact-centre capped pixel separately
+forces reference extension. Full tests and unchanged deep/minibrot budgets pass.
