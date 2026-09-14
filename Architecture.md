@@ -41,7 +41,9 @@ marks a sample at its iteration cap. A private, unfinished tile uses -2 internal
 starts only after the old command completes. Work is coarse before fine, then
 centre before edges. Invisible work is discarded between commands. An orbit
 state buffer makes iteration batches resumable; measured GPU duration adapts the
-batch toward 1 ms, bounded to 8–512 iterations over one 258² tile. This bounds
+batch toward 1 ms, bounded to 8–512 iterations over one 258² tile. All kernels
+use rounded-up uniform threadgroups and reject out-of-range threads before memory
+access; non-uniform threadgroup support is not required. This bounds
 submitted arithmetic, not OS scheduling latency or a guaranteed frame deadline.
 
 `GPUCanvas` requests the display's maximum refresh rate and permits at most two

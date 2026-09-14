@@ -121,10 +121,12 @@ final class GPUContext: @unchecked Sendable {
   ) {
     encoder.setComputePipelineState(pipeline)
     let w = pipeline.threadExecutionWidth
-    encoder.dispatchThreads(
-      MTLSize(width: width, height: height, depth: 1),
-      threadsPerThreadgroup: MTLSize(
-        width: w, height: min(8, pipeline.maxTotalThreadsPerThreadgroup / w), depth: 1))
+    let h = min(8, pipeline.maxTotalThreadsPerThreadgroup / w)
+    // Uniform groups work on devices without non-uniform dispatch support.
+    // Every compute kernel bounds-checks before accessing samples or orbit state.
+    encoder.dispatchThreadgroups(
+      MTLSize(width: (width + w - 1) / w, height: (height + h - 1) / h, depth: 1),
+      threadsPerThreadgroup: MTLSize(width: w, height: h, depth: 1))
   }
   func compute(into samples: MTLTexture, parameters: GPUParameters) async throws -> Double {
     guard let command = computeQueue.makeCommandBuffer(),

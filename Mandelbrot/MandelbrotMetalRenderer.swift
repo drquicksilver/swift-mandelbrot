@@ -127,8 +127,10 @@ final class MandelbrotMetalContext {
         let threadWidth = pipelineState.threadExecutionWidth
         let threadHeight = max(1, pipelineState.maxTotalThreadsPerThreadgroup / threadWidth)
         let threadsPerThreadgroup = MTLSize(width: threadWidth, height: threadHeight, depth: 1)
-        let threadsPerGrid = MTLSize(width: width, height: height, depth: 1)
-        encoder.dispatchThreads(threadsPerGrid, threadsPerThreadgroup: threadsPerThreadgroup)
+        // Both legacy kernels reject padded threads before indexing the output.
+        let groups = MTLSize(width: (width + threadWidth - 1) / threadWidth,
+                             height: (height + threadHeight - 1) / threadHeight, depth: 1)
+        encoder.dispatchThreadgroups(groups, threadsPerThreadgroup: threadsPerThreadgroup)
         encoder.endEncoding()
 
         commandBuffer.commit()
@@ -203,8 +205,10 @@ final class MandelbrotMetalContext {
         let threadWidth = pipelineStateDouble.threadExecutionWidth
         let threadHeight = max(1, pipelineStateDouble.maxTotalThreadsPerThreadgroup / threadWidth)
         let threadsPerThreadgroup = MTLSize(width: threadWidth, height: threadHeight, depth: 1)
-        let threadsPerGrid = MTLSize(width: width, height: height, depth: 1)
-        encoder.dispatchThreads(threadsPerGrid, threadsPerThreadgroup: threadsPerThreadgroup)
+        // Both legacy kernels reject padded threads before indexing the output.
+        let groups = MTLSize(width: (width + threadWidth - 1) / threadWidth,
+                             height: (height + threadHeight - 1) / threadHeight, depth: 1)
+        encoder.dispatchThreadgroups(groups, threadsPerThreadgroup: threadsPerThreadgroup)
         encoder.endEncoding()
 
         commandBuffer.commit()

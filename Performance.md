@@ -284,3 +284,14 @@ Validation: `make test`, `make ios`, and an unsigned generic physical-iOS Releas
 build pass. Interactive GUI inspection was unavailable because Computer Use
 permissions remained pending. Physical iPhone 11 Pro (60 Hz) and iPhone 16 Pro
 (120 Hz) pacing and touch feel remain to be measured.
+
+## Uniform threadgroup compatibility fix
+
+All three dispatch sites now use `dispatchThreadgroups` with rounded-up group
+counts. Kernels reject padded threads before reading or writing memory. This
+removes the unsupported non-uniform-dispatch feature requirement from the viewer
+and both legacy Metal benchmark renderers.
+
+`make test` and `make ios` pass, including odd-sized legacy exports, 66×53
+resumption comparisons and all 258×258 tile/colour/mipmap kernels. Five M1 Pro
+traces are in `evidence/product/uniform-dispatch.json`: median trace 483.178 ms, median per-run p95 compositor GPU duration 0.377 ms, worst deep-refinement GPU batch 2.564 ms. These are host measurements; the device that reported the assertion still needs a rebuilt-app run.
