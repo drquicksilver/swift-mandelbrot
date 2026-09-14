@@ -56,7 +56,8 @@ extension GPUContext {
   /// bounded GPU batches, with cancellation on both CPU and GPU boundaries.
   func perturb(
     into samples: MTLTexture, region: PerturbationRegion, iterations: Int, useBLA: Bool = true,
-    useRebasing: Bool = true, hierarchicalBLA: Bool = true, resources: PerturbationResources? = nil
+    useRebasing: Bool = true, hierarchicalBLA: Bool = true, resources: PerturbationResources? = nil,
+    preserveEscaped: Bool = false
   ) async throws
     -> PerturbationMetrics
   {
@@ -135,7 +136,8 @@ extension GPUContext {
         width: UInt32(region.width), height: UInt32(region.height), iterations: UInt32(iterations),
         referenceCount: UInt32(referenceCount),
         start: 0, count: 8, pass: UInt32(pass),
-        padding: (useBLA ? 1 : 0) | (useRebasing ? 0 : 2) | (hierarchicalBLA ? 4 : 0),
+        padding: (useBLA ? 1 : 0) | (useRebasing ? 0 : 2) | (hierarchicalBLA ? 4 : 0)
+          | (preserveEscaped ? 8 : 0),
         blaBase: UInt32(table.leafOffset))
       let maximumBatch = min(128, max(1, Int(UInt32.max) / (32 * region.width * region.height)))
       var batch = min(8, maximumBatch)

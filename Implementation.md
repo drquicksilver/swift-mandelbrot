@@ -185,3 +185,15 @@ and CLI exports, tile cache/resumption/mip/recovery checks, strict c=i deep gold
 and hard minibrot numerical and tiled goldens. The final 128×96 minibrot PNG was
 visually inspected. Both physical target phones were unavailable; frame pacing,
 CPU preparation and touch feel on iPhone 11 Pro/16 Pro remain device validation.
+
+### Follow-up review: iteration-aware reuse
+
+Iteration changes retain tile records. Lower limits transactionally recolour raw
+samples and rebuild colour mipmaps; higher limits lazily replace only insufficient
+records, copying escaped samples and recomputing only capped pixels. A GPU summary
+allows fully escaped tiles to satisfy any later limit. No per-tile orbit buffers
+are retained; capped pixels restart in the worker's bounded scratch allocation.
+Decrease hysteresis matches increases. Tests verify lower-cap images against fresh
+renders, zero sampling on a decrease/return, exact escaped-sample preservation,
+and continued refinement/cancellation/fallback correctness. Core, CLI, tile and
+independent numerical/product goldens pass.

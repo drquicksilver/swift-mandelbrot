@@ -64,7 +64,7 @@ float3 legacyColour(float iteration) {
     }
     return clamp(rgb,0.0f,1.0f);
 }
-struct ColourParameters { float density; float offset; uint smooth; uint padding; };
+struct ColourParameters { float density; float offset; uint smooth; uint limit; };
 kernel void colourSamples(texture2d<uint,access::read> samples [[texture(0)]],
                           texture2d<float,access::write> output [[texture(1)]],
                           texture1d<float> palette [[texture(2)]],
@@ -72,7 +72,7 @@ kernel void colourSamples(texture2d<uint,access::read> samples [[texture(0)]],
                           uint2 gid [[thread_position_in_grid]]) {
     if(gid.x>=output.get_width() || gid.y>=output.get_height()) return;
     uint2 raw = samples.read(gid).xy;
-    bool capped = raw.x >= sampleGlitched;
+    bool capped = raw.x >= sampleGlitched || raw.x >= settings.limit;
     float correction = as_type<float>(raw.y);
     float value = capped ? -1.0f : float(raw.x);
     float2 phase = dd_div(dd_add(float2(float(raw.x),0),float2(correction,0)),float2(settings.density,0));
@@ -154,6 +154,7 @@ kernel void resumeTile(texture2d<uint,access::read_write> out [[texture(0)]],
     constant GPUParameters &p=work.image;
     if(point.x>=p.width || point.y>=p.height) return;
     uint index=point.y*p.width+point.x;
+    if(work.start==0 && (p.padding&1u) && out.read(point).x != sampleCapped) return;
     if(work.start>0 && out.read(point).x != sampleUnfinished) return;
     float4 state=work.start==0 ? float4(0) : states[index];
     uint n=work.start,end=min(p.maxIterations,work.start+work.count);
@@ -204,4 +205,13 @@ kernel void averageChildren(texture2d<float,access::read> a [[texture(0)]],
         switch(quadrant) { case 0:sum+=a.read(point);break;case 1:sum+=b.read(point);break;case 2:sum+=c.read(point);break;default:sum+=d.read(point); }
     }
     out.write(sum*0.25f,gid);
+}
+
+// Small GPU summary; no per-pixel readback in the viewer.
+kernel void summariseSamples(texture2d<uint,access::read> samples [[texture(0)]],
+ device atomic_uint *summary [[buffer(0)]], uint2 pos [[thread_position_in_grid]]) {
+ if(pos.x>=samples.get_width() || pos.y>=samples.get_height()) return;
+ uint n=samples.read(pos).x;
+ if(n==sampleCapped) atomic_fetch_add_explicit(summary,1,memory_order_relaxed);
+ else if(n<sampleGlitched) atomic_fetch_max_explicit(summary+1,n,memory_order_relaxed);
 }

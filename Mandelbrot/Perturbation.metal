@@ -50,6 +50,7 @@ kernel void perturbTile(texture2d<uint,access::read_write> output [[texture(0)]]
  uint index=pos.y*p.width+pos.x;
  PerturbState s;
  if(p.start==0) {
+   if(p.pass==0 && (p.pad&8u) && output.read(pos).x!=sampleCapped) { states[index].done=1;return; }
    if(p.pass>0 && output.read(pos).x!=sampleGlitched) { states[index].done=1;return; }
    s={ {xf(0),xf(0)},0,0,0,0};
  } else { s=states[index];if(s.done)return; }

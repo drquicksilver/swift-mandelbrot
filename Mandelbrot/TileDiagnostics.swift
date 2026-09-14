@@ -323,11 +323,11 @@
           store: store, viewport: view,
           width: 256, height: 256, now: settled))
       update(2200)
-      try require(!store.fallback.isEmpty, "Iteration change discarded detailed fallback")
+      try require(!store.records.isEmpty, "Iteration change discarded cached detail")
       let after = try await gpu.readback(
         TileCompositor.snapshot(
           store: store, viewport: view,
-          width: 256, height: 256, now: 0))
+          width: 256, height: 256, now: settled))
       try require(
         before == after, "Iteration change altered the picture before replacement was ready")
       update(2400)
@@ -336,7 +336,10 @@
         "Repeated invalidation lost fine coverage")
       try await store.waitUntilReady()
       try require(
-        store.visible.allSatisfy { store.records[$0]?.iterations == 2400 },
+        store.visible.allSatisfy { key in
+          guard let record = store.records[key] else { return false }
+          return record.iterations >= 2400 || record.cappedPixels == 0
+        },
         "Stale iteration generation was published")
       store.retireFallback(now: ProcessInfo.processInfo.systemUptime + 1)
       try require(store.fallback.isEmpty, "Completed fallback was not released")
@@ -475,6 +478,7 @@
         try await checkColourBlend(gpu)
         try await checkHighIterationColour(gpu)
         try await checkDepthControls()
+        try await checkIterationReuse(gpu)
         try await checkResumption(gpu)
         try await checkMipmaps(gpu)
         let cacheMetrics = try await checkCache()

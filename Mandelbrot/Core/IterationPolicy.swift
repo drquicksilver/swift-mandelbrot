@@ -8,6 +8,9 @@ enum IterationPolicy {
     let target = (200 + 80 * max(0, logScale)) * multiplier
     return max(200, min(maximum, Int(ceil(min(Double(maximum), target) / 200)) * 200))
   }
+  static func shouldLower(current: Int, target: Int) -> Bool {
+    target < current && (target == 200 || current - target >= max(200, current / 10))
+  }
   static func shouldRaise(current: Int, target: Int) -> Bool {
     target > current && (target == maximum || target - current >= max(200, current / 10))
   }

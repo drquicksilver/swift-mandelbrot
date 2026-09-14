@@ -47,7 +47,8 @@ import SwiftUI
       if iterations != target { iterations = target }
     } else if IterationPolicy.shouldRaise(current: iterations, target: target) {
       iterations = target
-    } else if target < iterations && !interactionActive {
+    } else if IterationPolicy.shouldLower(current: iterations, target: target) && !interactionActive
+    {
       depthTask = Task { [weak self] in
         do { try await Task.sleep(for: .milliseconds(300)) } catch { return }
         guard let self, self.isActive, !self.motionActive, !self.interactionActive else { return }

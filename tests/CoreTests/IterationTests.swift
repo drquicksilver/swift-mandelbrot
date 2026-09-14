@@ -43,3 +43,9 @@ import Testing
   #expect(MemoryLayout<SampleRecord>.stride == 8)
   #expect(SampleRecord(iteration: SampleRecord.capped, correction: 0).legacyFloat == -1)
 }
+
+@Test func decreaseHysteresis() {
+  #expect(!IterationPolicy.shouldLower(current: 10000, target: 9800))
+  #expect(IterationPolicy.shouldLower(current: 10000, target: 8800))
+  #expect(IterationPolicy.shouldLower(current: 400, target: 200))
+}

@@ -54,6 +54,7 @@ final class GPUContext: @unchecked Sendable {
   let device: MTLDevice
   let computeQueue: MTLCommandQueue
   let displayQueue: MTLCommandQueue
+  let summaryPipeline: MTLComputePipelineState
   let samplePipeline: MTLComputePipelineState
   let perturbPipeline: MTLComputePipelineState
   let resumePipeline: MTLComputePipelineState
@@ -78,6 +79,8 @@ final class GPUContext: @unchecked Sendable {
     computeQueue = queue
     displayQueue = display
     self.library = library
+    summaryPipeline = try device.makeComputePipelineState(
+      function: library.makeFunction(name: "summariseSamples")!)
     samplePipeline = try device.makeComputePipelineState(
       function: library.makeFunction(name: "renderSamples")!)
     perturbPipeline = try device.makeComputePipelineState(
@@ -168,6 +171,31 @@ final class GPUContext: @unchecked Sendable {
     encoder.endEncoding()
     return try await submit(command)
   }
+  func copySamples(_ source: MTLTexture, into target: MTLTexture) async throws {
+    guard let command = computeQueue.makeCommandBuffer(),
+      let encoder = command.makeBlitCommandEncoder()
+    else { throw GPUFailure("Sample copy unavailable") }
+    encoder.copy(
+      from: source, sourceSlice: 0, sourceLevel: 0, sourceOrigin: MTLOrigin(x: 0, y: 0, z: 0),
+      sourceSize: MTLSize(width: source.width, height: source.height, depth: 1), to: target,
+      destinationSlice: 0, destinationLevel: 0, destinationOrigin: MTLOrigin(x: 0, y: 0, z: 0))
+    encoder.endEncoding()
+    _ = try await submit(command)
+  }
+  func sampleSummary(_ samples: MTLTexture) async throws -> (capped: Int, maximumEscaped: Int) {
+    guard let buffer = device.makeBuffer(length: 8, options: .storageModeShared),
+      let command = computeQueue.makeCommandBuffer(),
+      let encoder = command.makeComputeCommandEncoder()
+    else { throw GPUFailure("Sample summary unavailable") }
+    buffer.contents().storeBytes(of: UInt64(0), as: UInt64.self)
+    encoder.setTexture(samples, index: 0)
+    encoder.setBuffer(buffer, offset: 0, index: 0)
+    dispatch(encoder, pipeline: summaryPipeline, width: samples.width, height: samples.height)
+    encoder.endEncoding()
+    _ = try await submit(command)
+    let words = buffer.contents().assumingMemoryBound(to: UInt32.self)
+    return (Int(words[0]), Int(words[1]))
+  }
   func average(children: [MTLTexture], parent: MTLTexture) async throws -> MTLTexture {
     precondition(children.count == 4)
     let output = try texture(width: 258, height: 258, format: .rgba8Unorm)
@@ -203,7 +231,8 @@ final class GPUContext: @unchecked Sendable {
     return texture
   }
   func colour(
-    _ samples: MTLTexture, into colour: MTLTexture, settings: ColourSettings = ColourSettings()
+    _ samples: MTLTexture, into colour: MTLTexture, settings: ColourSettings = ColourSettings(),
+    iterations: Int = Int(UInt32.max)
   ) async throws -> Double {
     guard let command = computeQueue.makeCommandBuffer(),
       let encoder = command.makeComputeCommandEncoder()
@@ -212,10 +241,11 @@ final class GPUContext: @unchecked Sendable {
       var density: Float
       var offset: Float
       var smooth: UInt32
-      var padding: UInt32 = 0
+      var limit: UInt32
     }
     var parameters = Parameters(
-      density: settings.density, offset: settings.offset, smooth: settings.smooth ? 1 : 0)
+      density: settings.density, offset: settings.offset, smooth: settings.smooth ? 1 : 0,
+      limit: UInt32(iterations))
     encoder.setBytes(&parameters, length: MemoryLayout<Parameters>.stride, index: 0)
     encoder.setTexture(try paletteTexture(settings.palette), index: 2)
     encoder.setTexture(samples, index: 0)
@@ -245,7 +275,8 @@ final class GPUContext: @unchecked Sendable {
     } else {
       kernel = try await compute(into: samples, parameters: parameters)
     }
-    let shading = try await self.colour(samples, into: colour, settings: settings)
+    let shading = try await self.colour(
+      samples, into: colour, settings: settings, iterations: iterations)
     return GPUFrame(
       samples: samples, colour: colour, kernelSeconds: kernel, colourSeconds: shading,
       perturbation: metrics)

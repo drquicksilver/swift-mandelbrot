@@ -9,6 +9,7 @@ struct TileStatistics: Equatable, Codable {
   var perturbationSkipped = 0
   var referenceMS = 0.0
 
+  var sampledPixels = 0, reusedPixels = 0
   var tiles = 0, bytes = 0, computed = 0, cancelled = 0, batches = 0, cacheHits = 0, evictions = 0
   var demandUpdates = 0
   var updateMS = 0.0, presentationFPS = 0.0
@@ -22,6 +23,7 @@ struct TileStatistics: Equatable, Codable {
   var colour: MTLTexture
   let readyAt: Double
   let iterations: Int
+  var cappedPixels = TileGrid.textureSize * TileGrid.textureSize
   var lastUsed: UInt64 = 0
   var isMip = false
   init(
@@ -104,7 +106,7 @@ struct TileStatistics: Equatable, Codable {
   private var lastDemand: Demand?
   private(set) var error: String?
   var isIdle: Bool { worker == nil }
-  var allVisibleReady: Bool { !visible.isEmpty && visible.allSatisfy { records[$0] != nil } }
+  var allVisibleReady: Bool { !visible.isEmpty && visible.allSatisfy { !needsSampling($0) } }
   var residentBytes: Int {
     records.values.reduce(0) { $0 + $1.bytes } + fallback.reduce(0) { $0 + $1.bytes }
   }
@@ -169,7 +171,20 @@ struct TileStatistics: Equatable, Codable {
     tick &+= 1
     self.viewport = viewport
     self.size = size
-    if self.iterations != iterations || self.override != override { invalidate() }
+    let limitChanged = self.iterations != iterations
+    if self.override != override {
+      invalidate()
+    } else if limitChanged {
+      generation &+= 1
+      worker?.cancel()
+      failed.removeAll()
+      failureAttempts.removeAll()
+      error = nil
+      retryTask?.cancel()
+      retryTask = nil
+      retryBlocked = false
+      terminalFailure = false
+    }
     self.iterations = iterations
     self.override = override
     lod = max(
@@ -213,7 +228,7 @@ struct TileStatistics: Equatable, Codable {
         record.lastUsed = tick
       }
     }
-    if self.colouring != colouring {
+    if self.colouring != colouring || limitChanged {
       self.colouring = colouring
       needsRecolour = true
       generation &+= 1
@@ -262,10 +277,14 @@ struct TileStatistics: Equatable, Codable {
       self.startWorker()
     }
   }
+  private func needsSampling(_ key: TileKey) -> Bool {
+    guard let record = records[key] else { return true }
+    return record.iterations < iterations && record.cappedPixels > 0
+  }
   private func nextKey() -> TileKey? {
-    let primary = needed.filter { records[$0] == nil && !failed.contains($0) }
+    let primary = needed.filter { needsSampling($0) && !failed.contains($0) }
     let candidates =
-      primary.isEmpty ? prefetch.filter { records[$0] == nil && !failed.contains($0) } : primary
+      primary.isEmpty ? prefetch.filter { needsSampling($0) && !failed.contains($0) } : primary
     guard !primary.isEmpty || needed.count * tileCost + tileCost <= residentLimit else {
       return nil
     }
@@ -313,7 +332,7 @@ struct TileStatistics: Equatable, Codable {
     counters.tiles = records.count
     counters.bytes = residentBytes
     counters.budgetBytes = budgetBytes
-    counters.pending = needed.filter { records[$0] == nil }.count
+    counters.pending = needed.filter { needsSampling($0) }.count
     statistics = counters
   }
   func recordPreparation(seconds: Double) {
@@ -352,12 +371,13 @@ struct TileStatistics: Equatable, Codable {
   }
   private func recolour(_ gpu: GPUContext, generation: UInt64) async throws {
     let settings = colouring
+    let limit = iterations
     let all = Array(records.values) + fallback
     var replacements: [(TileRecord, MTLTexture)] = []
     for record in all {
       try Task.checkCancellation()
       let colour = try gpu.texture(width: 258, height: 258, format: .rgba8Unorm)
-      _ = try await gpu.colour(record.samples, into: colour, settings: settings)
+      _ = try await gpu.colour(record.samples, into: colour, settings: settings, iterations: limit)
       replacements.append((record, colour))
     }
     try Task.checkCancellation()
@@ -379,7 +399,7 @@ struct TileStatistics: Equatable, Codable {
     var key = child.parent
     while key.level >= minimumLevel, let parent = records[key] {
       let children = key.children.compactMap { records[$0] }
-      guard children.count == 4 else { break }
+      guard children.count == 4, children.allSatisfy({ !needsSampling($0.key) }) else { break }
       try Task.checkCancellation()
       let colour = try await gpu.average(children: children.map(\.colour), parent: parent.colour)
       try Task.checkCancellation()
@@ -411,6 +431,8 @@ struct TileStatistics: Equatable, Codable {
         while !Task.isCancelled, self.generation == generation, let key = self.nextKey() {
           workingKey = key
           try self.beforeTileAllocation?(key)
+          let limit = self.iterations
+          let previous = self.records[key]
           let resolution = TileGrid.textureSize
           self.evict(reserving: self.tileCost)
           // Prefetch never churns other prefetch entries endlessly.
@@ -420,6 +442,7 @@ struct TileStatistics: Equatable, Codable {
           }
           let bounds = self.bounds(key)
           let samples = try gpu.texture(width: resolution, height: resolution, format: .rg32Uint)
+          if let previous { try await gpu.copySamples(previous.samples, into: samples) }
           let colour = try gpu.texture(width: resolution, height: resolution, format: .rgba8Unorm)
           let renderer = PrecisionPolicy.renderer(
             logScale: Double(key.level), pixelWidth: 256, center: bounds.center,
@@ -434,9 +457,9 @@ struct TileStatistics: Equatable, Codable {
             // Reference selection is independent of the grid's indexing anchor.
             region.preferredReference = self.viewport.preciseCenter
             let metrics = try await gpu.perturb(
-              into: samples, region: region, iterations: self.iterations, useBLA: self.useBLA,
+              into: samples, region: region, iterations: limit, useBLA: self.useBLA,
               hierarchicalBLA: self.hierarchicalBLA,
-              resources: self.perturbationResources)
+              resources: self.perturbationResources, preserveEscaped: previous != nil)
             self.referenceBytes = metrics.referenceBytes
             self.counters.batches += metrics.batches
             self.counters.referenceOrbits += metrics.references
@@ -452,20 +475,21 @@ struct TileStatistics: Equatable, Codable {
             else { throw GPUFailure("Orbit allocation failed") }
             var params = GPUParameters(
               viewport: Viewport(center: bounds.center, scale: 3 / bounds.span), width: resolution,
-              height: resolution, iterations: self.iterations, renderer: renderer)
+              height: resolution, iterations: limit, renderer: renderer)
             params.realMin = GPUParameters.split(bounds.left - step / 2)
             params.imagMax = GPUParameters.split(bounds.top + step / 2)
             params.stepX = GPUParameters.split(step)
             params.stepY = params.stepX
             params.smooth = 1
+            params.padding = previous != nil ? 1 : 0
             var start = 0
             var batch = 64
-            while start < self.iterations {
+            while start < limit {
               if Task.isCancelled || (!self.needed.contains(key) && !self.prefetch.contains(key)) {
                 cancelled = true
                 break
               }
-              let count = min(batch, self.iterations - start)
+              let count = min(batch, limit - start)
               let time = try await gpu.resume(
                 into: samples, states: states, parameters: params, start: start, count: count)
               start += count
@@ -480,12 +504,20 @@ struct TileStatistics: Equatable, Codable {
             self.counters.cancelled += 1
             continue
           }
-          _ = try await gpu.colour(samples, into: colour, settings: self.colouring)
+          _ = try await gpu.colour(
+            samples, into: colour, settings: self.colouring, iterations: limit)
           try Task.checkCancellation()
           guard self.generation == generation else { throw CancellationError() }
           let record = TileRecord(
             key: key, bounds: bounds, samples: samples, colour: colour,
-            readyAt: ProcessInfo.processInfo.systemUptime, iterations: self.iterations)
+            readyAt: ProcessInfo.processInfo.systemUptime, iterations: limit)
+          let summary = try await gpu.sampleSummary(samples)
+          try Task.checkCancellation()
+          guard self.generation == generation else { throw CancellationError() }
+          record.cappedPixels = summary.capped
+          self.counters.sampledPixels += previous?.cappedPixels ?? (resolution * resolution)
+          self.counters.reusedPixels +=
+            previous.map { resolution * resolution - $0.cappedPixels } ?? 0
           record.lastUsed = self.tick
           self.records[key] = record
           self.failureAttempts.removeValue(forKey: key)
