@@ -21,7 +21,7 @@ ALL = DOUBLE + ['float-math', 'simd4-float', 'metal']
 
 def render(fixture, renderer, folder, pipeline="legacy"):
     png, raw = folder / 'image.png', folder / 'counts.u16'
-    subprocess.run([APP, '--render', '--pipeline', pipeline, '--renderer', renderer, '--size', f'{fixture["width"]}x{fixture["height"]}',
+    subprocess.run([APP, '--render', '--colouring', 'legacy', '--pipeline', pipeline, '--renderer', renderer, '--size', f'{fixture["width"]}x{fixture["height"]}',
                     '--center-real', str(fixture['centerReal']), '--center-imag', str(fixture['centerImag']),
                     '--scale', str(fixture['scale']), '--iterations', str(fixture['iterations']),
                     '--output', str(png), '--counts', str(raw)], check=True, capture_output=True,

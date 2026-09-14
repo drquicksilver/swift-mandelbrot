@@ -2,6 +2,22 @@ import Combine
 import SwiftUI
 
 @MainActor final class ExplorerModel: ObservableObject {
+    @Published var colouring = ColourSettings() { didSet { recolour() } }
+    private var colourTask: Task<Void, Never>?
+    func recolour() {
+        colourTask?.cancel()
+        guard let frame = gpuFrame, let gpu = GPUContext.shared else { return }
+        let settings = colouring
+        colourTask = Task {
+            do {
+                let texture = try gpu.texture(width:frame.samples.width,height:frame.samples.height,format:.rgba8Unorm)
+                let time = try await gpu.colour(frame.samples,into:texture,settings:settings)
+                try Task.checkCancellation()
+                guard self.gpuFrame?.samples === frame.samples else { return }
+                self.gpuFrame = GPUFrame(samples:frame.samples,colour:texture,kernelSeconds:frame.kernelSeconds,colourSeconds:time)
+            } catch is CancellationError {} catch { self.error = error.localizedDescription }
+        }
+    }
     @Published var viewport = Viewport() { didSet { if viewport != oldValue { requestRender() } } }
     @Published var iterations = 200 { didSet { requestRender() } }
     @Published var rendererOverride: RendererID? { didSet { requestRender() } }
@@ -68,7 +84,7 @@ import SwiftUI
                     for divisor in [8, 1] {
                         try Task.checkCancellation()
                         let frame = try await gpu.render(viewport:view,width:max(1,width/divisor),height:max(1,height/divisor),
-                                                         iterations:iterations,renderer:renderer)
+                                                         iterations:iterations,renderer:renderer,settings:self.colouring)
                         try Task.checkCancellation()
                         self.gpuFrame = frame; self.imageViewport = view; self.error = nil
                     }

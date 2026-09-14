@@ -106,18 +106,33 @@ final class GPUContext: @unchecked Sendable {
         encoder.endEncoding()
         return try await submit(command)
     }
-    func colour(_ samples: MTLTexture, into colour: MTLTexture) async throws -> Double {
+    func paletteTexture(_ palette: Palette) throws -> MTLTexture {
+        let descriptor = MTLTextureDescriptor()
+        descriptor.textureType = .type1D; descriptor.width = 1024
+        descriptor.pixelFormat = .rgba8Unorm; descriptor.storageMode = .shared; descriptor.usage = .shaderRead
+        guard let texture = device.makeTexture(descriptor:descriptor) else { throw GPUFailure("Palette allocation failed") }
+        let bytes = palette.lookupTable()
+        bytes.withUnsafeBytes { texture.replace(region:MTLRegionMake1D(0,1024),mipmapLevel:0,withBytes:$0.baseAddress!,bytesPerRow:4096) }
+        return texture
+    }
+    func colour(_ samples: MTLTexture, into colour: MTLTexture, settings: ColourSettings = ColourSettings()) async throws -> Double {
         guard let command=computeQueue.makeCommandBuffer(),let encoder=command.makeComputeCommandEncoder() else { throw GPUFailure("GPU queue unavailable") }
+        struct Parameters { var density: Float; var offset: Float; var smooth: UInt32; var padding: UInt32 = 0 }
+        var parameters = Parameters(density:settings.density,offset:settings.offset,smooth:settings.smooth ? 1 : 0)
+        encoder.setBytes(&parameters,length:MemoryLayout<Parameters>.stride,index:0)
+        encoder.setTexture(try paletteTexture(settings.palette),index:2)
         encoder.setTexture(samples,index:0);encoder.setTexture(colour,index:1)
         dispatch(encoder,pipeline:colourPipeline,width:colour.width,height:colour.height)
         encoder.endEncoding()
         return try await submit(command)
     }
-    func render(viewport: Viewport, width: Int, height: Int, iterations: Int, renderer: RendererID) async throws -> GPUFrame {
+    func render(viewport: Viewport, width: Int, height: Int, iterations: Int, renderer: RendererID, settings: ColourSettings = ColourSettings()) async throws -> GPUFrame {
         let samples=try texture(width:width,height:height,format:.r32Float)
         let colour=try texture(width:width,height:height,format:.rgba8Unorm)
-        let kernel=try await compute(into:samples,parameters:GPUParameters(viewport:viewport,width:width,height:height,iterations:iterations,renderer:renderer))
-        let shading=try await self.colour(samples,into:colour)
+        var parameters = GPUParameters(viewport:viewport,width:width,height:height,iterations:iterations,renderer:renderer)
+        parameters.smooth = settings.smooth ? 1 : 0
+        let kernel=try await compute(into:samples,parameters:parameters)
+        let shading=try await self.colour(samples,into:colour,settings:settings)
         return GPUFrame(samples:samples,colour:colour,kernelSeconds:kernel,colourSeconds:shading)
     }
     // Readback exists only for export and numerical tests, never for presentation.

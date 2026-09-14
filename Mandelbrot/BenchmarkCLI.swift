@@ -30,6 +30,11 @@ enum BenchmarkCLI {
       --output PATH     PNG destination (required for --render)
       --counts PATH     Optional raw UInt16 little-endian iteration counts,
                         row-major, top to bottom; only with --render
+      --colouring MODE   smooth (GPU default) or legacy
+      --palette NAME     blue-gold, fire, ice, ink, twilight, forest, orbit
+      --density N        Iterations per palette cycle (default: 64)
+      --offset N         Palette phase (default: 0)
+      --samples PATH     Raw float32 GPU samples; -1 means capped/inside
       --pipeline NAME    legacy or gpu (default: legacy); gpu requires Metal renderers
       --timing SCOPE     end-to-end or kernel (GPU benchmark only)
       --help             Show this help
@@ -46,6 +51,8 @@ enum BenchmarkCLI {
         var runs = 3
         var warmup = 1
         var format = "markdown"
+        var colouring = ColourSettings()
+        var samples: String?
         var pipeline = "legacy"
         var timing = "end-to-end"
         var render = false
@@ -70,7 +77,7 @@ enum BenchmarkCLI {
                 let flag = arguments[index]
                 index += 1
                 if flag == "--benchmark" || flag == "--render" { continue }
-                guard (renderFlags + benchmarkFlags + ["--iterations", "--center-real", "--center-imag", "--scale", "--pipeline", "--timing"]).contains(flag) else {
+                guard (renderFlags + benchmarkFlags + ["--iterations", "--center-real", "--center-imag", "--scale", "--pipeline", "--timing", "--colouring", "--palette", "--density", "--offset", "--samples"]).contains(flag) else {
                     throw CLIError("Unknown option: \(flag)")
                 }
                 guard !(render ? benchmarkFlags : renderFlags).contains(flag) else {
@@ -80,6 +87,17 @@ enum BenchmarkCLI {
                 let value = arguments[index]
                 index += 1
                 switch flag {
+                case "--colouring":
+                    guard ["legacy","smooth"].contains(value) else { throw CLIError("Colouring must be legacy or smooth") }
+                    colouring.smooth = value == "smooth"
+                case "--palette":
+                    guard let palette = Palette(rawValue:value) else { throw CLIError("Unknown palette") }
+                    colouring.palette = palette
+                case "--density", "--offset":
+                    guard let number = Float(value), number.isFinite,
+                        (flag == "--density" ? (1...4096).contains(number) : (-1000...1000).contains(number)) else { throw CLIError("Invalid colour parameter") }
+                    if flag == "--density" { colouring.density = number } else { colouring.offset = number }
+                case "--samples": samples = value
                 case "--pipeline":
                     guard ["legacy", "gpu"].contains(value) else { throw CLIError("Pipeline must be legacy or gpu") }
                     pipeline = value
@@ -136,6 +154,13 @@ enum BenchmarkCLI {
                     }
                 }
             }
+            if let samples {
+                guard render, pipeline == "gpu", !samples.isEmpty else { throw CLIError("--samples requires GPU PNG rendering") }
+                if [output,counts].compactMap({$0}).contains(where:{URL(fileURLWithPath:$0).standardizedFileURL == URL(fileURLWithPath:samples).standardizedFileURL}) {
+                    throw CLIError("Output destinations must differ")
+                }
+            }
+            if pipeline == "gpu" && colouring.smooth && counts != nil { throw CLIError("Use --samples for smooth data, or --colouring legacy for integer counts") }
             if pipeline == "gpu" && !(render ? [renderer] : variants).allSatisfy({ RendererID(rawValue:$0)?.isGPU == true }) {
                 throw CLIError("The GPU pipeline requires metal or metal-double renderers")
             }
@@ -260,13 +285,14 @@ enum BenchmarkCLI {
             if options.render {
                 let (width,height) = options.size
                 let frame = try await gpu.render(viewport:Viewport(center:options.center,scale:options.scale),
-                    width:width,height:height,iterations:options.iterations,renderer:RendererID(rawValue:options.renderer)!)
+                    width:width,height:height,iterations:options.iterations,renderer:RendererID(rawValue:options.renderer)!,settings:options.colouring)
                 let image = try await gpu.image(frame.colour)
                 let data = NSMutableData()
                 guard let destination = CGImageDestinationCreateWithData(data,UTType.png.identifier as CFString,1,nil) else { throw CLIError("PNG encoder unavailable") }
                 CGImageDestinationAddImage(destination,image,nil)
                 guard CGImageDestinationFinalize(destination) else { throw CLIError("PNG encoding failed") }
                 try (data as Data).write(to:URL(fileURLWithPath:options.output!),options:.atomic)
+                if let path = options.samples { try await gpu.readback(frame.samples).write(to:URL(fileURLWithPath:path),options:.atomic) }
                 if let path = options.counts {
                     let samples = try await gpu.readback(frame.samples)
                     let raw = samples.withUnsafeBytes { buffer -> Data in
@@ -289,7 +315,7 @@ enum BenchmarkCLI {
                     for run in 0..<(options.runs+options.warmup) {
                         let start = DispatchTime.now().uptimeNanoseconds
                         let frame = try await gpu.render(viewport:Viewport(center:options.center,scale:options.scale),
-                            width:width,height:height,iterations:options.iterations,renderer:RendererID(rawValue:variant)!)
+                            width:width,height:height,iterations:options.iterations,renderer:RendererID(rawValue:variant)!,settings:options.colouring)
                         let seconds = options.timing == "kernel" ? frame.kernelSeconds : Double(DispatchTime.now().uptimeNanoseconds-start)/1e9
                         if run >= options.warmup { samples.append(seconds) }
                     }

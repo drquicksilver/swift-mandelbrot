@@ -33,10 +33,12 @@ struct ContentView: View {
         .background(.black)
         .toolbar {
             Button { model.perform(.reset) } label: { Label("Reset", systemImage: "house") }
+            Button { model.showSettings = true } label: { Label("Appearance", systemImage: "paintpalette") }
             Button { model.showBenchmark = true } label: { Label("Benchmarks", systemImage: "speedometer") }
             Button { model.showHelp = true } label: { Label("Controls", systemImage: "questionmark.circle") }
         }
         .sheet(isPresented: $model.showBenchmark) { BenchmarkView(viewport: model.viewport, iterations: model.iterations) }
+        .sheet(isPresented: $model.showSettings) { AppearanceView(model:model) }
         .sheet(isPresented: $model.showHelp) { HelpView() }
         .focusedSceneValue(\.explorer, model)
     }

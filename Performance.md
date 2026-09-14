@@ -181,3 +181,24 @@ allocation, submission, computation and GPU colouring to a completed texture. It
 excludes display synchronization and PNG readback. Use `--pipeline gpu --timing
 kernel` or `--timing end-to-end`; the legacy lab path remains the default for
 backward-compatible CLI comparisons.
+
+## 1.5: smooth colouring and palettes
+
+Same M1 Pro protocol and 1e7 viewport as 1.4. Smooth escape radius is 256
+(squared threshold 65536), with `n + 1 - log2(log2(|z|))`; negative sentinel -1
+marks capped samples, and far-exterior smooth values are clamped at zero.
+Seven periodic gradient LUTs include a constant-lightness/chroma OKLab wheel.
+Palette, density and offset changes recolour retained samples without iteration work.
+The independent smooth Double oracle and all legacy/product goldens pass.
+
+| Scope | Renderer | 512² ms | 1024² ms |
+| --- | --- | ---: | ---: |
+| kernel | metal | 4.279 | 12.656 |
+| kernel | metal-double | 18.865 | 73.138 |
+| end-to-end | metal | 4.070 | 14.011 |
+| end-to-end | metal-double | 19.945 | 73.523 |
+
+Samples: `evidence/product/1.5-smooth-palettes.json`; PNG:
+`evidence/product/smooth-blue-gold.png`. GPU rendering defaults to smooth colouring.
+Use `--colouring legacy` for unchanged integer-count exports, or `--samples file.f32`
+for float32 smooth samples. `--palette`, `--density`, and `--offset` control appearance.

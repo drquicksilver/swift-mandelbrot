@@ -16,14 +16,17 @@ kernel void renderSamples(texture2d<float, access::write> out [[texture(0)]],
     uint2 point = uint2(gid.x, gid.y + p.rowStart);
     if (point.x >= p.width || point.y >= p.height || gid.y >= p.rowCount) return;
     uint n = 0;
+    float magnitude = 0;
+    float bailout = p.smooth != 0 ? 65536.0f : 4.0f;
     if (p.precision == 0) {
         float cr = p.realMin.x + float(point.x) * p.stepX.x;
         float ci = p.imagMax.x - float(point.y) * p.stepY.x;
         float zr = 0, zi = 0;
-        while (zr*zr+zi*zi <= 4.0f && n < p.maxIterations) {
+        while (zr*zr+zi*zi <= bailout && n < p.maxIterations) {
             float next = zr*zr-zi*zi+cr;
             zi = 2.0f*zr*zi+ci; zr = next; ++n;
         }
+        magnitude = zr*zr+zi*zi;
     } else {
         float2 cr = dd_add(p.realMin, dd_mul_float(p.stepX,float(point.x)));
         float2 ci = dd_sub(p.imagMax, dd_mul_float(p.stepY,float(point.y)));
@@ -31,12 +34,15 @@ kernel void renderSamples(texture2d<float, access::write> out [[texture(0)]],
         while (n < p.maxIterations) {
             float2 zr2 = dd_mul(zr,zr), zi2 = dd_mul(zi,zi);
             float2 mag = dd_add(zr2,zi2);
-            if (mag.x > 4.0f || (mag.x == 4.0f && mag.y > 0.0f)) break;
+            magnitude = mag.x + mag.y;
+            if (mag.x > bailout || (mag.x == bailout && mag.y > 0.0f)) break;
             float2 next = dd_add(dd_sub(zr2,zi2),cr);
             zi = dd_add(dd_mul_float(dd_mul(zr,zi),2),ci); zr = next; ++n;
         }
     }
-    out.write(float4(n == p.maxIterations ? -1.0f : float(n)),point);
+    float sample = float(n);
+    if (p.smooth != 0 && n < p.maxIterations) sample = max(0.0f,float(n)+1-log2(log2(sqrt(magnitude))));
+    out.write(float4(n == p.maxIterations ? -1.0f : sample),point);
 }
 
 float3 hsvRGB(float h, float s, float v) {
@@ -60,11 +66,17 @@ float3 legacyColour(float iteration) {
     }
     return clamp(rgb,0.0f,1.0f);
 }
+struct ColourParameters { float density; float offset; uint smooth; uint padding; };
 kernel void colourSamples(texture2d<float,access::read> samples [[texture(0)]],
                           texture2d<float,access::write> output [[texture(1)]],
+                          texture1d<float> palette [[texture(2)]],
+                          constant ColourParameters &settings [[buffer(0)]],
                           uint2 gid [[thread_position_in_grid]]) {
     if(gid.x>=output.get_width() || gid.y>=output.get_height()) return;
-    output.write(float4(legacyColour(samples.read(gid).x),1),gid);
+    float value = samples.read(gid).x;
+    constexpr sampler lookup(coord::normalized, address::repeat, filter::linear);
+    float3 rgb = value < 0 ? float3(0.005,0.008,0.014) : palette.sample(lookup,value/settings.density+settings.offset).rgb;
+    output.write(float4(settings.smooth != 0 ? rgb : legacyColour(value),1),gid);
 }
 
 struct DrawUniforms { float4 rect; float4 uv; float opacity; float blend; uint border; uint level; };
