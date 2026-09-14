@@ -5,41 +5,48 @@ struct ContentView: View {
   @Environment(\.scenePhase) private var scenePhase
   @Environment(\.displayScale) private var displayScale
   var body: some View {
-    GeometryReader { geometry in
-      ZStack(alignment: .bottomTrailing) {
+    ZStack(alignment: .bottomTrailing) {
+      // The geometry and input surface share the full drawable area. Controls
+      // remain siblings in the safe area, so their insets do not shift the camera.
+      GeometryReader { geometry in
         ViewerView(model: model)
-        TileFailureNotice(store: model.tiles)
-        if model.showHUD {
-          TileHUD(store: model.tiles, renderer: model.renderer, iterations: model.iterations)
-        }
-        if model.atPrecisionLimit {
-          Text("Maximum detail reached").font(.caption).padding(10)
-            .background(.regularMaterial, in: Capsule()).frame(
-              maxWidth: .infinity, maxHeight: .infinity, alignment: .top
-            )
-            .padding(.top, 16)
-        }
-        if let error = model.error {
-          Text(error).padding().background(.regularMaterial).frame(
-            maxWidth: .infinity, maxHeight: .infinity)
-        }
+          .onAppear { model.resize(geometry.size, displayScale: displayScale) }
+          .onChange(of: geometry.size) { _, size in model.resize(size, displayScale: displayScale) }
+          .onChange(of: displayScale) { _, scale in model.resize(geometry.size, displayScale: scale)
+          }
       }
       #if os(iOS)
-        .overlay(alignment: .topTrailing) {
-          HStack(spacing: 0) {
-            viewerButton("Reset", icon: "house") { model.perform(.reset) }
-            viewerButton("Settings", icon: "slider.horizontal.3") { model.showSettings = true }
-            viewerButton("Controls", icon: "questionmark.circle") { model.showHelp = true }
-          }
-          .padding(4)
-          .background(.regularMaterial, in: Capsule())
-          .padding(12)
-        }
+        .ignoresSafeArea()
+        .statusBarHidden()
       #endif
-      .onAppear { model.resize(geometry.size, displayScale: displayScale) }
-      .onChange(of: geometry.size) { _, size in model.resize(size, displayScale: displayScale) }
-      .onChange(of: displayScale) { _, scale in model.resize(geometry.size, displayScale: scale) }
+      TileFailureNotice(store: model.tiles)
+      if model.showHUD {
+        TileHUD(store: model.tiles, renderer: model.renderer, iterations: model.iterations)
+      }
+      if model.atPrecisionLimit {
+        Text("Maximum detail reached").font(.caption).padding(10)
+          .background(.regularMaterial, in: Capsule()).frame(
+            maxWidth: .infinity, maxHeight: .infinity, alignment: .top
+          )
+          .padding(.top, 16)
+      }
+      if let error = model.error {
+        Text(error).padding().background(.regularMaterial).frame(
+          maxWidth: .infinity, maxHeight: .infinity)
+      }
     }
+    #if os(iOS)
+      .overlay(alignment: .topTrailing) {
+        HStack(spacing: 0) {
+          viewerButton("Reset", icon: "house") { model.perform(.reset) }
+          viewerButton("Settings", icon: "slider.horizontal.3") { model.showSettings = true }
+          viewerButton("Controls", icon: "questionmark.circle") { model.showHelp = true }
+        }
+        .padding(4)
+        .background(.regularMaterial, in: Capsule())
+        .padding(12)
+      }
+    #endif
     .onChange(of: scenePhase) { _, phase in model.setActive(phase == .active) }
     .onDisappear { model.setActive(false) }
     .onAppear { model.setActive(true) }
