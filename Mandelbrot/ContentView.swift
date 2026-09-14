@@ -23,6 +23,18 @@ struct ContentView: View {
             maxWidth: .infinity, maxHeight: .infinity)
         }
       }
+      #if os(iOS)
+      .overlay(alignment: .topTrailing) {
+        HStack(spacing: 0) {
+          viewerButton("Reset", icon: "house") { model.perform(.reset) }
+          viewerButton("Settings", icon: "slider.horizontal.3") { model.showSettings = true }
+          viewerButton("Controls", icon: "questionmark.circle") { model.showHelp = true }
+        }
+        .padding(4)
+        .background(.regularMaterial, in: Capsule())
+        .padding(12)
+      }
+      #endif
       .onAppear { model.resize(geometry.size, displayScale: displayScale) }
       .onChange(of: geometry.size) { _, size in model.resize(size, displayScale: displayScale) }
       .onChange(of: displayScale) { _, scale in model.resize(geometry.size, displayScale: scale) }
@@ -31,6 +43,7 @@ struct ContentView: View {
     .onDisappear { model.setActive(false) }
     .onAppear { model.setActive(true) }
     .background(.black)
+    #if os(macOS)
     .toolbar {
       Button {
         model.perform(.reset)
@@ -48,6 +61,7 @@ struct ContentView: View {
         Label("Controls", systemImage: "questionmark.circle")
       }
     }
+    #endif
     .sheet(isPresented: $model.showDeveloper) { DeveloperPanel(model: model) }
     .sheet(isPresented: $model.showBenchmark) {
       BenchmarkView(viewport: model.viewport, iterations: model.iterations)
@@ -56,6 +70,19 @@ struct ContentView: View {
     .sheet(isPresented: $model.showHelp) { HelpView() }
     .focusedSceneValue(\.explorer, model)
   }
+
+  #if os(iOS)
+  private func viewerButton(_ title: String, icon: String, action: @escaping () -> Void) -> some View {
+    Button(action: action) {
+      Label(title, systemImage: icon)
+        .labelStyle(.iconOnly)
+        .frame(width: 44, height: 44)
+        .contentShape(Rectangle())
+    }
+    .buttonStyle(.plain)
+    .accessibilityIdentifier("viewer" + title)
+  }
+  #endif
 }
 
 struct TileHUD: View {
