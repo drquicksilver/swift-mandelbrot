@@ -15,6 +15,20 @@ struct TileKey: Hashable, Sendable {
       TileKey(level: level + 1, x: x * 2 + 1, y: y * 2 + 1, anchorID: anchorID),
     ]
   }
+  func relative(to source: TileKey) -> (x: Double, y: Double, extent: Double) {
+    precondition(anchorID == source.anchorID)
+    let shift = level - source.level
+    let extent = pow(2, -Double(shift))
+    func coordinate(_ value: Int64, _ origin: Int64) -> Double {
+      if shift >= 0 && shift < 62 {
+        let whole = value >> shift
+        let remainder = value - (whole << shift)
+        return Double(whole - origin) + Double(remainder) * extent
+      }
+      return Double(value) * extent - Double(origin)
+    }
+    return (coordinate(x, source.x), coordinate(y, source.y), extent)
+  }
   func ancestor(at level: Int) -> TileKey {
     let shift = self.level - level
     precondition(shift >= 0)
@@ -23,6 +37,7 @@ struct TileKey: Hashable, Sendable {
 }
 struct TileBounds: Sendable {
   let left: Double, top: Double, span: Double
+  var key: TileKey?
   var deepOrigin: DeepPoint?
   var deepLevel: Int?
   var wideSpan: WideReal { deepLevel.map { WideReal(3, exponent: -$0) } ?? WideReal(span) }
@@ -32,6 +47,9 @@ struct TileBounds: Sendable {
       x: wideSpan * 0.5, y: wideSpan * -0.5, bits: max(192, (deepLevel ?? 0) + 128))
   }
   func relative(to source: TileBounds) -> (x: Double, y: Double, extent: Double) {
+    if let key, let other = source.key, key.anchorID == other.anchorID {
+      return key.relative(to: other)
+    }
     if deepOrigin == nil && source.deepOrigin == nil {
       return (
         (left - source.left) / source.span, (source.top - top) / source.span, span / source.span
@@ -65,11 +83,12 @@ struct TileGrid: Sendable {
       let origin = (deepAnchor ?? DeepPoint(anchor, bits: 192)).offset(
         x: wide * Double(key.x), y: wide * -Double(key.y), bits: max(192, key.level + 128))
       return TileBounds(
-        left: origin.x.double, top: origin.y.double, span: span, deepOrigin: origin,
+        left: origin.x.double, top: origin.y.double, span: span, key: key, deepOrigin: origin,
         deepLevel: key.level)
     }
     return TileBounds(
-      left: anchor.x + Double(key.x) * span, top: anchor.y - Double(key.y) * span, span: span)
+      left: anchor.x + Double(key.x) * span, top: anchor.y - Double(key.y) * span, span: span,
+      key: key)
   }
   func idealLevel(viewport: Viewport, pixelWidth: Double) -> Double {
     viewport.logScale + log2(max(1, pixelWidth) / Double(Self.samples))

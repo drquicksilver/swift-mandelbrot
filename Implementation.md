@@ -144,3 +144,10 @@ unneeded work. Reference targets follow the viewport rather than the grid anchor
 with nearby orbit reuse. Tile workers recycle their GPU state buffer on completion,
 failure and cancellation. One precision policy now drives product renderer choices
 and override handling. `make test` passes, including the hard tiled oracle.
+
+### Deep-zoom review, stage 3
+
+Cached immutable bounds, added exact integer-key same-anchor relationships and
+one high-precision camera conversion per draw. Added CPU preparation counters and
+120-frame deep integration coverage. All existing and hard product goldens pass.
+Physical iPhone profiling could not run: neither target device was available.

@@ -484,3 +484,14 @@ Unit tests verify one computation for concurrent 400/401-bit requests, reuse at
 402 bits and a shorter iteration limit, and a new computation above the 512-bit
 band. Product tests verify scratch-buffer identity reuse and unchanged hard-image
 error budgets. Miss computation no longer blocks unrelated actor cache hits.
+
+## Deep-zoom review: CPU drawing geometry
+
+Same-anchor UVs and cell positions now use integer keys, bounds are cached, and
+one nearby tile origin is converted from high precision per frame. A 120-frame
+settled 1e1000 integration run on the M1 Pro measured CPU compositor preparation
+p95 **0.016 ms**, maximum **0.033 ms**. These measure encoding/preparation, not
+GPU execution or total UI frame time. Raw counters are in
+`evidence/review-deep/geometry.json`; the HUD now separates CPU draw preparation,
+demand updates and GPU time. The iPhone 16 Pro is listed as unavailable by
+`devicectl`, and no iPhone 11 Pro is connected, so phone timings remain unmeasured.

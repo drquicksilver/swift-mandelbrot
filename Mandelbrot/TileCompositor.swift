@@ -31,6 +31,10 @@ struct TileDrawUniforms {
     encoder: MTLRenderCommandEncoder,
     now: Double = ProcessInfo.processInfo.systemUptime, overlay: Bool = false
   ) {
+    let start = ProcessInfo.processInfo.systemUptime
+    defer { store.recordPreparation(seconds: ProcessInfo.processInfo.systemUptime - start) }
+    guard let first = store.visible.first else { return }
+    let projection = TileProjection(origin: store.bounds(first), viewport: viewport, size: size)
     encoder.setRenderPipelineState(gpu.tilePipeline)
     let floorLevel = Int(floor(store.lod))
     for key in store.visible {
@@ -46,8 +50,8 @@ struct TileDrawUniforms {
       let fine = store.bestAvailable(for: key) ?? base
       let oldFine = store.fallbackAvailable(for: key)
       let previousFine = (oldFine !== fine ? oldFine : nil) ?? fine
-      let cell = store.grid.bounds(key)
-      let center = viewport.screen(for: cell.preciseCenter, in: size)
+      let cell = store.bounds(key)
+      let center = projection.center(of: cell)
       let width = cell.wideSpan / viewport.wideSpan * size.width
       var params = TileDrawUniforms()
       params.rect = SIMD4(

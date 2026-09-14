@@ -4,6 +4,7 @@ import Foundation
 import Metal
 
 struct TileStatistics: Equatable, Codable {
+  var preparationMS = 0.0, preparationP95MS = 0.0, preparationMaxMS = 0.0
   var referenceOrbits = 0, referenceCacheHits = 0
   var perturbationSkipped = 0
   var referenceMS = 0.0
@@ -68,6 +69,7 @@ struct TileStatistics: Equatable, Codable {
   let budgetBytes: Int
   let perturbationResources: PerturbationResources
   private var referenceBytes = 0
+  private var boundsCache: [TileKey: TileBounds] = [:]
   // Reserve a third for transactional recolouring, one orbit-state buffer,
   // mip replacements and the two in-flight display frames.
   private var residentLimit: Int {
@@ -85,6 +87,7 @@ struct TileStatistics: Equatable, Codable {
   private var suspended = false
   private var lastFramePublish = 0.0
   private var frameTimes: [Double] = []
+  private var preparationTimes: [Double] = []
   private var presentationTimes: [Double] = []
   var onContentChange: (() -> Void)?
   private struct Demand: Equatable {
@@ -118,6 +121,14 @@ struct TileStatistics: Equatable, Codable {
     self.budgetBytes = max(8 * 1024 * 1024, budgetBytes ?? defaultBudget)
     perturbationResources = PerturbationResources(
       referenceBudget: min(self.budgetBytes / 4, 64 * 1024 * 1024))
+  }
+  func bounds(_ key: TileKey) -> TileBounds {
+    if let record = records[key] { return record.bounds }
+    if let value = boundsCache[key] { return value }
+    let value = grid.bounds(key)
+    if boundsCache.count >= 2048 { boundsCache.removeAll(keepingCapacity: true) }
+    boundsCache[key] = value
+    return value
   }
   private func invalidate() {
     generation &+= 1
@@ -168,6 +179,7 @@ struct TileStatistics: Equatable, Codable {
       || visible.contains(where: { abs($0.x) > (1 << 30) || abs($0.y) > (1 << 30) })
     {
       invalidate()
+      boundsCache.removeAll(keepingCapacity: true)
       grid.rebase(to: viewport.preciseCenter)
       visible = grid.visible(viewport: viewport, size: size, level: level)
     }
@@ -260,10 +272,12 @@ struct TileStatistics: Equatable, Codable {
     {
       return nil
     }
+    guard let first = candidates.first else { return nil }
+    let projection = TileProjection(origin: bounds(first), viewport: viewport, size: size)
     return candidates.min {
       if $0.level != $1.level { return $0.level < $1.level }
-      let a = viewport.screen(for: grid.bounds($0).preciseCenter, in: size)
-      let b = viewport.screen(for: grid.bounds($1).preciseCenter, in: size)
+      let a = projection.center(of: bounds($0))
+      let b = projection.center(of: bounds($1))
       return hypot(a.x - size.width / 2, a.y - size.height / 2)
         < hypot(b.x - size.width / 2, b.y - size.height / 2)
     }
@@ -290,11 +304,22 @@ struct TileStatistics: Equatable, Codable {
       counters.frameP95MS = sorted[min(sorted.count - 1, Int(Double(sorted.count) * 0.95))]
       counters.frameMaxMS = max(counters.frameMaxMS, sorted.last ?? 0)
     }
+    if !preparationTimes.isEmpty {
+      let sorted = preparationTimes.sorted()
+      counters.preparationP95MS = sorted[min(sorted.count - 1, Int(Double(sorted.count) * 0.95))]
+    }
     counters.tiles = records.count
     counters.bytes = residentBytes
     counters.budgetBytes = budgetBytes
     counters.pending = needed.filter { records[$0] == nil }.count
     statistics = counters
+  }
+  func recordPreparation(seconds: Double) {
+    let ms = seconds * 1000
+    counters.preparationMS = ms
+    counters.preparationMaxMS = max(counters.preparationMaxMS, ms)
+    preparationTimes.append(ms)
+    if preparationTimes.count > 120 { preparationTimes.removeFirst() }
   }
   func recordFrame(seconds: Double, now: Double) {
     counters.frameMS = seconds * 1000
@@ -391,7 +416,7 @@ struct TileStatistics: Equatable, Codable {
             self.prefetch.remove(key)
             continue
           }
-          let bounds = self.grid.bounds(key)
+          let bounds = self.bounds(key)
           let samples = try gpu.texture(width: resolution, height: resolution, format: .r32Float)
           let colour = try gpu.texture(width: resolution, height: resolution, format: .rgba8Unorm)
           let renderer = PrecisionPolicy.renderer(
@@ -485,7 +510,7 @@ struct TileStatistics: Equatable, Codable {
     }
   }
   func fallbackAvailable(for key: TileKey, maximumLevel: Int? = nil) -> TileRecord? {
-    let cell = grid.bounds(key)
+    let cell = bounds(key)
     return fallback.filter { record in
       let b = record.bounds
       let r = cell.relative(to: b)

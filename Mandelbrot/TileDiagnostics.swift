@@ -353,6 +353,9 @@
           store: store, viewport: view, width: 256, height: 192,
           now: ProcessInfo.processInfo.systemUptime + 1))
       try require(Set(initial).count > 100, "Deep compositor is flat")
+      for _ in 0..<120 {
+        _ = try await TileCompositor.snapshot(store: store, viewport: view, width: 256, height: 192)
+      }
       view.zoom(by: 1.15, at: CGPoint(x: 128, y: 96), in: size, pixelWidth: 256)
       store.update(
         viewport: view, size: size, pixelWidth: 256, iterations: 5000, override: nil,
@@ -380,6 +383,8 @@
       try await store.waitUntilReady()
       return [
         "perturbation1e1000ReadyMS": completed * 1000,
+        "deepPreparationP95MS": store.statistics.preparationP95MS,
+        "deepPreparationMaxMS": store.statistics.preparationMaxMS,
         "perturbationReferenceCacheHits": Double(store.statistics.referenceCacheHits),
         "perturbationMaxBatchMS": store.statistics.longestBatchMS,
         "perturbationResidentMiB": Double(store.residentBytes) / 1_048_576,

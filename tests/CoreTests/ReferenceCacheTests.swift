@@ -31,3 +31,20 @@ import Testing
     PrecisionPolicy.renderer(logScale: 41, pixelWidth: 256, center: .zero, override: .baseline)
       == .perturbation)
 }
+
+@Test func integerTileGeometryMatchesPreciseCoordinates() throws {
+  let view = try Viewport(real: "-.743643887037151", imag: ".13182590390533", zoom: "1e1000")
+  var grid = TileGrid(anchor: view.center)
+  grid.rebase(to: view.preciseCenter)
+  let size = CGSize(width: 900, height: 450)
+  let origin = grid.bounds(TileKey(level: 3322, x: -2, y: -1, anchorID: grid.anchorID))
+  let projection = TileProjection(origin: origin, viewport: view, size: size)
+  for level in 3319...3324 {
+    for x in -3...3 {
+      let b = grid.bounds(TileKey(level: level, x: Int64(x), y: -1, anchorID: grid.anchorID))
+      let actual = projection.center(of: b)
+      let expected = view.screen(for: b.preciseCenter, in: size)
+      #expect(abs(actual.x - expected.x) < 1e-9 && abs(actual.y - expected.y) < 1e-9)
+    }
+  }
+}

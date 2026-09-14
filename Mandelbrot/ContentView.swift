@@ -109,7 +109,7 @@ struct TileHUD: View {
         "GPU frame \(store.statistics.frameMS,specifier:"%.2f") ms · max batch \(store.statistics.longestBatchMS,specifier:"%.2f") ms"
       )
       Text(
-        "Demand update \(store.statistics.updateMS, specifier: "%.2f") ms · recent presentation \(store.statistics.presentationFPS, specifier: "%.0f") fps"
+        "CPU draw \(store.statistics.preparationMS, specifier: "%.2f") ms · demand \(store.statistics.updateMS, specifier: "%.2f") ms · recent presentation \(store.statistics.presentationFPS, specifier: "%.0f") fps"
       )
       Text("\(store.statistics.cacheHits) hits · \(store.statistics.evictions) evictions")
       if let error = store.error {
