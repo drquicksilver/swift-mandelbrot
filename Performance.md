@@ -372,3 +372,25 @@ The input display link/timer is paused or absent for GPU rendering and idle CPU
 rendering. These are implementation and offscreen measurements, not claims of
 measured phone battery savings or sustained 120 fps. Both iOS build targets
 verify the generated ProMotion boolean; `make test` and `make format-check` pass.
+
+## 2.2a — reference arithmetic library spike
+
+On the M1 Pro, Release Swift `-O` and Apple Clang `-O3`, five runs of 10 ×
+1,000 bounded reference iterations gave these median times:
+
+| Zoom precision | Bits | Swift BigInt fixed point | Boost cpp_bin_float |
+| --- | ---: | ---: | ---: |
+| 1e100 | 397 | 33.075 ms | 6.240 ms |
+| 1e1000 | 3386 | 864.733 ms | 68.952 ms |
+
+Boost wins arithmetic throughput (5.3× / 12.5×). For this first implementation
+we choose the MIT-licensed Swift BigInt: one 1,000-step reference at 1e1000
+costs about 86 ms, can run off the main actor, and needs no C++ interop or
+compile-time precision tiers. Camera arithmetic shares the same implementation.
+This is a deliberate latency tradeoff; Boost remains the measured replacement
+if reference creation dominates real scenes. The benchmark does not establish
+that reference latency is negligible, especially at high iteration limits.
+
+Sources, pinned versions and reproduction instructions are in
+[tests/precision](tests/precision/README.md); raw measurements are in
+[evidence/deep](evidence/deep). No LGPL dependencies ship in the app.

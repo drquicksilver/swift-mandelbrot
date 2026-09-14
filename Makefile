@@ -23,9 +23,9 @@ ios:
 	python3 tests/test_app_bundle.py $(BUILD_DIR)-ios/Build/Products/Release-iphonesimulator/Mandelbrot.app/Info.plist
 
 format:
-	rg --files -g '*.swift' -0 | xargs -0 xcrun swift-format format --configuration .swift-format --in-place
+	rg --files -g '*.swift' -g '!Mandelbrot/Core/Vendor/**' -0 | xargs -0 xcrun swift-format format --configuration .swift-format --in-place
 format-check:
-	rg --files -g '*.swift' -0 | xargs -0 xcrun swift-format lint --configuration .swift-format --strict
+	rg --files -g '*.swift' -g '!Mandelbrot/Core/Vendor/**' -0 | xargs -0 xcrun swift-format lint --configuration .swift-format --strict
 
 ios-device:
 	xcodebuild -quiet -project Mandelbrot.xcodeproj -scheme Mandelbrot -configuration Release -destination 'generic/platform=iOS' -derivedDataPath $(BUILD_DIR)-device CODE_SIGNING_ALLOWED=NO ENABLE_CODE_COVERAGE=NO build
