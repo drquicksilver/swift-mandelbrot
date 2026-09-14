@@ -256,7 +256,62 @@ PNG with the location embedded in the metadata. Shares code with the CLI
 and use periodicity checking for points inside the set. Measure each as a
 benchmark variant.
 
-**2.10 Ready for the App Store and for employers.**
+**2.10 Device validation and resilience.** Hands-on testing found problems the
+headless tests missed, so real devices get a dedicated pass. The iPhone 11 Pro
+is the floor.
+- *Profile both phones in Instruments* (Metal System Trace, Allocations):
+  frame pacing at 60 Hz and 120 Hz, temperature and throttling over a
+  10-minute session, and peak memory. Record the results in `Performance.md`.
+- *Memory warnings.* On a system memory warning, shrink the tile cache to the
+  protected set (visible tiles and their nearby parents), drop cached reference
+  orbits and spare buffers, and allow them to grow back afterwards. Nothing
+  handles memory warnings today.
+- *Low Power Mode and heat.* When `isLowPowerModeEnabled` is set, or
+  `thermalState` is serious or critical, cap presentation at 60 Hz, shrink GPU
+  batch budgets and pause prefetching. Restore normal behaviour when conditions
+  clear.
+- *Headless soak test.* Several minutes of seeded random navigation: pans,
+  zooms (including deep round trips), rotations, iteration and palette changes.
+  Assert that memory stays within budget, no tile fails, and update, preparation
+  and refinement times don't drift compared with a fresh session. It would have
+  caught the sticky deep anchor and the cache wipes on iteration changes. Run it
+  from `make soak`, outside the default `make test`.
+
+**2.11 Automatic colour.** Palette density is fixed at 64 iterations per cycle,
+which suits shallow views. At 1e100, counts in view run from about 22,000 to
+34,000. Choose density and offset from the range of escaped counts in view,
+using a log mapping or a histogram-based mapping. Deep views then look good
+without opening Settings. Use the protected tiles' samples (already on the GPU)
+for the statistics, and change the mapping smoothly with hysteresis so colours
+don't pulse while moving. The manual density and offset controls become
+adjustments on top of the automatic value, like the detail multiplier in 2.3.
+A prerequisite for zoom movies (2.7): a movie crosses a huge range of depths,
+and a fixed density will look wrong at one end.
+
+**2.12 Deep-zoom performance, round two.** Only if the 2.10 measurements show
+cold deep views are too slow on the phones.
+- *Boost reference backend.* Boost measured 5.3–5.7× faster per iteration for
+  saved reference orbits. Put reference computation behind a protocol, add a
+  Boost `cpp_bin_float` implementation through Swift's C++ interop, and keep
+  BigInt as the fallback and oracle. It must pass the same hard numerical and
+  tile-path goldens, cancellation and cache tests.
+- *Better reference choice.* Prefer the pixel with the highest iteration count
+  in a first pass, or a nearby minibrot nucleus found with Newton's method,
+  over the viewport centre.
+- *BLA tuning.* Set ε and the per-jump margin from the isolated BLA-on vs
+  BLA-off error measurements, not from comparisons against the oracle.
+
+**2.13 Tidy up before shipping.** Employers will read this repository.
+- One pixel-mapping convention everywhere: the full-frame CLI and GPU paths
+  still sample at endpoints, while tiles use pixel centres. Re-record the
+  affected goldens deliberately.
+- Remove the CPU image path from the viewer; the lab renderers stay in the CLI
+  and benchmarks.
+- Split `Performance.md` into current results plus a history appendix, and fold
+  `Implementation.md` into `Architecture.md` and the README.
+- Remove dead code and stale comments.
+
+**2.14 Ready for the App Store and for employers.**
 - *App Store:* iPhone and iPad layouts, app icon variants, launch screen,
   first-run hint ("pinch to zoom"), the privacy label (no data collected),
   and TestFlight for friends and family first.
@@ -295,5 +350,7 @@ benchmark variant.
 4. **Deep:** 2.2 (library spike first).
 5. **Feel:** 2.4 (Mac panning, rotation, gentle bounds). Do it before 2.5, so
    bookmarks store the angle from the start.
-6. **Share:** 2.5 → 2.7 → 2.6 → 2.8.
-7. **Ship:** 2.10 → App Store.
+6. **Validate:** 2.10 on both phones, then 2.12 only if the measurements call
+   for it.
+7. **Share:** 2.5 → 2.11 (automatic colour, before movies) → 2.7 → 2.6 → 2.8.
+8. **Ship:** 2.13 → 2.14 → App Store.
