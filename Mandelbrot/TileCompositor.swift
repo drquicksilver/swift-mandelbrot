@@ -37,10 +37,13 @@ struct TileDrawUniforms {
     let floorLevel = Int(floor(store.lod))
     for key in store.visible {
       let baseKey = key.ancestor(at: min(key.level, floorLevel))
-      guard let base = store.bestAvailable(for: baseKey) ?? store.bestAvailable(for: key) else { continue }
+      guard let base = store.bestAvailable(for: baseKey) ?? store.bestAvailable(for: key) else {
+        continue
+      }
       let oldBase = store.fallbackAvailable(for: key, maximumLevel: base.key.level)
-      let coarse = (oldBase !== base ? oldBase : nil) ??
-        (base.key.anchorID == store.grid.anchorID && base.key.level > store.minimumLevel
+      let coarse =
+        (oldBase !== base ? oldBase : nil)
+        ?? (base.key.anchorID == store.grid.anchorID && base.key.level > store.minimumLevel
           ? store.bestAvailable(for: base.key.parent) : nil) ?? base
       let fine = store.bestAvailable(for: key) ?? base
       let oldFine = store.fallbackAvailable(for: key)
@@ -58,11 +61,15 @@ struct TileDrawUniforms {
       params.baseUV = uv(cell: cell, source: base.bounds)
       params.fineUV = uv(cell: cell, source: fine.bounds)
       params.previousFineUV = uv(cell: cell, source: previousFine.bounds)
-      params.baseMix = coarse === base || store.records[base.key] !== base ? 1 : TilePresentation.fade(readyAt: base.readyAt, now: now)
-      params.fineFade = previousFine === fine ? 1 : TilePresentation.fade(readyAt: fine.readyAt, now: now)
+      params.baseMix =
+        coarse === base || store.records[base.key] !== base
+        ? 1 : TilePresentation.fade(readyAt: base.readyAt, now: now)
+      params.fineFade =
+        previousFine === fine ? 1 : TilePresentation.fade(readyAt: fine.readyAt, now: now)
       params.fineMix =
         fine === base
-        ? 0 : (previousFine === fine && store.records[fine.key] === fine
+        ? 0
+        : (previousFine === fine && store.records[fine.key] === fine
           ? TilePresentation.fineWeight(lod: store.lod, readyAt: fine.readyAt, now: now)
           : Float(store.lod - floor(store.lod)))
       params.border = overlay ? 1 : 0

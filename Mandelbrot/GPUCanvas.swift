@@ -63,7 +63,10 @@ import SwiftUI
   }
   func mtkView(_ view: MTKView, drawableSizeWillChange size: CGSize) {}
   func draw(in view: MTKView) {
-    guard model.isActive, view.window != nil else { view.isPaused = true; return }
+    guard model.isActive, view.window != nil else {
+      view.isPaused = true
+      return
+    }
     let now = ProcessInfo.processInfo.systemUptime
     model.advanceMotion(now: ProcessInfo.processInfo.systemUptime)
     model.tiles.update(
@@ -90,10 +93,10 @@ import SwiftUI
       }
     }
     #if !targetEnvironment(simulator)
-    drawable.addPresentedHandler { [weak self] drawable in
-      let time = drawable.presentedTime
-      Task { @MainActor [weak self] in self?.model.tiles.recordPresentation(at: time) }
-    }
+      drawable.addPresentedHandler { [weak self] drawable in
+        let time = drawable.presentedTime
+        Task { @MainActor [weak self] in self?.model.tiles.recordPresentation(at: time) }
+      }
     #endif
     command.commit()
     model.tiles.retireFallback(now: now)
@@ -104,8 +107,14 @@ import SwiftUI
 @MainActor final class ScreenAwareMetalView: MTKView {
   var screenChanged: (() -> Void)?
   #if os(macOS)
-  override func viewDidMoveToWindow() { super.viewDidMoveToWindow(); screenChanged?() }
+    override func viewDidMoveToWindow() {
+      super.viewDidMoveToWindow()
+      screenChanged?()
+    }
   #else
-  override func didMoveToWindow() { super.didMoveToWindow(); screenChanged?() }
+    override func didMoveToWindow() {
+      super.didMoveToWindow()
+      screenChanged?()
+    }
   #endif
 }

@@ -25,16 +25,16 @@ struct ContentView: View {
         }
       }
       #if os(iOS)
-      .overlay(alignment: .topTrailing) {
-        HStack(spacing: 0) {
-          viewerButton("Reset", icon: "house") { model.perform(.reset) }
-          viewerButton("Settings", icon: "slider.horizontal.3") { model.showSettings = true }
-          viewerButton("Controls", icon: "questionmark.circle") { model.showHelp = true }
+        .overlay(alignment: .topTrailing) {
+          HStack(spacing: 0) {
+            viewerButton("Reset", icon: "house") { model.perform(.reset) }
+            viewerButton("Settings", icon: "slider.horizontal.3") { model.showSettings = true }
+            viewerButton("Controls", icon: "questionmark.circle") { model.showHelp = true }
+          }
+          .padding(4)
+          .background(.regularMaterial, in: Capsule())
+          .padding(12)
         }
-        .padding(4)
-        .background(.regularMaterial, in: Capsule())
-        .padding(12)
-      }
       #endif
       .onAppear { model.resize(geometry.size, displayScale: displayScale) }
       .onChange(of: geometry.size) { _, size in model.resize(size, displayScale: displayScale) }
@@ -45,23 +45,23 @@ struct ContentView: View {
     .onAppear { model.setActive(true) }
     .background(.black)
     #if os(macOS)
-    .toolbar {
-      Button {
-        model.perform(.reset)
-      } label: {
-        Label("Reset", systemImage: "house")
+      .toolbar {
+        Button {
+          model.perform(.reset)
+        } label: {
+          Label("Reset", systemImage: "house")
+        }
+        Button {
+          model.showSettings = true
+        } label: {
+          Label("Settings", systemImage: "slider.horizontal.3")
+        }
+        Button {
+          model.showHelp = true
+        } label: {
+          Label("Controls", systemImage: "questionmark.circle")
+        }
       }
-      Button {
-        model.showSettings = true
-      } label: {
-        Label("Settings", systemImage: "slider.horizontal.3")
-      }
-      Button {
-        model.showHelp = true
-      } label: {
-        Label("Controls", systemImage: "questionmark.circle")
-      }
-    }
     #endif
     .sheet(isPresented: $model.showDeveloper) { DeveloperPanel(model: model) }
     .sheet(isPresented: $model.showBenchmark) {
@@ -73,16 +73,18 @@ struct ContentView: View {
   }
 
   #if os(iOS)
-  private func viewerButton(_ title: String, icon: String, action: @escaping () -> Void) -> some View {
-    Button(action: action) {
-      Label(title, systemImage: icon)
-        .labelStyle(.iconOnly)
-        .frame(width: 44, height: 44)
-        .contentShape(Rectangle())
+    private func viewerButton(_ title: String, icon: String, action: @escaping () -> Void)
+      -> some View
+    {
+      Button(action: action) {
+        Label(title, systemImage: icon)
+          .labelStyle(.iconOnly)
+          .frame(width: 44, height: 44)
+          .contentShape(Rectangle())
+      }
+      .buttonStyle(.plain)
+      .accessibilityIdentifier("viewer" + title)
     }
-    .buttonStyle(.plain)
-    .accessibilityIdentifier("viewer" + title)
-  }
   #endif
 }
 
@@ -99,7 +101,9 @@ struct TileHUD: View {
       Text(
         "GPU frame \(store.statistics.frameMS,specifier:"%.2f") ms · max batch \(store.statistics.longestBatchMS,specifier:"%.2f") ms"
       )
-      Text("Demand update \(store.statistics.updateMS, specifier: "%.2f") ms · recent presentation \(store.statistics.presentationFPS, specifier: "%.0f") fps")
+      Text(
+        "Demand update \(store.statistics.updateMS, specifier: "%.2f") ms · recent presentation \(store.statistics.presentationFPS, specifier: "%.0f") fps"
+      )
       Text("\(store.statistics.cacheHits) hits · \(store.statistics.evictions) evictions")
       if let error = store.error {
         Text(error).foregroundStyle(.red)

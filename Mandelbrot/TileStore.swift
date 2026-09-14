@@ -19,7 +19,10 @@ struct TileStatistics: Equatable, Codable {
   let iterations: Int
   var lastUsed: UInt64 = 0
   var isMip = false
-  init(key: TileKey, bounds: TileBounds, samples: MTLTexture, colour: MTLTexture, readyAt: Double, iterations: Int) {
+  init(
+    key: TileKey, bounds: TileBounds, samples: MTLTexture, colour: MTLTexture, readyAt: Double,
+    iterations: Int
+  ) {
     self.key = key
     self.bounds = bounds
     self.samples = samples
@@ -87,8 +90,10 @@ struct TileStatistics: Equatable, Codable {
     records.values.reduce(0) { $0 + $1.bytes } + fallback.reduce(0) { $0 + $1.bytes }
   }
 
-  init(budgetBytes: Int? = nil, retryDelay: Duration = .milliseconds(250),
-       beforeTileAllocation: ((TileKey) throws -> Void)? = nil) {
+  init(
+    budgetBytes: Int? = nil, retryDelay: Duration = .milliseconds(250),
+    beforeTileAllocation: ((TileKey) throws -> Void)? = nil
+  ) {
     self.retryDelay = retryDelay
     self.beforeTileAllocation = beforeTileAllocation
     #if os(iOS)
@@ -104,7 +109,10 @@ struct TileStatistics: Equatable, Codable {
     failed.removeAll()
     failureAttempts.removeAll()
     operationFailures = 0
-    retryTask?.cancel(); retryTask = nil; retryBlocked = false; terminalFailure = false
+    retryTask?.cancel()
+    retryTask = nil
+    retryBlocked = false
+    terminalFailure = false
     error = nil
     // Preserve the last detailed working set through repeated invalidations.
     // The same key can have two iteration generations; newest complete data wins.
@@ -114,7 +122,8 @@ struct TileStatistics: Equatable, Codable {
     let halfHeight = halfWidth * size.height / max(1, size.width)
     fallback = retained.values.filter {
       let b = $0.bounds
-      return b.left < viewport.center.x + halfWidth && b.left + b.span > viewport.center.x - halfWidth
+      return b.left < viewport.center.x + halfWidth
+        && b.left + b.span > viewport.center.x - halfWidth
         && b.top > viewport.center.y - halfHeight && b.top - b.span < viewport.center.y + halfHeight
     }.sorted { $0.bounds.span < $1.bounds.span }
     records.removeAll()
@@ -124,8 +133,10 @@ struct TileStatistics: Equatable, Codable {
     override: RendererID?, colouring: ColourSettings, zoomDirection: Int = 0
   ) {
     guard size.width > 0, size.height > 0 else { return }
-    let demand = Demand(viewport: viewport, size: size, pixelWidth: pixelWidth,
-      iterations: iterations, override: override, colouring: colouring, zoomDirection: zoomDirection)
+    let demand = Demand(
+      viewport: viewport, size: size, pixelWidth: pixelWidth,
+      iterations: iterations, override: override, colouring: colouring, zoomDirection: zoomDirection
+    )
     guard suspended || demand != lastDemand else { return }
     let start = ProcessInfo.processInfo.systemUptime
     defer { counters.updateMS = (ProcessInfo.processInfo.systemUptime - start) * 1000 }
@@ -153,9 +164,10 @@ struct TileStatistics: Equatable, Codable {
       // Protect a local three-level band, not the entire path to the root.
       // A cold jump first gets a quarter-resolution preview, then actual detail.
       // Older ancestors remain ordinary LRU entries for zooming back out.
-      Set(visible.flatMap { key in
-        (max(minimumLevel, key.level - 2)...key.level).map { key.ancestor(at: $0) }
-      })
+      Set(
+        visible.flatMap { key in
+          (max(minimumLevel, key.level - 2)...key.level).map { key.ancestor(at: $0) }
+        })
     }
     needed = ancestors()
     // On unusually large drawables or a constrained cache, lower sampling LOD
@@ -189,8 +201,13 @@ struct TileStatistics: Equatable, Codable {
     worker?.cancel()
   }
   func retryFailedWork() {
-    failed.removeAll(); failureAttempts.removeAll(); operationFailures = 0
-    retryTask?.cancel(); retryTask = nil; retryBlocked = false; terminalFailure = false
+    failed.removeAll()
+    failureAttempts.removeAll()
+    operationFailures = 0
+    retryTask?.cancel()
+    retryTask = nil
+    retryBlocked = false
+    terminalFailure = false
     error = nil
     startWorker()
   }
@@ -201,7 +218,8 @@ struct TileStatistics: Equatable, Codable {
       failureAttempts[key, default: 0] += 1
       attempts = failureAttempts[key]!
     } else {
-      operationFailures += 1; attempts = operationFailures
+      operationFailures += 1
+      attempts = operationFailures
     }
     if attempts >= 3 {
       if let key { failed.insert(key) }
@@ -212,7 +230,8 @@ struct TileStatistics: Equatable, Codable {
     retryTask = Task { [weak self] in
       guard let self else { return }
       do { try await Task.sleep(for: self.retryDelay * attempts) } catch { return }
-      self.retryBlocked = false; self.retryTask = nil
+      self.retryBlocked = false
+      self.retryTask = nil
       self.startWorker()
     }
   }
@@ -327,7 +346,8 @@ struct TileStatistics: Equatable, Codable {
     }
   }
   private func startWorker() {
-    guard !suspended, !retryBlocked, !terminalFailure, worker == nil, let gpu = GPUContext.shared, needsRecolour || nextKey() != nil
+    guard !suspended, !retryBlocked, !terminalFailure, worker == nil, let gpu = GPUContext.shared,
+      needsRecolour || nextKey() != nil
     else { return }
     let generation = self.generation
     worker = Task { [weak self] in
@@ -419,7 +439,9 @@ struct TileStatistics: Equatable, Codable {
     }
   }
   func retireFallback(now: Double) {
-    if allVisibleReady && visible.allSatisfy({ now - records[$0]!.readyAt >= TilePresentation.fadeDuration }) {
+    if allVisibleReady
+      && visible.allSatisfy({ now - records[$0]!.readyAt >= TilePresentation.fadeDuration })
+    {
       fallback.removeAll()
     }
   }
@@ -435,7 +457,10 @@ struct TileStatistics: Equatable, Codable {
   func bestAvailable(for key: TileKey) -> TileRecord? {
     var current: TileRecord?
     for level in stride(from: key.level, through: minimumLevel, by: -1) {
-      if let record = records[key.ancestor(at: level)] { current = record; break }
+      if let record = records[key.ancestor(at: level)] {
+        current = record
+        break
+      }
     }
     guard let old = fallbackAvailable(for: key) else { return current }
     if let current, current.bounds.span <= old.bounds.span { return current }

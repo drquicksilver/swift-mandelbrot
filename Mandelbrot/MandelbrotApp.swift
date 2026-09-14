@@ -5,28 +5,30 @@
 //  Created by Jules Bean on 19/01/2026.
 //
 
-import SwiftUI
 import Darwin
+import SwiftUI
 
 @main
 enum MandelbrotMain {
-    @MainActor static func main() async {
-        #if os(macOS)
-        let arguments = Array(CommandLine.arguments.dropFirst())
-        if arguments.contains("--test-tiles") { exit(await TileDiagnostics.run()) }
-        if arguments.contains("--benchmark") || arguments.contains("--render") || arguments.contains("--help") {
-            exit(await BenchmarkCLI.run(arguments: arguments))
-        }
-        #endif
-        MandelbrotApp.main()
-    }
+  @MainActor static func main() async {
+    #if os(macOS)
+      let arguments = Array(CommandLine.arguments.dropFirst())
+      if arguments.contains("--test-tiles") { exit(await TileDiagnostics.run()) }
+      if arguments.contains("--benchmark") || arguments.contains("--render")
+        || arguments.contains("--help")
+      {
+        exit(await BenchmarkCLI.run(arguments: arguments))
+      }
+    #endif
+    MandelbrotApp.main()
+  }
 }
 
 struct MandelbrotApp: App {
-    var body: some Scene {
-        WindowGroup {
-            ContentView()
-        }
-        .commands { ExplorerCommands() }
+  var body: some Scene {
+    WindowGroup {
+      ContentView()
     }
+    .commands { ExplorerCommands() }
+  }
 }

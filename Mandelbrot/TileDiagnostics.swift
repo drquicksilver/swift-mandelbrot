@@ -187,10 +187,12 @@
       }
       let usefulMS = (ProcessInfo.processInfo.systemUptime - deepStart) * 1000
       try await deep.waitUntilReady()
-      try require(deep.lod == deep.grid.idealLevel(viewport: view, pixelWidth: 256),
-                  "Phone memory budget silently reduced deep detail")
+      try require(
+        deep.lod == deep.grid.idealLevel(viewport: view, pixelWidth: 256),
+        "Phone memory budget silently reduced deep detail")
       try require(deep.needed.count <= 12, "Cold view still requires distant ancestors")
-      try require(deep.statistics.bytes < 20 * 1024 * 1024, "Deep working set is unexpectedly large")
+      try require(
+        deep.statistics.bytes < 20 * 1024 * 1024, "Deep working set is unexpectedly large")
       try require(deep.grid.anchorID > 0, "Deep coordinates did not rebase")
       try require(
         deep.needed.allSatisfy { deep.records[$0] != nil }, "Deep ancestors are incomplete")
@@ -214,11 +216,16 @@
         if fail { throw GPUFailure("Injected allocation failure") }
       }
       let size = CGSize(width: 128, height: 128)
-      func update() { store.update(viewport: Viewport(), size: size, pixelWidth: 128,
-        iterations: 200, override: nil, colouring: ColourSettings()) }
+      func update() {
+        store.update(
+          viewport: Viewport(), size: size, pixelWidth: 128,
+          iterations: 200, override: nil, colouring: ColourSettings())
+      }
       update()
-      do { try await store.waitUntilReady(); throw GPUFailure("Failure was hidden") }
-      catch { try require(store.error != nil, "Failure was not reported") }
+      do {
+        try await store.waitUntilReady()
+        throw GPUFailure("Failure was hidden")
+      } catch { try require(store.error != nil, "Failure was not reported") }
       try require(allocations == 3, "Retry budget was not enforced")
       for _ in 0..<120 { update() }
       try await Task.sleep(for: .milliseconds(5))
@@ -233,51 +240,71 @@
       let view = Viewport(center: CGPoint(x: -0.743643987037151, y: 0.13182597420533), scale: 1e7)
       let size = CGSize(width: 256, height: 256)
       func update(_ iterations: Int) {
-        store.update(viewport: view, size: size, pixelWidth: 256, iterations: iterations,
-                     override: nil, colouring: ColourSettings())
+        store.update(
+          viewport: view, size: size, pixelWidth: 256, iterations: iterations,
+          override: nil, colouring: ColourSettings())
       }
-      update(2000); try await store.waitUntilReady()
+      update(2000)
+      try await store.waitUntilReady()
       let settled = ProcessInfo.processInfo.systemUptime + 1
-      let before = try await gpu.readback(TileCompositor.snapshot(store: store, viewport: view,
-        width: 256, height: 256, now: settled))
+      let before = try await gpu.readback(
+        TileCompositor.snapshot(
+          store: store, viewport: view,
+          width: 256, height: 256, now: settled))
       update(2200)
       try require(!store.fallback.isEmpty, "Iteration change discarded detailed fallback")
-      let after = try await gpu.readback(TileCompositor.snapshot(store: store, viewport: view,
-        width: 256, height: 256, now: 0))
-      try require(before == after, "Iteration change altered the picture before replacement was ready")
+      let after = try await gpu.readback(
+        TileCompositor.snapshot(
+          store: store, viewport: view,
+          width: 256, height: 256, now: 0))
+      try require(
+        before == after, "Iteration change altered the picture before replacement was ready")
       update(2400)
-      try require(store.visible.allSatisfy { store.bestAvailable(for: $0)?.key.level == $0.level },
-                  "Repeated invalidation lost fine coverage")
+      try require(
+        store.visible.allSatisfy { store.bestAvailable(for: $0)?.key.level == $0.level },
+        "Repeated invalidation lost fine coverage")
       try await store.waitUntilReady()
-      try require(store.visible.allSatisfy { store.records[$0]?.iterations == 2400 }, "Stale iteration generation was published")
+      try require(
+        store.visible.allSatisfy { store.records[$0]?.iterations == 2400 },
+        "Stale iteration generation was published")
       store.retireFallback(now: ProcessInfo.processInfo.systemUptime + 1)
       try require(store.fallback.isEmpty, "Completed fallback was not released")
     }
     static func checkDemandWakeups() async throws {
-      let store = TileStore(), size = CGSize(width: 256, height: 256)
+      let store = TileStore()
+      let size = CGSize(width: 256, height: 256)
       var notifications = 0
       store.onContentChange = { notifications += 1 }
       func update(_ palette: Palette = .blueGold) {
-        store.update(viewport: Viewport(), size: size, pixelWidth: 256, iterations: 200,
-                     override: nil, colouring: ColourSettings(palette: palette))
+        store.update(
+          viewport: Viewport(), size: size, pixelWidth: 256, iterations: 200,
+          override: nil, colouring: ColourSettings(palette: palette))
       }
-      update(); try await store.waitUntilReady()
-      let updates = store.statistics.demandUpdates, initial = notifications
+      update()
+      try await store.waitUntilReady()
+      let updates = store.statistics.demandUpdates
+      let initial = notifications
       for _ in 0..<120 { update() }
       try require(notifications == initial, "Idle updates scheduled content changes")
       store.recordFrame(seconds: 0, now: ProcessInfo.processInfo.systemUptime + 1)
       try require(store.statistics.demandUpdates == updates, "Idle frames rebuilt demand")
-      try require(!store.hasActiveFades(now: ProcessInfo.processInfo.systemUptime + 1), "Settled tiles keep drawing alive")
-      update(.fire); try await store.waitUntilReady()
+      try require(
+        !store.hasActiveFades(now: ProcessInfo.processInfo.systemUptime + 1),
+        "Settled tiles keep drawing alive")
+      update(.fire)
+      try await store.waitUntilReady()
       try require(notifications > initial, "Palette completion did not wake presentation")
-      store.cancel(); update(.fire); try await store.waitUntilReady()
+      store.cancel()
+      update(.fire)
+      try await store.waitUntilReady()
       try require(store.allVisibleReady, "Resuming unchanged demand lost readiness")
     }
     static func run() async -> Int32 {
       do {
         guard let gpu = GPUContext.shared else { throw GPUFailure("GPU unavailable") }
         for palette in Palette.allCases {
-          let first = try gpu.paletteTexture(palette), second = try gpu.paletteTexture(palette)
+          let first = try gpu.paletteTexture(palette)
+          let second = try gpu.paletteTexture(palette)
           try require(first === second, "Palette GPU texture was rebuilt")
         }
         try await checkDemandWakeups()
