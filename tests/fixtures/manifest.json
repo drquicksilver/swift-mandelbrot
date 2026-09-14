@@ -1,0 +1,53 @@
+{
+  "schema": 1,
+  "fixtures": [
+    {
+      "name": "whole-set",
+      "centerReal": -0.5,
+      "centerImag": 0,
+      "scale": 1,
+      "width": 192,
+      "height": 128,
+      "iterations": 200,
+      "renderers": "all",
+      "maxMismatch": 0.02,
+      "maxMeanError": 1.0
+    },
+    {
+      "name": "seahorse",
+      "centerReal": -0.7435,
+      "centerImag": 0.1314,
+      "scale": 100,
+      "width": 192,
+      "height": 192,
+      "iterations": 800,
+      "renderers": "all",
+      "maxMismatch": 0.06,
+      "maxMeanError": 8.0
+    },
+    {
+      "name": "floatfloat-1e7",
+      "centerReal": -0.743643987037151,
+      "centerImag": 0.13182597420533,
+      "scale": 10000000,
+      "width": 192,
+      "height": 192,
+      "iterations": 2000,
+      "renderers": "double",
+      "maxMismatch": 0.07,
+      "maxMeanError": 8.0
+    },
+    {
+      "name": "floatfloat-1e10",
+      "centerReal": -0.743643887037151,
+      "centerImag": 0.13182590390533,
+      "scale": 10000000000,
+      "width": 128,
+      "height": 128,
+      "iterations": 4000,
+      "renderers": "double",
+      "maxMismatch": 0.08,
+      "maxMeanError": 16.0
+    }
+  ]
+}
