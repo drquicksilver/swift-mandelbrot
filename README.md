@@ -5,7 +5,8 @@ rendering/performance lab. See [vision](vision.md), [plan](plan.md), and the
 [implementation record](Implementation.md).
 
 Requires Xcode 26.2 or newer with the Metal toolchain. Targets iOS 18+ and macOS
-15.7+. No third-party dependencies.
+15.7+. The MIT-licensed BigInt sources are vendored for offline builds; see
+[provenance](Mandelbrot/Core/Vendor/BigInt/PROVENANCE.md).
 
 ```sh
 make build       # Release macOS app in /tmp/mandelbrot-development
@@ -34,8 +35,9 @@ rendering). Reports include the device and exact viewport.
 The viewer now uses a GPU quadtree cache with parent fallback, colour-level
 blending, refinement fades, upward mip averaging, prefetching and LRU budgets.
 See [Architecture.md](Architecture.md) for the data flow and precision limits.
-Until perturbation is implemented, navigation stops gracefully at the FloatFloat
-precision limit. Iteration depth remains a manual control.
+Precision now steps automatically from Float to FloatFloat to GPU perturbation.
+The camera retains high-precision coordinates and supports zooms through 2^13000
+(about 1e3913). Iteration depth remains a manual control; automatic depth is 2.3.
 
 Export the same tiled compositor without opening a window:
 
@@ -55,3 +57,27 @@ need device verification. The [implementation record](Implementation.md) tracks
 completed work and the remaining validation. Independent CPU product-image
 references run as part of `make test`; regenerate deliberately with
 `python3 tests/test_product_golden.py --record`.
+
+Deep export and a controlled BLA benchmark (no window):
+
+```sh
+APP=/tmp/mandelbrot-development/Build/Products/Release/Mandelbrot.app/Contents/MacOS/Mandelbrot
+"$APP" --render --pipeline tiles --renderer perturbation --size 512x384 \
+  --center-real 0 --center-imag 1 --scale 1e1000 --iterations 5000 \
+  --density 8 --output deep-1000.png
+"$APP" --benchmark --pipeline gpu --variants perturbation --sizes 256x192 \
+  --center-real 0 --center-imag 1 --scale 1e1000 --iterations 5000 \
+  --runs 3 --warmup 1 --bla on --format json
+```
+
+Use `--bla off` for a controlled comparison. Kernel timing excludes CPU reference
+preparation; end-to-end timing includes it. JSON preserves decimal coordinate and
+scale strings, and omits the numeric scale when it exceeds Double range.
+
+![GPU perturbation at 1e1000](evidence/deep/gpu-1e1000.png)
+
+The 1e50, 1e200 and 1e1000 sample and PNG goldens come from independent Python
+Decimal direct iteration. Reproduce them deliberately with
+`python3 tests/precision/oracle.py` followed by
+`python3 tests/precision/colour_goldens.py`. The renderer comparison and evidence
+capture script is `python3 tests/precision/measure.py "$APP"`.

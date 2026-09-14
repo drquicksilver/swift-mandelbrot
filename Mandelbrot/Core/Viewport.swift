@@ -15,8 +15,14 @@ struct Viewport: Equatable, Sendable {
   var precisionBits: Int { max(192, Int(ceil(logScale)) + 128) }
   var preciseCenter: DeepPoint { deepCenter ?? DeepPoint(center, bits: precisionBits) }
   var scaleDescription: String {
-    deepLogScale == nil
-      ? String(format: "%.5g", scale) : String(format: "1e%.3f", logScale / log2(10))
+    guard deepLogScale != nil else { return String(scale) }
+    let decimal = logScale / log2(10)
+    let exponent = Int(floor(decimal))
+    return String(format: "%.17ge%d", pow(10, decimal - Double(exponent)), exponent)
+  }
+  var centerDescription: String {
+    guard let deepCenter else { return "\(center.x), \(center.y)" }
+    return "\(deepCenter.x.decimalString), \(deepCenter.y.decimalString)"
   }
   init(center: CGPoint = CGPoint(x: -0.5, y: 0), scale: Double = 1) {
     self.center = center

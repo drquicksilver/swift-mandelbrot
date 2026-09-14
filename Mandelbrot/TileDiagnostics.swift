@@ -323,6 +323,62 @@
       model.stopMotion()
       try require(!model.motionActive, "Stopped motion left input clock active")
     }
+    static func checkDeepTiles(_ gpu: GPUContext) async throws -> [String: Double] {
+      try require(
+        MemoryLayout<ExtendedFloat>.stride == 16 && MemoryLayout<ExtendedComplex>.stride == 32
+          && MemoryLayout<BLAEntry>.stride == 96, "Perturbation Metal ABI changed")
+      let store = TileStore(budgetBytes: 150 * 1024 * 1024)
+      let size = CGSize(width: 256, height: 192)
+      var view = try Viewport(real: "0", imag: "1", zoom: "1e1000")
+      let start = ProcessInfo.processInfo.systemUptime
+      store.update(
+        viewport: view, size: size, pixelWidth: 256, iterations: 5000, override: nil,
+        colouring: ColourSettings(density: 8))
+      try await store.waitUntilReady()
+      let completed = ProcessInfo.processInfo.systemUptime - start
+      try require(
+        store.lod > 3300 && store.statistics.tiles <= 16,
+        "Deep tile levels were clamped or unbounded")
+      try require(
+        store.statistics.referenceCacheHits > 0 && store.statistics.perturbationSkipped > 0,
+        "Deep tiles did not share references or use BLA")
+      let initial = try await gpu.readback(
+        TileCompositor.snapshot(
+          store: store, viewport: view, width: 256, height: 192,
+          now: ProcessInfo.processInfo.systemUptime + 1))
+      try require(Set(initial).count > 100, "Deep compositor is flat")
+      view.zoom(by: 1.15, at: CGPoint(x: 128, y: 96), in: size, pixelWidth: 256)
+      store.update(
+        viewport: view, size: size, pixelWidth: 256, iterations: 5000, override: nil,
+        colouring: ColourSettings(density: 8))
+      let fallback = try await gpu.readback(
+        TileCompositor.snapshot(
+          store: store, viewport: view, width: 256, height: 192, sentinel: true))
+      for i in stride(from: 0, to: fallback.count, by: 4) {
+        try require(
+          !(fallback[i] == 255 && fallback[i + 1] == 0 && fallback[i + 2] == 255),
+          "Deep parent fallback left a hole")
+      }
+      try await store.waitUntilReady()
+      try require(
+        store.residentBytes < 20 * 1024 * 1024, "Deep tile memory exceeded local-band budget")
+      // Cancel a long CPU reference/GPU workload and recover the same store.
+      store.update(
+        viewport: view, size: size, pixelWidth: 256, iterations: 65535, override: nil,
+        colouring: ColourSettings())
+      try await Task.sleep(for: .milliseconds(2))
+      store.cancel()
+      store.update(
+        viewport: view, size: size, pixelWidth: 256, iterations: 5000, override: nil,
+        colouring: ColourSettings())
+      try await store.waitUntilReady()
+      return [
+        "perturbation1e1000ReadyMS": completed * 1000,
+        "perturbationReferenceCacheHits": Double(store.statistics.referenceCacheHits),
+        "perturbationMaxBatchMS": store.statistics.longestBatchMS,
+        "perturbationResidentMiB": Double(store.residentBytes) / 1_048_576,
+      ]
+    }
     static func run() async -> Int32 {
       do {
         guard let gpu = GPUContext.shared else { throw GPUFailure("GPU unavailable") }
@@ -339,6 +395,7 @@
         try await checkResumption(gpu)
         try await checkMipmaps(gpu)
         let cacheMetrics = try await checkCache()
+        let deepMetrics = try await checkDeepTiles(gpu)
         let store = TileStore()
         let size = CGSize(width: 512, height: 320)
         var view = Viewport()
@@ -418,6 +475,7 @@
         var report =
           try JSONSerialization.jsonObject(with: encoder.encode(store.statistics)) as! [String: Any]
         for (key, value) in cacheMetrics { report[key] = value }
+        for (key, value) in deepMetrics { report[key] = value }
         print(
           String(
             decoding: try JSONSerialization.data(

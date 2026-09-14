@@ -36,11 +36,13 @@ struct PerturbParameters {
  uint width,height,iterations,referenceCount;
  uint start,count,pass,pad;
 };
+struct BLA { XC a,b; XF radius; uint length,pad0,pad1,pad2; };
 struct PerturbState { XC delta; uint n,ref,done,pad; };
 // flags: first glitched pixel, number of glitches, rebases, skipped iterations.
 kernel void perturbTile(texture2d<float,access::read_write> output [[texture(0)]],
  constant PerturbParameters &p [[buffer(0)]], device const XC *orbit [[buffer(1)]],
  device PerturbState *states [[buffer(2)]], device atomic_uint *flags [[buffer(3)]],
+ device const BLA *blas [[buffer(4)]],
  uint2 pos [[thread_position_in_grid]]) {
  if(pos.x>=p.width||pos.y>=p.height)return;
  uint index=pos.y*p.width+pos.x;
@@ -49,11 +51,12 @@ kernel void perturbTile(texture2d<float,access::read_write> output [[texture(0)]
    if(p.pass>0 && output.read(pos).x!=-3) { states[index].done=1;return; }
    s={ {xf(0),xf(0)},0,0,0,0};
  } else { s=states[index];if(s.done)return; }
+ uint rebases=0,skipped=0;
  XC dc=add(p.origin,{times(p.stepX,float(pos.x)),times(p.stepY,-float(pos.y))});
  for(uint work=0;work<p.count && s.n<p.iterations;work++) {
    XC total=add(orbit[s.ref],s.delta);
    XF magnitude=abs2(total);
-   if(!less(magnitude,xf(65536))) {
+   if(less(xf(65536),magnitude)) {
      output.write(float4(max(0.0f,float(s.n)+1-log2(log2(sqrt(value(magnitude)))))),pos);s.done=1;break;
    }
    // Pauldelbrot cancellation criterion. Retry at a new high-precision point.
@@ -65,11 +68,21 @@ kernel void perturbTile(texture2d<float,access::read_write> output [[texture(0)]
    // Rebase onto the critical-point reference before its stored orbit runs out.
    if(s.ref+1>=p.referenceCount || less(magnitude,abs2(s.delta))) {
      s.delta=total;s.ref=0;
-     atomic_fetch_add_explicit(flags+2,1,memory_order_relaxed);
+     rebases++;
+   }
+   if(p.pad && s.ref>=1 && (s.ref-1)%32==0) {
+     BLA b=blas[(s.ref-1)/32];
+     if(b.length>=2 && s.n+b.length<=p.iterations && less(abs2(s.delta),mul(b.radius,b.radius))) {
+       s.delta=add(mul(b.a,s.delta),mul(b.b,dc));
+       s.n+=b.length;s.ref+=b.length;skipped+=b.length-1;continue;
+     }
    }
    s.delta=add(add(times(mul(orbit[s.ref],s.delta),2),mul(s.delta,s.delta)),dc);
    s.n++;s.ref++;
  }
  if(!s.done && s.n>=p.iterations){output.write(float4(-1),pos);s.done=1;}
+ if(!s.done) atomic_fetch_add_explicit(flags+4,1,memory_order_relaxed);
+ if(rebases) atomic_fetch_add_explicit(flags+2,rebases,memory_order_relaxed);
+ if(skipped) atomic_fetch_add_explicit(flags+3,skipped,memory_order_relaxed);
  states[index]=s;
 }

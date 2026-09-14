@@ -6,7 +6,9 @@ let package = Package(
   platforms: [.macOS(.v15), .iOS(.v18)],
   products: [.library(name: "MandelbrotCore", targets: ["MandelbrotCore"])],
   targets: [
-    .target(name: "MandelbrotCore", path: "Mandelbrot/Core"),
+    .target(
+      name: "MandelbrotCore", path: "Mandelbrot/Core",
+      exclude: ["Vendor/BigInt/LICENSE.md", "Vendor/BigInt/PROVENANCE.md"]),
     .testTarget(
       name: "MandelbrotCoreTests", dependencies: ["MandelbrotCore"], path: "tests/CoreTests"),
   ],

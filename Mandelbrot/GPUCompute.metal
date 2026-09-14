@@ -135,7 +135,9 @@ fragment float4 tileFragment(QuadOutput in [[stage_in]],texture2d<float> coarse 
         uint level=uint(abs(p.level));
         bool ink=false;
         if(p.level<0) { ink=digit.x>=0 && digit.x<4 && digit.y>=4 && digit.y<5;digit.x-=6; }
-        if(level>=10) { ink=ink || digitPixel(digit,level/10);digit.x-=6; }
+        for(uint divisor=10000;divisor>=10;divisor/=10) {
+            if(level>=divisor) { ink=ink || digitPixel(digit,(level/divisor)%10);digit.x-=6; }
+        }
         ink=ink || digitPixel(digit,level%10);
         if(ink) rgb=float3(1,0.9,0.15);
     }

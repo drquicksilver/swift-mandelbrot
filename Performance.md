@@ -414,3 +414,38 @@ rounded to 0.01. The full 256×192 tile-compositor example at 1e1000 uses 12 til
 including its two nearby ancestor levels. A 7×5 whole-set diagnostic triggers
 three cancellation glitches and three reference orbits. `make test` includes
 the deep comparisons and verifies that re-referencing actually runs.
+
+## 2.2c — BLA and shared tile references
+
+Controlled BLA on/off comparison on the M1 Pro: centre c=i, 256×192,
+5,000 iterations, median of three runs after one warmup. End-to-end includes
+fresh CPU reference creation, BLA preparation and completed GPU colour output;
+it excludes readback and PNG encoding. Full-image runs do not reuse references.
+
+| Scale | BLA off, total | BLA on, total | GPU off | GPU on |
+| --- | ---: | ---: | ---: | ---: |
+| 1e50 | 17.481 ms | 14.422 ms | 12.867 ms | 10.444 ms |
+| 1e200 | 55.531 ms | 25.916 ms | 41.604 ms | 17.758 ms |
+| 1e1000 | 400.274 ms | 141.457 ms | 239.611 ms | 30.194 ms |
+
+At 1e1000, BLA makes this GPU workload **7.9× faster**, and the full render
+**2.8× faster**. It skips about 123 million individual pixel iterations per
+image. The remaining ~102 ms CPU reference cost now dominates the full-image
+path. The earlier library spike explains the next performance option: Boost
+could reduce that cost substantially. We retain Swift here for runtime-selectable
+precision and native integration; this is a measured tradeoff, not a claim that
+the libraries perform similarly. Interactive tiles amortize reference creation
+through a shared anchor and a bounded three-entry/4 MiB cache.
+
+Both BLA modes pass all three independent Decimal sample goldens (maximum errors
+0.0000153 / 0.0000610 / 0), and the independent Ink PNGs differ by at most 1/255
+per colour channel. A separate exact cancellation case exercises three glitch
+corrections using three reference orbits. Deep tile integration verifies
+reference reuse, bounded residency, fade/fallback coverage and cancellation.
+
+[Raw controlled measurements](evidence/deep/bla-comparison.json),
+[reproduction script](tests/precision/measure.py), and full-size PNG evidence:
+[1e50](evidence/deep/gpu-1e50.png), [1e200](evidence/deep/gpu-1e200.png),
+[1e1000](evidence/deep/gpu-1e1000.png). These are Mac measurements, not claims
+about frame rates on either iPhone. Simulator and unsigned device builds cover
+compilation and packaging, not physical presentation timing.

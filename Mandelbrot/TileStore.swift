@@ -4,6 +4,10 @@ import Foundation
 import Metal
 
 struct TileStatistics: Equatable, Codable {
+  var referenceOrbits = 0, referenceCacheHits = 0
+  var perturbationSkipped = 0
+  var referenceMS = 0.0
+
   var tiles = 0, bytes = 0, computed = 0, cancelled = 0, batches = 0, cacheHits = 0, evictions = 0
   var demandUpdates = 0
   var updateMS = 0.0, presentationFPS = 0.0
@@ -60,10 +64,14 @@ struct TileStatistics: Equatable, Codable {
   private(set) var lod = 0.0
   private(set) var fallback: [TileRecord] = []
   let minimumLevel = -2
+  var useBLA = true
   let budgetBytes: Int
   // Reserve a third for transactional recolouring, one orbit-state buffer,
   // mip replacements and the two in-flight display frames.
-  private var residentLimit: Int { (budgetBytes - 2 * 1024 * 1024) * 2 / 3 }
+  private var residentLimit: Int {
+    (budgetBytes
+      - (viewport.logScale > 32 ? min(budgetBytes / 4, 12 * 1024 * 1024) : 2 * 1024 * 1024)) * 2 / 3
+  }
   private var tileCost = 1024 * 1024
   private var tick: UInt64 = 0
   private var counters = TileStatistics()
@@ -379,7 +387,7 @@ struct TileStatistics: Equatable, Codable {
           let samples = try gpu.texture(width: resolution, height: resolution, format: .r32Float)
           let colour = try gpu.texture(width: resolution, height: resolution, format: .rgba8Unorm)
           let renderer =
-            self.override
+            (key.level > 40 ? .perturbation : self.override)
             ?? (key.level > 32
               ? .perturbation
               : Viewport(center: bounds.center, scale: 3 / bounds.span).recommendedRenderer(
@@ -389,11 +397,17 @@ struct TileStatistics: Equatable, Codable {
             let bits = max(192, key.level + 128)
             let step = bounds.wideSpan * (1 / Double(TileGrid.samples))
             let topLeft = bounds.preciseOrigin.offset(x: step * -0.5, y: step * 0.5, bits: bits)
+            var region = PerturbationRegion(
+              topLeft: topLeft, step: step, width: resolution, height: resolution, bits: bits)
+            region.preferredReference =
+              self.grid.deepAnchor ?? DeepPoint(self.grid.anchor, bits: bits)
             let metrics = try await gpu.perturb(
-              into: samples,
-              region: PerturbationRegion(
-                topLeft: topLeft, step: step, width: resolution, height: resolution, bits: bits),
-              iterations: self.iterations)
+              into: samples, region: region, iterations: self.iterations, useBLA: self.useBLA)
+            self.counters.batches += metrics.batches
+            self.counters.referenceOrbits += metrics.references
+            self.counters.referenceCacheHits += metrics.referenceCacheHits
+            self.counters.referenceMS += metrics.referenceSeconds * 1000
+            self.counters.perturbationSkipped += metrics.skippedIterations
             self.counters.longestBatchMS = max(self.counters.longestBatchMS, metrics.longestBatchMS)
           } else {
             let step = bounds.span / Double(TileGrid.samples)

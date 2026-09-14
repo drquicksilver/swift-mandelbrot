@@ -50,3 +50,12 @@ import Testing
     #expect(key.ancestor(at: -2).level == -2)
   }
 }
+
+@Test func deepCoordinatesExportWithoutDoubleRounding() throws {
+  let a = try DeepNumber(decimal: "-1.00000000000000000000000000000000000000001", bits: 3500)
+  let b = try DeepNumber(decimal: a.decimalString, bits: 3500)
+  #expect((a.raw - b.raw).magnitude <= 1)
+  let view = try Viewport(real: "0", imag: "1", zoom: "1e1000")
+  let decoded = try Viewport(real: "0", imag: "1", zoom: view.scaleDescription)
+  #expect(abs(decoded.logScale - view.logScale) < 1e-10)
+}

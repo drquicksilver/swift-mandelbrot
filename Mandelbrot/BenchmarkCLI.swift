@@ -38,6 +38,7 @@
         --offset N         Palette phase (default: 0)
         --samples PATH     Raw float32 GPU samples; -1 means capped/inside
         --pipeline NAME    legacy, gpu or tiles (default: legacy); tiles exports PNGs
+        --bla on|off       Perturbation iteration skipping (default: on)
         --timing SCOPE     end-to-end or kernel (GPU benchmark only)
         --help             Show this help
 
@@ -57,6 +58,7 @@
       var samples: String?
       var pipeline = "legacy"
       var timing = "end-to-end"
+      var useBLA = true
       var render = false
       var renderer = "metal"
       var size = (1024, 1024)
@@ -84,7 +86,7 @@
           guard
             (renderFlags + benchmarkFlags + [
               "--iterations", "--center-real", "--center-imag", "--scale", "--pipeline", "--timing",
-              "--colouring", "--palette", "--density", "--offset", "--samples",
+              "--colouring", "--palette", "--density", "--offset", "--samples", "--bla",
             ]).contains(flag)
           else {
             throw CLIError("Unknown option: \(flag)")
@@ -96,6 +98,9 @@
           let value = arguments[index]
           index += 1
           switch flag {
+          case "--bla":
+            guard ["on", "off"].contains(value) else { throw CLIError("BLA must be on or off") }
+            useBLA = value == "on"
           case "--colouring":
             guard ["legacy", "smooth"].contains(value) else {
               throw CLIError("Colouring must be legacy or smooth")
@@ -185,6 +190,12 @@
         scale = viewport.scale
         if pipeline == "legacy" && arguments.contains("all") {
           variants.removeAll { $0 == "perturbation" }
+        }
+        if pipeline != "legacy" && arguments.contains("all") {
+          variants.removeAll {
+            RendererID(rawValue: $0)?.isGPU != true
+              || (viewport.logScale > log2(1e14) && $0 != "perturbation")
+          }
         }
         let selected = render ? [renderer] : variants
         if selected.contains("perturbation") && (pipeline == "legacy" || !colouring.smooth) {
@@ -369,6 +380,7 @@
         let view = options.viewport
         let size = options.size
         let store = TileStore()
+        store.useBLA = options.useBLA
         store.update(
           viewport: view, size: CGSize(width: size.0, height: size.1), pixelWidth: Double(size.0),
           iterations: options.iterations,
@@ -408,7 +420,8 @@
           let frame = try await gpu.render(
             viewport: options.viewport,
             width: width, height: height, iterations: options.iterations,
-            renderer: RendererID(rawValue: options.renderer)!, settings: options.colouring)
+            renderer: RendererID(rawValue: options.renderer)!, settings: options.colouring,
+            useBLA: options.useBLA)
           let image = try await gpu.image(frame.colour)
           let data = NSMutableData()
           guard
@@ -450,7 +463,8 @@
               let frame = try await gpu.render(
                 viewport: options.viewport,
                 width: width, height: height, iterations: options.iterations,
-                renderer: RendererID(rawValue: variant)!, settings: options.colouring)
+                renderer: RendererID(rawValue: variant)!, settings: options.colouring,
+                useBLA: options.useBLA)
               let seconds =
                 options.timing == "kernel"
                 ? frame.kernelSeconds : Double(DispatchTime.now().uptimeNanoseconds - start) / 1e9

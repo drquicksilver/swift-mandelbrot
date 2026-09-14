@@ -25,16 +25,16 @@ flowchart LR
 A level-L tile spans `3 / 2^L` of the complex plane. Keys contain a level, signed
 anchor-relative indices and an anchor epoch; negative parent indices use floor
 division. Rebase when indices exceed 2³⁰, retaining detailed old-generation coverage
-using its original world bounds. Double coordinates and FloatFloat are sufficient
-for this milestone's explicitly capped range; these are not arbitrary-precision
-coordinates and do not implement 2.2.
+using its original precise bounds. Deep coordinates use MIT BigInt fixed point;
+spans and local geometry retain a separate binary exponent.
 
-`Viewport` owns coordinate conversion and the conservative FloatFloat zoom cap.
-Automatic precision uses Float while pixel spacing has adequate Float-ULP
-headroom, then FloatFloat. Both Metal paths retain strict arithmetic. Tile origins
+`Viewport` owns coordinate conversion and logarithmic zoom. Automatic precision
+uses Float while pixel spacing has adequate Float-ULP headroom, then FloatFloat,
+then perturbation. All Metal arithmetic paths retain strict arithmetic. Tile origins
 and increments are split on the CPU, avoiding per-pixel FloatFloat division.
 Raw R32Float values contain smooth escape counts with bailout radius 256; -1
-marks a sample at its iteration cap. A private, unfinished tile uses -2 internally.
+marks a sample at its iteration cap. A private, unfinished ordinary tile uses -2 internally; perturbation uses -3
+for a detected glitch until that pixel is recomputed.
 
 ## Work and presentation
 
@@ -44,14 +44,16 @@ visible level and its two nearest ancestors, coarse before fine within that band
 then centre before edges. Cold jumps therefore get useful nearby detail without
 computing every level from the root. Invisible work is discarded between commands. An orbit
 state buffer makes iteration batches resumable; measured GPU duration adapts the
-batch toward 1 ms, bounded to 8–512 iterations over one 258² tile. All kernels
+batch toward 1 ms: 8–512 ordinary iterations, or 1–128 perturbation/BLA
+operations over one 258² tile. All kernels
 use rounded-up uniform threadgroups and reject out-of-range threads before memory
 access; non-uniform threadgroup support is not required. This bounds
 submitted arithmetic, not OS scheduling latency or a guaranteed frame deadline.
 
 `GPUCanvas` requests the display's maximum refresh rate and permits at most two
 presentation commands in flight. It transforms cached tiles with the current
-camera; CPU readback exists only for tests and exports. Scene deactivation and
+camera; texture readback exists only for tests and exports. Perturbation reads
+a small shared status buffer to select a glitched pixel for re-referencing. Scene deactivation and
 canvas removal stop refinement and motion. CPU overrides use the legacy image
 presentation path; their separate input clocks run only during CPU inertia.
 Tile completion, palette changes and navigation wake a paused view; motion and
@@ -153,3 +155,19 @@ publishing known-glitched samples. No per-pixel sample readback occurs in the vi
 Algorithm sources (equations reimplemented here, no source code copied):
 [Claude Heiland-Allen, deep zoom theory and practice](https://mathr.co.uk/blog/2021-05-14_deep_zoom_theory_and_practice.html)
 and [rebasing and bilinear approximation](https://mathr.co.uk/blog/2022-02-21_deep_zoom_theory_and_practice_again.html).
+
+BLA composes conservative 32-step blocks starting at reference iteration one.
+Each block carries complex A/B coefficients and a validity radius constrained at
+every intermediate iteration. Blocks near a critical point or bailout are
+rejected; ordinary perturbation handles those iterations. This bounds work per
+GPU operation and table size instead of building an unrestricted skip hierarchy.
+`--bla off` provides a direct numerical/performance control. Per-batch counters
+record actual skipped iterations and avoid cumulative UInt32 overflow.
+
+Tiles prefer their shared high-precision grid anchor as a reference. A separate
+actor caches at most three reference orbits, with a 4 MiB orbit-data cap. Reference
+work and BLA preparation are cancellable and off the main actor. At deep zoom the
+tile budget reserves up to 12 MiB for reference/cache/state resources before its
+existing transactional colour/display headroom. Full-image benchmarks create
+fresh references, so end-to-end results do not disguise reference latency with
+cache hits. Iteration state retention and automatic iteration depth remain 2.3.

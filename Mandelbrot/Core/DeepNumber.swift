@@ -24,7 +24,7 @@ struct DeepNumber: Equatable, Sendable {
   init(decimal: String, bits: Int) throws {
     let parts = decimal.lowercased().split(separator: "e", omittingEmptySubsequences: false)
     guard parts.count <= 2, let exponent = parts.count == 2 ? Int(parts[1]) : 0,
-      abs(exponent) <= 5000
+      (-5000...5000).contains(exponent)
     else { throw PrecisionError("Invalid decimal exponent") }
     let mantissa = String(parts[0])
     let fraction = mantissa.split(separator: ".", omittingEmptySubsequences: false)
@@ -65,6 +65,19 @@ struct DeepNumber: Equatable, Sendable {
       if remainder > half || (remainder == half && leading & 1 == 1) { leading += 1 }
     }
     return WideReal((raw.sign == .minus ? -1 : 1) * Double(leading), exponent: shift - bits)
+  }
+  /// Enough decimal digits to round-trip at the current working precision.
+  var decimalString: String {
+    if raw == 0 { return "0" }
+    let digits = Int(ceil(Double(bits) * log10(2))) + 2
+    let scaled = (raw.magnitude * BigUInt(10).power(digits)) >> bits
+    var text = String(scaled)
+    if text.count <= digits { text = String(repeating: "0", count: digits + 1 - text.count) + text }
+    let split = text.index(text.endIndex, offsetBy: -digits)
+    text.insert(".", at: split)
+    while text.last == "0" { text.removeLast() }
+    if text.last == "." { text.removeLast() }
+    return (raw.sign == .minus ? "-" : "") + text
   }
   var double: Double { wide.double }
 }

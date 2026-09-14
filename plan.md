@@ -140,7 +140,8 @@ only;
 (d) mip-averaging upward, prefetching and memory budgets.
 Add debug overlays (tile borders and levels) to the Developer panel.
 
-**2.2 Perturbation-theory deep zoom.**
+**2.2 Perturbation-theory deep zoom.** ✅ Completed; see the 2.2 sections in
+`Implementation.md`, `Architecture.md` and `Performance.md`.
 - *Library:* borrow, with a permissive licence. GMP and MPFR are LGPL, which is
   awkward for statically linked iOS App Store builds. Candidates:
   Boost.Multiprecision `cpp_bin_float` (header-only, Boost licence, via Swift's

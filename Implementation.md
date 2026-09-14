@@ -42,9 +42,9 @@ Completed:
   changing the camera. Palette-dependent mipmaps are disposable; raw data stays
   authoritative. The cache and numerical integration regressions pass.
 
-All implementation points through 2.1 are complete. No perturbation (2.2) or
-automatic iteration-depth heuristic (2.3) is included. Navigation has the agreed
-graceful FloatFloat precision cap. Each numbered point or tile stage has a commit;
+At the end of 2.1, perturbation and automatic iteration depth were still deferred;
+navigation used the agreed graceful FloatFloat precision cap. The 2.2 work below
+supersedes that navigation limit. Each numbered point or tile stage has a commit;
 1.6 preceded 1.4 to establish the shared models before the GPU presentation change.
 
 Final verification: `make test`, `make ios`, unsigned generic physical-iOS Release
@@ -111,3 +111,19 @@ extended-exponent FloatFloat Metal perturbation, bounded glitch re-referencing,
 and critical-point rebasing. CLI accepts exact decimal centres and deep scale
 strings with `--pipeline gpu|tiles --renderer perturbation`. Independent Decimal
 sample goldens at 1e50, 1e200 and 1e1000 now run in `make test`.
+
+### 2.2c: BLA acceleration and final validation
+
+Completed 2.2 on main. Added bounded 32-iteration BLA blocks, an on/off benchmark
+control, bounded shared reference caching for tiles, and status metrics. Deep
+sample and independent PNG goldens pass with BLA on and off at 1e50, 1e200 and
+1e1000. Tests also exercise real glitch re-referencing, deep pan/anchor zoom,
+parent coverage, reference reuse, Metal ABI layout and cancellation recovery.
+Deep debug overlays support five-digit levels; benchmark exports retain precise
+centres and scale strings. Defaults keep precision automatic; shallow renderer
+overrides resume after zooming out of a deep view.
+
+Final validation: `make test`, `make format-check`, `make ios`, `make ios-device`,
+and visual inspection of all deep evidence images. Actual iPhone frame pacing
+has not been measured by these headless/build checks. Iteration depth remains
+manual; no automatic-depth or periodicity feature was added ahead of the plan.
