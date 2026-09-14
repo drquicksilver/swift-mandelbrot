@@ -1,2 +1,6 @@
 Mandelbrot.xcodeproj/xcshareddata/
 Mandelbrot.xcodeproj/xcuserdata/
+*.profraw
+.build/
+.DS_Store
+__pycache__/

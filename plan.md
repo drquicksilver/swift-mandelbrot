@@ -156,8 +156,33 @@ Add debug overlays (tile borders and levels) to the Developer panel.
   renders go from minutes to seconds.
 - Golden tests at 1e50, 1e200 and 1e1000.
 
-**2.3 Automatic iteration depth.** Choose `maxIterations` from zoom depth and
-the share of pixels that stopped at the limit. Keep a manual override.
+**2.3 Automatic iteration depth.** Two layers:
+- *Starting guess from depth:* `maxIter ≈ 200 + 80·log2(scale)`. That gives
+  200 at 1×, about 2,000 at 1e7 (which matches the FloatFloat evidence) and
+  about 27,000 at 1e100. Calibrate the constants against the golden locations.
+  This is only a first guess: near minibrots the needed depth grows with the
+  minibrot's period, not with zoom.
+- *Correction from data:* use the coarse pass (or the parent tile) to decide.
+  Without detecting interior points you can't tell a genuinely interior pixel
+  from one that needed more iterations, so this depends on periodicity checking
+  (2.8). Any pixels that hit the limit are then either known to be inside or
+  genuinely unresolved:
+  - raise the limit (to about 2× the current one) while more than about 0.1% of
+    pixels are unresolved;
+  - lower it (to about 2× the 99.9th percentile of escaped counts) when the
+    highest escaped count is below a quarter of the limit.
+  Use hysteresis, only raise during gestures, and only lower at idle, so
+  tiles don't flicker.
+- *Deep-zoom hint:* the perturbation reference orbit's escape iteration, or its
+  period, gives a strong estimate for free.
+- *Tile cache:* a tile stores which limit it was computed with. Raising the
+  limit only recomputes the pixels that hit the old limit; escaped counts stay
+  valid.
+- *Colouring:* palette mapping must depend on counts (for example relative to
+  the lowest escaped count in view), never on `maxIter`. Otherwise
+  auto-adjusting would shift the colours.
+- *UI:* the +/− controls become a "detail" multiplier on the automatic value.
+  Friends and family never need to touch it.
 
 **2.4 Locations: bookmarks, history, sharing.** A `Location` type (center
 stored as an arbitrary-precision decimal string, scale, iterations, palette).
@@ -221,7 +246,8 @@ benchmark variant.
    changes are safe) → 1.6.
 2. **Looks and feel:** 1.4 → 1.5 → 1.7 → 1.8. At this point you can ship to
    friends on TestFlight.
-3. **Smooth motion:** 2.1 (a–d), 2.3.
-4. **Deep:** 2.8 → 2.2 (library spike first).
+3. **Smooth motion:** 2.1 (a–d); 2.8 (periodicity checking) → 2.3.
+   The depth-based starting guess from 2.3 can land at any time, even now.
+4. **Deep:** 2.2 (library spike first).
 5. **Share:** 2.4 → 2.6 → 2.5 → 2.7.
 6. **Ship:** 2.9 → App Store.
