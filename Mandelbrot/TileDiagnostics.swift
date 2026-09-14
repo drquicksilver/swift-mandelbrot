@@ -175,12 +175,21 @@
       // A deep location forces rebasing of relative keys; every ancestor must
       // remain representable and the FloatFloat tile path must finish.
       view = Viewport(center: CGPoint(x: -0.743643887037151, y: 0.13182590390533), scale: 1e10)
-      let deep = TileStore()
+      let deep = TileStore(budgetBytes: 150 * 1024 * 1024)
       let deepStart = ProcessInfo.processInfo.systemUptime
       deep.update(
         viewport: view, size: size, pixelWidth: 256, iterations: 4000, override: nil,
         colouring: ColourSettings())
+      while !deep.visible.allSatisfy({ deep.bestAvailable(for: $0) != nil }) {
+        if let error = deep.error { throw GPUFailure(error) }
+        try await Task.sleep(for: .milliseconds(1))
+      }
+      let usefulMS = (ProcessInfo.processInfo.systemUptime - deepStart) * 1000
       try await deep.waitUntilReady()
+      try require(deep.lod == deep.grid.idealLevel(viewport: view, pixelWidth: 256),
+                  "Phone memory budget silently reduced deep detail")
+      try require(deep.needed.count <= 12, "Cold view still requires distant ancestors")
+      try require(deep.statistics.bytes < 20 * 1024 * 1024, "Deep working set is unexpectedly large")
       try require(deep.grid.anchorID > 0, "Deep coordinates did not rebase")
       try require(
         deep.needed.allSatisfy { deep.records[$0] != nil }, "Deep ancestors are incomplete")
@@ -188,6 +197,7 @@
       deep.cancel()
       store.cancel()
       return [
+        "deepUsefulMS": usefulMS, "deepLOD": deep.lod,
         "deepRefinementMS": deepMS, "deepLongestBatchMS": deep.statistics.longestBatchMS,
         "deepResidentBytes": Double(deep.statistics.bytes),
         "cacheEvictions": Double(store.statistics.evictions),

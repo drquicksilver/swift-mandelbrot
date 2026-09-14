@@ -120,7 +120,12 @@ struct TileStatistics: Equatable, Codable {
       visible = grid.visible(viewport: viewport, size: size, level: level)
     }
     func ancestors() -> Set<TileKey> {
-      Set(visible.flatMap { key in (minimumLevel...key.level).map { key.ancestor(at: $0) } })
+      // Protect a local three-level band, not the entire path to the root.
+      // A cold jump first gets a quarter-resolution preview, then actual detail.
+      // Older ancestors remain ordinary LRU entries for zooming back out.
+      Set(visible.flatMap { key in
+        (max(minimumLevel, key.level - 2)...key.level).map { key.ancestor(at: $0) }
+      })
     }
     needed = ancestors()
     // On unusually large drawables or a constrained cache, lower sampling LOD

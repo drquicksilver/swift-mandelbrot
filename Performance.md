@@ -296,3 +296,15 @@ and both legacy Metal benchmark renderers.
 `make test` and `make ios` pass, including odd-sized legacy exports, 66×53
 resumption comparisons and all 258×258 tile/colour/mipmap kernels. Five M1 Pro
 traces are in `evidence/product/uniform-dispatch.json`: median trace 483.178 ms, median per-run p95 compositor GPU duration 0.377 ms, worst deep-refinement GPU batch 2.564 ms. These are host measurements; the device that reported the assertion still needs a rebuilt-app run.
+
+## Review: local ancestor scheduling
+
+Five M1 Pro traces (`evidence/product/review-local-levels.json`), now using the
+iPhone 150 MiB budget for the 1e10 deep test. The requested LOD is preserved.
+- deepUsefulMS: median 66.733
+- deepRefinementMS: median 174.541
+- deepResidentBytes: median 9830400.000
+
+Only the visible level and two nearby ancestors are required. Distant cached
+ancestors remain eligible for LRU reuse. This replaces 148 required deep tiles
+with 12 (9.375 MiB), without raising the budget or changing precision.

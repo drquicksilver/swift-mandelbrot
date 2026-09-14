@@ -63,3 +63,6 @@ or touch quality on those devices.
 - ProMotion: explicit iOS Info.plist boolean; `make ios` checks the generated app.
   The suggested custom build setting alone was ignored by this Xcode generator.
   Earlier claims that the opt-in was already enabled were incorrect.
+- Deep scheduling: protect a three-level working set; regression preserves full
+  1e10 detail within the iPhone budget and measures useful coverage separately
+  from completion. Existing distant ancestors remain reusable LRU entries.
