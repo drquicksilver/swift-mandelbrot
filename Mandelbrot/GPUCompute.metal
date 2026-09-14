@@ -94,10 +94,11 @@ fragment float4 imageFragment(QuadOutput in [[stage_in]],texture2d<float> image 
 }
 
 struct TileDrawUniforms {
-    float4 rect, coarseUV, baseUV, fineUV;
+    float4 rect, coarseUV, baseUV, fineUV, previousFineUV;
     float baseMix, fineMix;
     uint border;
     int level;
+    float fineFade, padding0, padding1, padding2;
 };
 vertex QuadOutput tileVertex(uint index [[vertex_id]],constant TileDrawUniforms &p [[buffer(0)]]) {
     constexpr float2 corners[] = {float2(0,0),float2(1,0),float2(0,1),float2(1,0),float2(1,1),float2(0,1)};
@@ -115,13 +116,17 @@ bool digitPixel(float2 point,uint digit) {
         || ((mask&64) && y>=4 && y<5 && x>=1 && x<4);
 }
 fragment float4 tileFragment(QuadOutput in [[stage_in]],texture2d<float> coarse [[texture(0)]],
-                             texture2d<float> base [[texture(1)]],texture2d<float> fine [[texture(2)]],
+                             texture2d<float> base [[texture(1)]],texture2d<float> fine [[texture(2)]],texture2d<float> previousFine [[texture(3)]],
                              constant TileDrawUniforms &p [[buffer(0)]]) {
     constexpr sampler s(coord::normalized,address::clamp_to_edge,filter::linear);
     // Interpolate colours, never iteration counts or inside/outside flags.
     float3 rgb=base.sample(s,mix(p.baseUV.xy,p.baseUV.zw,in.uv)).rgb;
     if(p.baseMix<1) rgb=mix(coarse.sample(s,mix(p.coarseUV.xy,p.coarseUV.zw,in.uv)).rgb,rgb,p.baseMix);
-    if(p.fineMix>0) rgb=mix(rgb,fine.sample(s,mix(p.fineUV.xy,p.fineUV.zw,in.uv)).rgb,p.fineMix);
+    if(p.fineMix>0) {
+        float3 detail=fine.sample(s,mix(p.fineUV.xy,p.fineUV.zw,in.uv)).rgb;
+        if(p.fineFade<1) detail=mix(previousFine.sample(s,mix(p.previousFineUV.xy,p.previousFineUV.zw,in.uv)).rgb,detail,p.fineFade);
+        rgb=mix(rgb,detail,p.fineMix);
+    }
     if(p.border) {
         float2 pixel=in.uv/max(fwidth(in.uv),float2(1e-6));
         float2 edge=min(in.uv,1-in.uv)/max(fwidth(in.uv),float2(1e-6));

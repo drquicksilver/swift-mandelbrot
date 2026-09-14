@@ -36,6 +36,7 @@
             bytesPerRow: 4)
         }
         encoder.setFragmentTexture(texture, index: index)
+        if index == 0 { encoder.setFragmentTexture(texture, index: 3) }
       }
       encoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 6)
       encoder.endEncoding()
@@ -227,9 +228,35 @@
       try await store.waitUntilReady()
       try require(store.error == nil && store.allVisibleReady, "Explicit retry did not recover")
     }
+    static func checkIterationContinuity(_ gpu: GPUContext) async throws {
+      let store = TileStore(budgetBytes: 150 * 1024 * 1024)
+      let view = Viewport(center: CGPoint(x: -0.743643987037151, y: 0.13182597420533), scale: 1e7)
+      let size = CGSize(width: 256, height: 256)
+      func update(_ iterations: Int) {
+        store.update(viewport: view, size: size, pixelWidth: 256, iterations: iterations,
+                     override: nil, colouring: ColourSettings())
+      }
+      update(2000); try await store.waitUntilReady()
+      let settled = ProcessInfo.processInfo.systemUptime + 1
+      let before = try await gpu.readback(TileCompositor.snapshot(store: store, viewport: view,
+        width: 256, height: 256, now: settled))
+      update(2200)
+      try require(!store.fallback.isEmpty, "Iteration change discarded detailed fallback")
+      let after = try await gpu.readback(TileCompositor.snapshot(store: store, viewport: view,
+        width: 256, height: 256, now: 0))
+      try require(before == after, "Iteration change altered the picture before replacement was ready")
+      update(2400)
+      try require(store.visible.allSatisfy { store.bestAvailable(for: $0)?.key.level == $0.level },
+                  "Repeated invalidation lost fine coverage")
+      try await store.waitUntilReady()
+      try require(store.visible.allSatisfy { store.records[$0]?.iterations == 2400 }, "Stale iteration generation was published")
+      store.retireFallback(now: ProcessInfo.processInfo.systemUptime + 1)
+      try require(store.fallback.isEmpty, "Completed fallback was not released")
+    }
     static func run() async -> Int32 {
       do {
         guard let gpu = GPUContext.shared else { throw GPUFailure("GPU unavailable") }
+        try await checkIterationContinuity(gpu)
         try await checkFailureRecovery()
         try await checkColourBlend(gpu)
         try await checkResumption(gpu)

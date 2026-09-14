@@ -66,3 +66,6 @@ or touch quality on those devices.
 - Deep scheduling: protect a three-level working set; regression preserves full
   1e10 detail within the iPhone budget and measures useful coverage separately
   from completion. Existing distant ancestors remain reusable LRU entries.
+- Iteration changes: retain the detailed working set across repeated changes,
+  prefer its detail over coarse new tiles, and fade replacements before releasing
+  fallback. Tile records now carry their iteration limit.

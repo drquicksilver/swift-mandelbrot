@@ -308,3 +308,11 @@ iPhone 150 MiB budget for the 1e10 deep test. The requested LOD is preserved.
 Only the visible level and two nearby ancestors are required. Distant cached
 ancestors remain eligible for LRU reuse. This replaces 148 required deep tiles
 with 12 (9.375 MiB), without raising the budget or changing precision.
+
+## Review: iteration-change continuity
+
+Old detailed tiles survive repeated iteration changes until replacement detail
+has completed its 125 ms fade. Both base and fine colours can blend against
+the previous generation. The regression compares the pre-change and immediate
+post-change PNG pixels exactly, then checks final-generation metadata and cleanup.
+Five M1 Pro traces: median per-run p95 compositor GPU time 0.144 ms; worst observed 0.773 ms. Raw: `evidence/product/review-fallback.json`.
