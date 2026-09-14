@@ -33,7 +33,7 @@ actor RenderWorker {
         return MandelbrotColorizer.image(from: iterations)
     }
 
-    private func renderIterations(
+    func renderIterations(
         variant: String,
         width: Int,
         height: Int,

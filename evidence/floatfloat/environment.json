@@ -1,0 +1,9 @@
+{
+  "cpu": "Apple M1 Pro",
+  "os": "macOS-26.6-arm64-arm-64bit-Mach-O",
+  "xcode": "Xcode 26.6\nBuild version 17F113",
+  "build": "Release -O whole-module-optimization, ENABLE_CODE_COVERAGE=NO",
+  "date": "2026-09-14",
+  "gpu": "Graphics/Displays:\n\n    Apple M1 Pro:\n\n      Chipset Model: Apple M1 Pro\n      Type: GPU\n      Bus: Built-In\n      Total Number of Cores: 16\n      Vendor: Apple (0x106b)\n      Metal Support: Metal 4\n      Displays:\n        Color LCD:\n          Display Type: Built-in Liquid Retina XDR Display\n          Resolution: 3456 x 2234 Retina\n          Main Display: Yes\n          Mirror: Off\n          Online: Yes\n          Automatically Adjust Brightness: Yes\n          Connection Type: Internal\n\n",
+  "beforeShader": "Original default.metallib from commit 18dd5e3 source; fast math; same uninstrumented host executable as after"
+}

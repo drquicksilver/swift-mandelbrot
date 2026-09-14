@@ -1,5 +1,85 @@
 # Mandelbrot Performance Experiments
 
+## Headless benchmarks (macOS)
+
+Build the Release app, then invoke its executable directly with `--benchmark`.
+This selects the command-line entry point before SwiftUI starts; no window is opened.
+
+```sh
+xcodebuild -project Mandelbrot.xcodeproj -scheme Mandelbrot \
+  -configuration Release -destination 'platform=macOS' \
+  -derivedDataPath /tmp/mandelbrot-build CODE_SIGNING_ALLOWED=NO ENABLE_CODE_COVERAGE=NO build
+
+/tmp/mandelbrot-build/Build/Products/Release/Mandelbrot.app/Contents/MacOS/Mandelbrot \
+  --benchmark --variants baseline,parallel,metal \
+  --sizes 1024x512,2048x1024 --iterations 200 --warmup 1 --runs 3
+```
+
+Use `--format json` to capture machine-readable results, including the viewport, each measured
+sample, median seconds, and megapixels per second. The default output is Markdown.
+`--help` lists all options; `--variants all` includes all nine implementations
+(including the FloatFloat `metal-double` renderer). CPU-only runs can select
+`--variants baseline,parallel` without requiring a Metal device.
+
+The default sizes are fixed for repeatability, rather than the GUI's adaptive size
+selection. Runs default to center (-0.5, 0) and scale 1; `--center-real`,
+`--center-imag`, and `--scale` select another viewport. Block size is always 1. As in the GUI,
+timings cover both iteration computation and CPU colorization, including allocations
+and GPU synchronization; they are not isolated kernel timings. Each renderer/size
+gets its own untimed warmups, followed by measured runs using a monotonic clock.
+Zero warmups includes first-use setup costs in the first measured sample.
+
+The process exits with status 0 on success, 2 for invalid options, and 1 if a
+renderer fails (including unavailable Metal). Diagnostics go to stderr. Iterations
+are limited to 65535 to fit the GPU count buffers. Sizes are limited to 16384 per
+dimension and 33554432 pixels in total. Run without `--benchmark` to open the GUI
+normally. Use Release builds with `ENABLE_CODE_COVERAGE=NO` for performance comparisons;
+the Xcode scheme otherwise enables coverage instrumentation even in Release.
+
+Run the headless CLI integration checks against a built executable with:
+
+```sh
+python3 tests/test_headless.py \
+  /tmp/mandelbrot-build/Build/Products/Release/Mandelbrot.app/Contents/MacOS/Mandelbrot
+```
+
+These checks use CPU renderers so they can run without GPU access.
+Set `MANDELBROT_TEST_METAL=1` to also run the deep-zoom accuracy regression against
+CPU Double. This requires GPU access and checks square and non-square viewports.
+
+## PNG export and deep-zoom benchmarks
+
+`--render` exports a single full-resolution PNG without opening a window. For example:
+
+```sh
+/tmp/mandelbrot-build/Build/Products/Release/Mandelbrot.app/Contents/MacOS/Mandelbrot \
+  --render --renderer metal-double --size 512x512 \
+  --center-real -0.743643987037151 --center-imag 0.13182597420533 \
+  --scale 10000000 --iterations 2000 --output floatfloat.png
+```
+
+Horizontal span is `3 / scale`; vertical span follows the image aspect ratio.
+The real coordinate increases left to right; the imaginary coordinate increases
+bottom to top. Center coordinates must be in [-4, 4], and scale in [1e-6, 1e14].
+These bounds are input limits, not a promise of adequate precision at every zoom.
+Image dimensions and iteration limits use the same validation as benchmarks.
+`--counts counts.u16` optionally exports raw iteration counts as little-endian
+UInt16 values in row-major order, starting at the top-left pixel. No header is
+included; use the requested image dimensions to interpret them. Parent output
+directories must already exist. PNG writing is excluded from benchmark timings.
+
+Benchmark the exact same viewport by replacing the render/output options:
+
+```sh
+/tmp/mandelbrot-build/Build/Products/Release/Mandelbrot.app/Contents/MacOS/Mandelbrot \
+  --benchmark --variants all --sizes 512x512,1024x1024 \
+  --center-real -0.743643987037151 --center-imag 0.13182597420533 \
+  --scale 10000000 --iterations 2000 --warmup 1 --runs 5 --format json
+```
+
+See [the FloatFloat investigation](evidence/floatfloat/README.md) for before/after
+images, raw measurements, accuracy comparisons, and reproduction instructions.
+
 This document outlines independent experiments to measure performance impacts in the Mandelbrot renderer. Each experiment changes a single aspect of the computation so you can isolate effects. The hot path is the iteration loop and block fill in `MandelbrotRenderer.iterations`.
 
 ## Phase 1

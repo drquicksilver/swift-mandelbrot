@@ -7,12 +7,6 @@
 #include <metal_stdlib>
 using namespace metal;
 
-// FloatFloat's error-free transforms require the written rounding points.
-// Build with MTL_FAST_MATH=NO: reassociation can erase the low-word residuals.
-// Disable implicit multiply-add contraction as well; dd_mul explicitly uses
-// fma to recover the rounding error of an independently rounded product.
-#pragma clang fp contract(off)
-
 struct MandelbrotParams {
     uint width;
     uint height;
@@ -124,9 +118,8 @@ kernel void mandelbrotIterationsDouble(
     }
 
     float2 realSpan = dd_div(params.baseSpan, params.scale);
-    // Keep non-square viewport geometry in FloatFloat too.
-    float2 aspect = dd_div(dd_from_float(float(params.height)), dd_from_float(float(params.width)));
-    float2 imagSpan = dd_mul(realSpan, aspect);
+    float aspect = float(params.height) / float(params.width);
+    float2 imagSpan = dd_mul_float(realSpan, aspect);
     float2 realMin = dd_sub(params.centerX, dd_mul_float(realSpan, 0.5f));
     float2 imagMax = dd_add(params.centerY, dd_mul_float(imagSpan, 0.5f));
 
@@ -145,7 +138,7 @@ kernel void mandelbrotIterationsDouble(
         float2 zr2 = dd_mul(zr, zr);
         float2 zi2 = dd_mul(zi, zi);
         float2 mag = dd_add(zr2, zi2);
-        if (mag.x > 4.0f || (mag.x == 4.0f && mag.y > 0.0f)) {
+        if (mag.x + mag.y > 4.0f) {
             break;
         }
 

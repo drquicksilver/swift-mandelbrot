@@ -1,0 +1,13 @@
+{
+  "cpu-double-reference.png": "413fd142c77b51800526ae6baf43a4b4ab3e9d0e509907b13ef7fcdd72e0531b",
+  "cpu-double-reference.u16": "e6e7c86b4d37383de1bb4bee282b7973f3c7ffa2937b23066d82ccd04c6c267c",
+  "float-after.png": "039e24d9a98d1c53233894fee1afac4c24ca38e1213570b8d1824da245bb2943",
+  "float-after.u16": "a26e99d6a21219fbc26b0db6798e75373e944e8ef6118d145d65d306c9477c5a",
+  "float-before.png": "6f4d0f491a9f46afcb6765cff7e830f50eef08496e642fe03339ff073ecc93b9",
+  "float-before.u16": "732f870c58da1dc8327580917227a40c8fc2aa9fa5e53af3ec2ce405fba61a11",
+  "floatfloat-after.png": "9a46127aca75e3c79e155b70653f1fd1c5ce897734cf7f8388f5a880c208802f",
+  "floatfloat-after.u16": "2804f4e4ea9c02e13c9d35da9b2e128e4b6c310e0861aa7e5269a5b18eccd9f6",
+  "floatfloat-before.png": "a9637757a245e3281f11354a261929f4dc8e1263d6317c1b5fbacbadcfbf8c43",
+  "floatfloat-before.u16": "9edb0e3baf5f2000c925daa0acb43d96a94a7ef1bc3f56fe79ff61ab724e6f77",
+  "original-shader.metal": "e073b6b0cee3b569cfdddffa4895d689fd23711f9d32740ad652615858e69bca"
+}

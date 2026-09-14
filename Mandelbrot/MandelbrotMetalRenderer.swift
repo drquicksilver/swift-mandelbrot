@@ -133,6 +133,7 @@ final class MandelbrotMetalContext {
 
         commandBuffer.commit()
         commandBuffer.waitUntilCompleted()
+        guard commandBuffer.status == .completed else { return nil }
 
         let raw = iterationsBuffer.contents().bindMemory(to: UInt16.self, capacity: count)
         var values = [Int](repeating: 0, count: count)
@@ -208,6 +209,7 @@ final class MandelbrotMetalContext {
 
         commandBuffer.commit()
         commandBuffer.waitUntilCompleted()
+        guard commandBuffer.status == .completed else { return nil }
 
         let raw = iterationsBuffer.contents().bindMemory(to: UInt16.self, capacity: count)
         var values = [Int](repeating: 0, count: count)

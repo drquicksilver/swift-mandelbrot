@@ -1,0 +1,117 @@
+{
+  "width": 512,
+  "height": 512,
+  "maxIterations": 2000,
+  "results": {
+    "cpu-double-reference": {
+      "exactMatchPercent": 100.0,
+      "escapedExactMatchPercent": 100.0,
+      "withinOnePercent": 100.0,
+      "meanAbsoluteIterationError": 0.0,
+      "distinctIterationCounts": 1493,
+      "distinctColumns": 512,
+      "distinctRows": 479,
+      "longestRepeatedColumnRun": 1,
+      "longestRepeatedRowRun": 34
+    },
+    "float-before": {
+      "exactMatchPercent": 37.34283447265625,
+      "escapedExactMatchPercent": 0.1485557083906465,
+      "withinOnePercent": 37.52784729003906,
+      "meanAbsoluteIterationError": 223.9659767150879,
+      "distinctIterationCounts": 65,
+      "distinctColumns": 6,
+      "distinctRows": 18,
+      "longestRepeatedColumnRun": 102,
+      "longestRepeatedRowRun": 93,
+      "columnRuns": [
+        51,
+        102,
+        101,
+        102,
+        101,
+        55
+      ],
+      "rowRuns": [
+        13,
+        26,
+        25,
+        25,
+        26,
+        25,
+        25,
+        26,
+        25,
+        26,
+        25,
+        25,
+        26,
+        25,
+        26,
+        25,
+        25,
+        93
+      ]
+    },
+    "floatfloat-before": {
+      "exactMatchPercent": 35.041046142578125,
+      "escapedExactMatchPercent": 0.27441540577716644,
+      "withinOnePercent": 35.37445068359375,
+      "meanAbsoluteIterationError": 222.97593307495117,
+      "distinctIterationCounts": 70,
+      "distinctColumns": 6,
+      "distinctRows": 17,
+      "longestRepeatedColumnRun": 102,
+      "longestRepeatedRowRun": 118,
+      "columnRuns": [
+        51,
+        102,
+        101,
+        102,
+        101,
+        55
+      ],
+      "rowRuns": [
+        13,
+        26,
+        25,
+        25,
+        26,
+        25,
+        25,
+        26,
+        25,
+        26,
+        25,
+        25,
+        26,
+        25,
+        26,
+        25,
+        118
+      ]
+    },
+    "float-after": {
+      "exactMatchPercent": 36.371612548828125,
+      "escapedExactMatchPercent": 0.23314993122420907,
+      "withinOnePercent": 36.62872314453125,
+      "meanAbsoluteIterationError": 233.79431915283203,
+      "distinctIterationCounts": 65,
+      "distinctColumns": 6,
+      "distinctRows": 17,
+      "longestRepeatedColumnRun": 102,
+      "longestRepeatedRowRun": 67
+    },
+    "floatfloat-after": {
+      "exactMatchPercent": 95.72334289550781,
+      "escapedExactMatchPercent": 92.36038514442916,
+      "withinOnePercent": 96.84486389160156,
+      "meanAbsoluteIterationError": 2.633769989013672,
+      "distinctIterationCounts": 1493,
+      "distinctColumns": 512,
+      "distinctRows": 479,
+      "longestRepeatedColumnRun": 1,
+      "longestRepeatedRowRun": 34
+    }
+  }
+}

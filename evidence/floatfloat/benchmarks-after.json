@@ -1,0 +1,263 @@
+{
+  "centerImag": 0.13182597420533,
+  "centerReal": -0.743643987037151,
+  "iterations": 2000,
+  "results": [
+    {
+      "height": 512,
+      "medianSeconds": 1.23786325,
+      "megapixelsPerSecond": 0.21177137296870233,
+      "samplesSeconds": [
+        1.239036125,
+        1.23786325,
+        1.238142166,
+        1.235088792,
+        1.234098041
+      ],
+      "variant": "baseline",
+      "width": 512
+    },
+    {
+      "height": 512,
+      "medianSeconds": 1.226441708,
+      "megapixelsPerSecond": 0.21374354630150916,
+      "samplesSeconds": [
+        1.244330083,
+        1.228319334,
+        1.226441708,
+        1.226353375,
+        1.222255916
+      ],
+      "variant": "scalar-tight",
+      "width": 512
+    },
+    {
+      "height": 512,
+      "medianSeconds": 1.237576708,
+      "megapixelsPerSecond": 0.21182040539825672,
+      "samplesSeconds": [
+        1.341944708,
+        1.23833225,
+        1.23198175,
+        1.234999917,
+        1.237576708
+      ],
+      "variant": "coord-precompute",
+      "width": 512
+    },
+    {
+      "height": 512,
+      "medianSeconds": 1.266962625,
+      "megapixelsPerSecond": 0.20690744527684865,
+      "samplesSeconds": [
+        1.267981542,
+        1.264719583,
+        1.266962625,
+        1.269875208,
+        1.258080875
+      ],
+      "variant": "unsafe-buffer",
+      "width": 512
+    },
+    {
+      "height": 512,
+      "medianSeconds": 1.296333833,
+      "megapixelsPerSecond": 0.20221951578116376,
+      "samplesSeconds": [
+        1.270088875,
+        1.296333833,
+        1.43720375,
+        1.311411417,
+        1.264729084
+      ],
+      "variant": "float-math",
+      "width": 512
+    },
+    {
+      "height": 512,
+      "medianSeconds": 0.18419775,
+      "megapixelsPerSecond": 1.4231661353083846,
+      "samplesSeconds": [
+        0.198245708,
+        0.181007292,
+        0.229051375,
+        0.18419775,
+        0.176662292
+      ],
+      "variant": "parallel",
+      "width": 512
+    },
+    {
+      "height": 512,
+      "medianSeconds": 1.437647083,
+      "megapixelsPerSecond": 0.18234238645897213,
+      "samplesSeconds": [
+        1.820794916,
+        1.480692458,
+        1.437519542,
+        1.437647083,
+        1.434845417
+      ],
+      "variant": "simd4-float",
+      "width": 512
+    },
+    {
+      "height": 512,
+      "medianSeconds": 0.009659792,
+      "megapixelsPerSecond": 27.137644371638643,
+      "samplesSeconds": [
+        0.010317792,
+        0.009659792,
+        0.00975075,
+        0.009294958,
+        0.009513416
+      ],
+      "variant": "metal",
+      "width": 512
+    },
+    {
+      "height": 512,
+      "medianSeconds": 0.028295417,
+      "megapixelsPerSecond": 9.264539200818282,
+      "samplesSeconds": [
+        0.028248209,
+        0.028295417,
+        0.029094416,
+        0.027980792,
+        0.028494
+      ],
+      "variant": "metal-double",
+      "width": 512
+    },
+    {
+      "height": 1024,
+      "medianSeconds": 5.137067042,
+      "megapixelsPerSecond": 0.2041195864151621,
+      "samplesSeconds": [
+        5.035525167,
+        5.172622334,
+        5.137067042,
+        5.127820875,
+        5.137828375
+      ],
+      "variant": "baseline",
+      "width": 1024
+    },
+    {
+      "height": 1024,
+      "medianSeconds": 5.015622875,
+      "megapixelsPerSecond": 0.20906197019447958,
+      "samplesSeconds": [
+        5.108748708,
+        5.012819542,
+        5.015622875,
+        5.021275292,
+        4.983237083
+      ],
+      "variant": "scalar-tight",
+      "width": 1024
+    },
+    {
+      "height": 1024,
+      "medianSeconds": 5.048248667,
+      "megapixelsPerSecond": 0.20771084571456588,
+      "samplesSeconds": [
+        5.043942209,
+        5.055028042,
+        5.048248667,
+        5.037547667,
+        5.184693
+      ],
+      "variant": "coord-precompute",
+      "width": 1024
+    },
+    {
+      "height": 1024,
+      "medianSeconds": 5.059034542,
+      "megapixelsPerSecond": 0.207268005643121,
+      "samplesSeconds": [
+        5.084585958,
+        5.021681875,
+        5.024562291,
+        5.068599833,
+        5.059034542
+      ],
+      "variant": "unsafe-buffer",
+      "width": 1024
+    },
+    {
+      "height": 1024,
+      "medianSeconds": 5.131369583,
+      "megapixelsPerSecond": 0.2043462243440593,
+      "samplesSeconds": [
+        5.174152584,
+        5.123097333,
+        5.131369583,
+        5.121141,
+        5.149873417
+      ],
+      "variant": "float-math",
+      "width": 1024
+    },
+    {
+      "height": 1024,
+      "medianSeconds": 0.827137417,
+      "megapixelsPerSecond": 1.2677168006776316,
+      "samplesSeconds": [
+        0.805417625,
+        0.818949833,
+        0.827137417,
+        0.836260834,
+        0.860308084
+      ],
+      "variant": "parallel",
+      "width": 1024
+    },
+    {
+      "height": 1024,
+      "medianSeconds": 5.665252208,
+      "megapixelsPerSecond": 0.18508902366593458,
+      "samplesSeconds": [
+        5.665252208,
+        5.670982625,
+        5.662463959,
+        5.659797375,
+        5.677889375
+      ],
+      "variant": "simd4-float",
+      "width": 1024
+    },
+    {
+      "height": 1024,
+      "medianSeconds": 0.035390041,
+      "megapixelsPerSecond": 29.629126453964833,
+      "samplesSeconds": [
+        0.035596167,
+        0.034685333,
+        0.035383708,
+        0.036347083,
+        0.035390041
+      ],
+      "variant": "metal",
+      "width": 1024
+    },
+    {
+      "height": 1024,
+      "medianSeconds": 0.104593125,
+      "megapixelsPerSecond": 10.02528607879342,
+      "samplesSeconds": [
+        0.10710325,
+        0.104593125,
+        0.103295541,
+        0.104408042,
+        0.105926042
+      ],
+      "variant": "metal-double",
+      "width": 1024
+    }
+  ],
+  "runs": 5,
+  "scale": 10000000,
+  "timingScope": "iterations-and-colorization",
+  "warmup": 1
+}

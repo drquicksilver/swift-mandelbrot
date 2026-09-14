@@ -1,0 +1,67 @@
+{
+  "centerImag": 0.13182597420533,
+  "centerReal": -0.743643987037151,
+  "iterations": 2000,
+  "results": [
+    {
+      "height": 512,
+      "medianSeconds": 0.008907375,
+      "megapixelsPerSecond": 29.429994807673417,
+      "samplesSeconds": [
+        0.008907375,
+        0.010259125,
+        0.011273417,
+        0.008858292,
+        0.008715125
+      ],
+      "variant": "metal",
+      "width": 512
+    },
+    {
+      "height": 512,
+      "medianSeconds": 0.013306666,
+      "megapixelsPerSecond": 19.70020138778564,
+      "samplesSeconds": [
+        0.012181125,
+        0.013306666,
+        0.013089917,
+        0.013656666,
+        0.01442875
+      ],
+      "variant": "metal-double",
+      "width": 512
+    },
+    {
+      "height": 1024,
+      "medianSeconds": 0.03178375,
+      "megapixelsPerSecond": 32.99094663153341,
+      "samplesSeconds": [
+        0.032641042,
+        0.03178375,
+        0.031631042,
+        0.031728959,
+        0.031795375
+      ],
+      "variant": "metal",
+      "width": 1024
+    },
+    {
+      "height": 1024,
+      "medianSeconds": 0.035664166,
+      "megapixelsPerSecond": 29.401388497350535,
+      "samplesSeconds": [
+        0.035281125,
+        0.036194084,
+        0.035664166,
+        0.035582167,
+        0.036398083
+      ],
+      "variant": "metal-double",
+      "width": 1024
+    }
+  ],
+  "runs": 5,
+  "scale": 10000000,
+  "timingScope": "iterations-and-colorization",
+  "warmup": 1
+}
