@@ -607,3 +607,99 @@ All existing error budgets pass, including maximum 8/255 error on the hard tiled
 PNG. Mac tests, strict formatting, iOS Simulator and physical-target builds pass;
 both iOS builds include the verified MIT notice. Neither target phone was available
 for actual frame-pacing measurements.
+
+## Follow-up review: automatic depth without cache resets
+
+The cache now retains iteration-labelled raw samples. Lowering the limit performs
+colour/mip work but no orbit sampling; returning to an already computed higher
+limit also requires no sampling. Increasing beyond stored detail recomputes only
+capped pixels, preserving escaped records byte-for-byte. Fully escaped tiles need
+no extension. State remains worker-local; capped pixels restart rather than
+retaining a roughly 3 MiB perturbation buffer for each cached tile.
+
+The integration fixture sampled **zero pixels** on a decrease and return, and
+**820 capped pixels** on the next increase. A 201-view 1x–1e30–1x navigation trace
+sampled 27,424,368 pixels with a fixed limit and 27,427,626 with automatic limits.
+This trace deliberately uses an outside-set location to isolate cache behaviour;
+non-flat seahorse, deep c=i and minibrot tests separately check rendering accuracy.
+Returns from 1e12 and 1e1000 both rebuilt the same two shallow tiles as a fresh
+session, cleared deep anchors/bounds and released cached deep reference storage.
+Raw observations are in `evidence/followup/navigation.txt` and
+`evidence/followup/tile-validation.json`; timings are observations, not CI limits.
+
+## Follow-up review: streamed reference latency
+
+At c=i and 1e1000, the automatic policy selects 266,000 iterations. The earlier
+reference-only experiment measured 0.91–0.99 seconds to prepare that complete
+orbit on this M1 Pro (about 17 ms for 5,000), rather than the review's extrapolated
+five seconds. Those measurements excluded tile rendering.
+
+References now save their final BigInt state and grow only when GPU pixels reach
+the available prefix. Extensions match one-shot packed orbit values exactly.
+Initial prefixes contain at most 4,097 iterations, aligned to BLA leaves; a
+paused frontier does not trigger a rebase or reset pixel state.
+
+Three isolated cold product runs at the actual automatic limit produced:
+
+| Measurement | Median | Range |
+| --- | ---: | ---: |
+| First deep tile ready | 41.51 ms | 41.19–48.76 ms |
+| All required tiles ready | 233.20 ms | 227.25–275.26 ms |
+| Reference values needed | 4,098 | identical in all runs |
+
+Run `APP --benchmark-reference`, or
+`python3 tests/precision/measure_followup.py APP` to record all runs and images.
+These measure readiness after GPU-context initialisation, not display presentation
+or physical-phone frame pacing. Raw data: `evidence/followup/measurements.json`.
+
+Comparable fresh full-image runs (64×48, three runs after one warmup, reference
+preparation and GPU colour included) now measure:
+
+| Location | BLA off | Fixed 32-step blocks | Hierarchy |
+| --- | ---: | ---: | ---: |
+| c=i, 1e1000, 5,000 iterations | 158.90 ms | 107.97 ms | 108.62 ms |
+| minibrot, 1e100, 60,000 iterations | 702.51 ms | 426.91 ms | 432.36 ms |
+
+The last two columns are similar here; there is no claim of an end-to-end
+hierarchy win. Both use the production compounded radius. Raw data and component
+timings are in `evidence/review-deep/followup.json`.
+
+## Follow-up review: BLA margin decision
+
+`make bla` now runs 440 isolated GPU jump cases against ordinary GPU recurrence
+and independent 180-digit Decimal recurrence, using the same packed reference
+and starting values. Cases include zero deltas and 12.5%, 50% and 99% of the
+validity radius, with lengths through 16,384. Errors are normalised by the larger
+of the final magnitude and the sum of the two linear output-term magnitudes,
+so cancellation does not create misleading relative errors.
+
+| Scene/policy | Largest BLA-vs-Decimal error | Largest ordinary-GPU-vs-Decimal error |
+| --- | ---: | ---: |
+| c=i, compound | 1.31e-14 | 1.35e-14 |
+| c=i, fixed per jump | 2.39e-15 | 1.35e-14 |
+| minibrot, compound | 5.99e-14 | 9.01e-13 |
+| minibrot, fixed per jump | 7.35e-15 | 1.11e-12 |
+
+The strict test limits are 1e-12 for BLA versus Decimal and 1e-10 for ordinary
+recurrence and BLA-versus-ordinary differences. Raw results are in
+`evidence/followup/bla-errors.json`. These tests measure individual jumps, not
+claims of a universal error bound or cancellation of chaotic final-orbit error.
+
+A fixed five-bit allowance per jump therefore passes local validation, but fails
+the existing independent tiled minibrot golden: maximum colour error **33/255**,
+five outlier pixels, mean channel error **1.172**. The existing requirements are
+maximum 12, at most 5% outliers and mean below 1. The production policy gives
+maximum **8/255**, one outlier and mean **0.198**. Images:
+[production](evidence/followup/minibrot-compound.png),
+[fixed-margin candidate](evidence/followup/minibrot-fixed.png).
+
+Decision: retain the production compounded margin, expose `--bla-radius fixed`
+for reproducible experiments, and keep both the strict local tests and unchanged
+image budgets. This does not establish that compounding is mathematically
+necessary; it records why this candidate has not been promoted. No further
+margin was tuned against those boundary pixels. The underlying BLA equations
+remain based on [the original derivation](https://mathr.co.uk/blog/2022-02-21_deep_zoom_theory_and_practice_again.html).
+
+Final `make test`, `make format-check`, `make ios` and `make ios-device` pass.
+Neither target phone was available: devicectl lists the iPhone 16 Pro as unavailable
+and no iPhone 11 Pro. Actual device validation remains outstanding.

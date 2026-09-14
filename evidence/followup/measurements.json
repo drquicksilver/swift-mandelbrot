@@ -1,0 +1,36 @@
+{
+  "coldAutomatic": [
+    {
+      "limit": 266000,
+      "firstTileMS": 41.194041492417455,
+      "readyMS": 275.25833318941295,
+      "referenceLength": 4098
+    },
+    {
+      "limit": 266000,
+      "firstTileMS": 41.51383345015347,
+      "readyMS": 227.25183330476284,
+      "referenceLength": 4098
+    },
+    {
+      "limit": 266000,
+      "firstTileMS": 48.76420833170414,
+      "readyMS": 233.20329166017473,
+      "referenceLength": 4098
+    }
+  ],
+  "radiusImages": [
+    {
+      "policy": "compound",
+      "maximum": 8,
+      "meanChannelError": 0.19791666666666666,
+      "outlierPixels": 1
+    },
+    {
+      "policy": "fixed",
+      "maximum": 33,
+      "meanChannelError": 1.171875,
+      "outlierPixels": 5
+    }
+  ]
+}

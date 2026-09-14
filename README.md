@@ -95,3 +95,12 @@ counts with separate Float32 corrections for high iteration limits; legacy
 UInt16 counts and combined `--samples` exports remain limited to 65,535.
 Reproduce the benchmark-only Boost comparison with
 `python3 tests/precision/reproduce.py`.
+
+Iteration limits now preserve cached samples: decreasing the limit recolours;
+increasing it refines only capped pixels. References grow on demand, so the
+automatic limit no longer forces full reference preparation before the first tile.
+`"$APP" --benchmark-reference` measures a cold automatic-depth 1e1000 view.
+`python3 tests/precision/measure_followup.py "$APP"` records that measurement and
+the BLA radius experiment. The production radius remains `compound`;
+`--bla-radius fixed` is experimental and currently fails the tiled minibrot
+image budget despite passing isolated-jump accuracy tests.

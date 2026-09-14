@@ -160,7 +160,9 @@ Add debug overlays (tile borders and levels) to the Developer panel.
 **2.3 Automatic iteration depth.** Depth-based first estimate and manual detail
 multiplier implemented after the 2.2 review, with a one-million GPU cap and
 separate count/correction storage. Pixel-driven adaptation, periodicity checking
-and selective extension remain outstanding. Two layers:
+and selective state continuation remain outstanding. Follow-up fixes retain
+escaped samples across limit changes and stream extendable reference orbits;
+capped tile pixels currently restart in bounded worker scratch. Two layers:
 - *Starting guess from depth:* `maxIter ≈ 200 + 80·log2(scale)`. That gives
   200 at 1×, about 2,000 at 1e7 (which matches the FloatFloat evidence) and
   about 27,000 at 1e100. Calibrate the constants against the golden locations.

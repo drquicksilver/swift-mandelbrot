@@ -75,10 +75,13 @@ Each visible cell finds cached ancestors and blends the two nearest levels
 according to fractional LOD. New detail fades in over 125 ms. All filtering and
 level blending operates on colours, never interpolated escape counts. The debug
 overlay draws cell borders and base-level labels in the fragment shader.
-Iteration changes retain the old detailed working set as display-only fallback.
-Finer old data outranks coarse replacements; new base and fine levels fade against
-the previous generation before it is released. Each record stores its iteration
-limit. Orbit state is still transient, so this does not yet extend capped pixels.
+Iteration changes retain reusable records. Decreases recolour existing samples
+with the new cap and rebuild colour mipmaps. Increases lazily replace insufficient
+tiles, copying escaped samples byte-for-byte and recomputing only capped pixels.
+A two-word GPU summary records capped-pixel count and maximum escaped iteration;
+fully escaped tiles satisfy any later cap. Raw samples never lose their original
+computed limit. Orbit state remains worker-local, so capped pixels currently
+restart rather than retaining multi-megabyte state for every cached tile.
 
 When all four children exist, a compute kernel averages their coloured pixels
 2×2 into the parent's interior. Its gutter remains directly sampled. Raw parent data stays authoritative. Palette changes recolour raw
@@ -126,7 +129,8 @@ pacing and touch feel on iPhone 11 Pro and iPhone 16 Pro still need device testi
 The GPU/product limit is 1,000,000 iterations. Settings and keyboard controls use
 one policy: an automatic starting estimate of `200 + 80*log2(scale)`, rounded up
 to 200-step bands, with a manual detail multiplier. Automatic increases require
-10% or 200 iterations of change; decreases wait 300 ms after motion/gestures stop.
+10% or 200 iterations of change; decreases use the same threshold and wait
+300 ms after motion/gestures stop. Returning to the base limit is always allowed.
 Manual mode accepts a direct count. The default CLI remains 200 for reproducibility.
 Legacy renderers and UInt16 export retain their 65,535 limit; the developer
 benchmark excludes those renderers when the requested count is larger.
@@ -170,8 +174,12 @@ and [rebasing and bilinear approximation](https://mathr.co.uk/blog/2022-02-21_de
 
 BLA builds 32-step leaves and a binary merge hierarchy. Coefficients and validity
 radii retain separate exponents during CPU construction as well as GPU use, so
-long jumps cannot overflow Double. Each merge reserves five additional guard bits
-for accumulated error, constrained by the independent tiled minibrot golden.
+long jumps cannot overflow Double. The production policy retains five additional
+guard bits per merge. An isolated-jump GPU/Decimal test supports a fixed five-bit
+allowance per completed jump, but that candidate fails the existing tiled
+minibrot image budget. `--bla-radius fixed` reproduces this experiment; the
+default remains `compound`. This is a measured validation limitation, not a proof
+that compounding the margin is mathematically necessary.
 The kernel chooses the longest aligned valid jump. `--bla off`, `fixed`, and `on`
 compare ordinary perturbation, 32-step leaves, and the hierarchy respectively.
 Counters include the longest applied jump and a two-word skipped-iteration sum.
@@ -182,16 +190,23 @@ centre, independently of the grid anchor. The cache bands precision to 256 bits
 and accepts longer prefixes and completed escaped orbits. It keeps at most three
 references within one quarter of the device tile allowance (capped at 64 MiB),
 accounting for array capacity. Pending compatible requests share cancellable
-background work; cache hits do not wait behind unrelated misses. Each worker
+background work; cache hits do not wait behind unrelated misses. References save
+their final BigInt state and extend at the same precision rather than restarting.
+GPU work begins with at most 4,097 reference iterations. Pixels pause at an
+incomplete reference frontier; geometric, BLA-aligned extensions resume them
+without rebasing or resetting pixel state. Escaped references retain the existing
+rebase behaviour. Each worker
 reuses a private perturbation-state buffer.
 
 The tile budget reserves reference/cache, GPU orbit, BLA construction/upload and
 state storage before transactional colour/display headroom. Same-anchor tile
 geometry uses integer keys; bounds are cached, and the compositor performs one
 precise camera transform per frame. Old-anchor fallback geometry still uses
-fixed-point arithmetic. HUD CPU preparation timing is separate from GPU timing.
-Full-image benchmarks create fresh references, so end-to-end results do not hide
-reference latency with cache hits. Iteration state retention and pixel-driven
+fixed-point arithmetic. Returning shallow restores the canonical shallow grid;
+after the old worker stops, deep references and spare state buffers are released.
+HUD CPU preparation timing is separate from GPU timing.
+Full-image benchmarks create fresh streamed references, so end-to-end results
+include the reference prefix actually needed, without cache hits. Iteration state retention and pixel-driven
 adaptation remain 2.3.
 
 Settings → About → Acknowledgements displays the bundled BigInt MIT notice and
