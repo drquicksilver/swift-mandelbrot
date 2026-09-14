@@ -6,6 +6,7 @@ struct PerturbationMetrics: Codable, Sendable {
   var referenceSeconds = 0.0
   var blaSeconds = 0.0
   var referenceCacheHits = 0
+  var referenceBytes = 0
   var kernelSeconds = 0.0
   var references = 0
   var batches = 0
@@ -52,32 +53,35 @@ extension GPUContext {
   /// bounded GPU batches, with cancellation on both CPU and GPU boundaries.
   func perturb(
     into samples: MTLTexture, region: PerturbationRegion, iterations: Int, useBLA: Bool = true,
-    useRebasing: Bool = true
+    useRebasing: Bool = true, resources: PerturbationResources? = nil
   ) async throws
     -> PerturbationMetrics
   {
     var metrics = PerturbationMetrics()
-    guard
-      let states = device.makeBuffer(
-        length: region.width * region.height * 48, options: .storageModePrivate),
-      let flags = device.makeBuffer(length: 32, options: .storageModeShared)
-    else { throw GPUFailure("Perturbation allocation failed") }
+    let pool = resources ?? PerturbationResources(referenceBudget: 4 * 1024 * 1024)
+    let states = try pool.acquire(device: device, length: region.width * region.height * 48)
+    defer { pool.recycle(states) }
+    guard let flags = device.makeBuffer(length: 32, options: .storageModeShared) else {
+      throw GPUFailure("Perturbation status allocation failed")
+    }
     var referencePoint =
       region.preferredReference ?? region.point(x: region.width / 2, y: region.height / 2)
     for pass in 0..<16 {
       try Task.checkCancellation()
-      let point = referencePoint
+      let requestedPoint = referencePoint
       let task = Task.detached(priority: .userInitiated) {
         let reference: ReferenceOrbit
         let hit: Bool
-        if pass == 0 && region.preferredReference != nil {
-          (reference, hit) = try await ReferenceOrbitCache.shared.reference(
-            point: point, iterations: iterations, bits: region.bits)
+        if pass == 0 && resources != nil {
+          (reference, hit) = try await pool.references.reference(
+            point: requestedPoint, iterations: iterations, bits: region.bits,
+            radius: region.stepX * Double(region.width * 4))
         } else {
           reference = try ReferenceOrbit.compute(
-            point: point, iterations: iterations, bits: region.bits)
+            point: requestedPoint, iterations: iterations, bits: region.bits)
           hit = false
         }
+        let point = reference.point
         let start = ProcessInfo.processInfo.systemUptime
         let far = region.point(x: region.width - 1, y: region.height - 1)
         let dx = max(
@@ -87,7 +91,8 @@ extension GPUContext {
           abs((region.topLeft.y - point.y).wide / region.stepX),
           abs((far.y - point.y).wide / region.stepX))
         let table = try BilinearApproximation.build(
-          orbit: reference, maximumDelta: region.stepX * (hypot(dx, dy) * 1.01))
+          orbit: reference, maximumDelta: region.stepX * (hypot(dx, dy) * 1.01),
+          iterations: iterations)
         return (reference, hit, table, ProcessInfo.processInfo.systemUptime - start)
       }
       let (reference, hit, table, blaSeconds) = try await withTaskCancellationHandler {
@@ -99,10 +104,13 @@ extension GPUContext {
       metrics.referenceCacheHits += hit ? 1 : 0
       metrics.blaSeconds += blaSeconds
       metrics.references += 1
+      metrics.referenceBytes = await pool.references.bytes
+      let point = reference.point
+      let referenceCount = min(reference.values.count, iterations + 1)
       guard
         let orbit = device.makeBuffer(
           bytes: reference.values,
-          length: reference.values.count * MemoryLayout<ExtendedComplex>.stride,
+          length: referenceCount * MemoryLayout<ExtendedComplex>.stride,
           options: .storageModeShared)
       else { throw GPUFailure("Reference allocation failed") }
       guard
@@ -120,7 +128,7 @@ extension GPUContext {
         origin: ExtendedComplex(delta), stepX: ExtendedFloat(region.stepX),
         stepY: ExtendedFloat(region.stepY),
         width: UInt32(region.width), height: UInt32(region.height), iterations: UInt32(iterations),
-        referenceCount: UInt32(reference.values.count),
+        referenceCount: UInt32(referenceCount),
         start: 0, count: 8, pass: UInt32(pass), padding: (useBLA ? 1 : 0) | (useRebasing ? 0 : 2))
       let maximumBatch = min(128, max(1, Int(UInt32.max) / (32 * region.width * region.height)))
       var batch = min(8, maximumBatch)

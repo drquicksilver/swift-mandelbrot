@@ -24,6 +24,9 @@ struct ReferenceOrbit: Sendable {
   let point: DeepPoint
   let values: [ExtendedComplex]
   let seconds: Double
+  let bits: Int
+  let iterations: Int
+  let escaped: Bool
   static func compute(point: DeepPoint, iterations: Int, bits: Int) throws -> Self {
     let start = ProcessInfo.processInfo.systemUptime
     let cr = point.x.rounded(to: bits).raw
@@ -32,6 +35,7 @@ struct ReferenceOrbit: Sendable {
     var y = BigInt(0)
     let escape = BigInt(65536) << (2 * bits)
     var values: [ExtendedComplex] = []
+    var escaped = false
     values.reserveCapacity(iterations + 1)
     for n in 0...iterations {
       if n.isMultiple(of: 32) { try Task.checkCancellation() }
@@ -40,10 +44,16 @@ struct ReferenceOrbit: Sendable {
           DeepPoint(x: DeepNumber(raw: x, bits: bits), y: DeepNumber(raw: y, bits: bits))))
       let xx = x * x
       let yy = y * y
-      if xx + yy > escape { break }
+      if xx + yy > escape {
+        escaped = true
+        break
+      }
+      if n == iterations { break }
       y = ((2 * x * y) >> bits) + ci
       x = ((xx - yy) >> bits) + cr
     }
-    return Self(point: point, values: values, seconds: ProcessInfo.processInfo.systemUptime - start)
+    return Self(
+      point: point, values: values, seconds: ProcessInfo.processInfo.systemUptime - start,
+      bits: bits, iterations: iterations, escaped: escaped)
   }
 }

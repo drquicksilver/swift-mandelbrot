@@ -131,9 +131,6 @@ struct Viewport: Equatable, Sendable {
     if deepCenter != nil { deepCenter = fixedPoint }
   }
   func recommendedRenderer(pixelWidth: Double) -> RendererID {
-    if logScale + log2(max(1, pixelWidth)) > 40 { return .perturbation }
-    let spacing = span / max(1, pixelWidth)
-    let floatULP = Double(max(Float(center.x).ulp, Float(center.y).ulp, Float(1).ulp))
-    return spacing >= floatULP * 32 ? .metal : .metalDouble
+    PrecisionPolicy.renderer(logScale: logScale, pixelWidth: pixelWidth, center: center)
   }
 }

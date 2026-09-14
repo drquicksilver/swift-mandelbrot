@@ -472,3 +472,15 @@ Generator: `tests/precision/minibrot_reference.py`; test: `tests/test_minibrot.p
 Comparable 64×48, three-run/one-warmup measurements of both locations are stored
 in `evidence/review-deep/rebasing.json` and reproduced by
 `tests/precision/measure_review.py APP STAGE`.
+
+## Deep-zoom review: reusable references
+
+References now use 256-bit precision bands and satisfy shorter/lower-precision
+requests without recomputation. The cache is owned by the tile worker, budgeted
+from its device allowance, and accepts a nearby viewport-centred reference within
+four tile widths. It is independent of the grid indexing anchor. Full-image
+benchmarks still create fresh references, preserving the earlier comparison scope.
+Unit tests verify one computation for concurrent 400/401-bit requests, reuse at
+402 bits and a shorter iteration limit, and a new computation above the 512-bit
+band. Product tests verify scratch-buffer identity reuse and unchanged hard-image
+error budgets. Miss computation no longer blocks unrelated actor cache hits.

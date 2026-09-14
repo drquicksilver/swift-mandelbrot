@@ -30,7 +30,12 @@ struct BenchmarkMeasurement: Identifiable {
     task = Task {
       for size in [256, 512] {
         for renderer in RendererID.allCases where !kernelOnly || renderer.isGPU {
-          if viewport.logScale > 40 && renderer != .perturbation { continue }
+          if PrecisionPolicy.renderer(
+            logScale: viewport.logScale, pixelWidth: Double(size), center: viewport.center,
+            override: renderer) != renderer
+          {
+            continue
+          }
           if Task.isCancelled { return }
           status = "\(renderer.title), \(size) × \(size)"
           var samples: [Double] = []

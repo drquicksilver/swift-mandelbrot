@@ -30,17 +30,20 @@ extension ExtendedFloat {
 }
 enum BilinearApproximation {
   static let blockLength = 32
-  static func build(orbit: ReferenceOrbit, maximumDelta: WideReal) throws -> [BLAEntry] {
+  static func build(orbit: ReferenceOrbit, maximumDelta: WideReal, iterations: Int = Int.max) throws
+    -> [BLAEntry]
+  {
     var result: [BLAEntry] = []
+    let orbitCount = min(orbit.values.count, iterations == Int.max ? Int.max : iterations + 1)
     // A conservative upper bound; conversion underflow is rounded UP to the
     // smallest normal Double, so radius construction never understates |dc|.
     let dc = max(Double.leastNormalMagnitude, maximumDelta.double)
-    for start in stride(from: 1, to: orbit.values.count, by: blockLength) {
+    for start in stride(from: 1, to: orbitCount, by: blockLength) {
       try Task.checkCancellation()
       var a = BLAComplex(x: 1, y: 0)
       var b = BLAComplex(x: 0, y: 0)
       var radius = Double.greatestFiniteMagnitude
-      let length = min(blockLength, orbit.values.count - 1 - start)
+      let length = min(blockLength, orbitCount - 1 - start)
       for n in start..<(start + length) {
         let z = orbit.values[n]
         let norm = hypot(z.x.double, z.y.double)
@@ -67,39 +70,5 @@ enum BilinearApproximation {
           radius: ExtendedFloat(0), length: 0))
     }
     return result
-  }
-}
-
-/// Small global cache only used by tiles. Full-image benchmarks intentionally
-/// create fresh orbits. Its 4 MiB cap is covered by the tile transient reserve.
-actor ReferenceOrbitCache {
-  static let shared = ReferenceOrbitCache()
-  private struct Entry {
-    let point: DeepPoint, iterations: Int, bits: Int, orbit: ReferenceOrbit
-  }
-  private var entries: [Entry] = []
-  func reference(point: DeepPoint, iterations: Int, bits: Int) throws -> (ReferenceOrbit, Bool) {
-    try Task.checkCancellation()
-    if let index = entries.firstIndex(where: {
-      $0.point == point && $0.iterations == iterations && $0.bits == bits
-    }) {
-      let entry = entries.remove(at: index)
-      entries.append(entry)
-      return (entry.orbit, true)
-    }
-    let orbit = try ReferenceOrbit.compute(point: point, iterations: iterations, bits: bits)
-    let bytes = orbit.values.count * MemoryLayout<ExtendedComplex>.stride
-    while !entries.isEmpty
-      && (entries.count >= 3
-        || entries.reduce(
-          bytes, { $0 + $1.orbit.values.count * MemoryLayout<ExtendedComplex>.stride }) > 4 * 1024
-          * 1024)
-    {
-      entries.removeFirst()
-    }
-    if bytes <= 4 * 1024 * 1024 {
-      entries.append(Entry(point: point, iterations: iterations, bits: bits, orbit: orbit))
-    }
-    return (orbit, false)
   }
 }

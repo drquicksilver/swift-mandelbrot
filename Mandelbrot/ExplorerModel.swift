@@ -72,8 +72,9 @@ import SwiftUI
   private var renderTask: Task<Void, Never>?
   var pixelWidth: Double { size.width * displayScale }
   var renderer: RendererID {
-    if viewport.logScale > 40 { return .perturbation }
-    return rendererOverride ?? viewport.recommendedRenderer(pixelWidth: pixelWidth)
+    PrecisionPolicy.renderer(
+      logScale: viewport.logScale, pixelWidth: pixelWidth, center: viewport.center,
+      override: rendererOverride)
   }
 
   func resize(_ size: CGSize, displayScale: Double) {

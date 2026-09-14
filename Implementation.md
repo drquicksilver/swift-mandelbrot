@@ -135,3 +135,12 @@ count avoided glitches separately. Added a period-312, 1e100 long-orbit Decimal
 golden and a numerical/colour golden through the tile compositor. Documented
 boundary-sensitive tolerances alongside the strict existing c=i fixtures. Full
 `make test` passes, including both new paths and diagnostic recovery.
+
+### Deep-zoom review, stage 2
+
+Added precision-banded, prefix-capable, budgeted reference reuse and shared pending
+requests. Preparation runs outside the cache actor; waiter cancellation cancels
+unneeded work. Reference targets follow the viewport rather than the grid anchor,
+with nearby orbit reuse. Tile workers recycle their GPU state buffer on completion,
+failure and cancellation. One precision policy now drives product renderer choices
+and override handling. `make test` passes, including the hard tiled oracle.

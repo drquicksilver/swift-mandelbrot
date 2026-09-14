@@ -12,7 +12,7 @@ struct DeveloperPanel: View {
             Text("Automatic").tag(nil as RendererID?)
             ForEach(RendererID.allCases) { Text($0.title).tag(Optional($0)) }
           }
-          if model.viewport.logScale > 40 {
+          if let requested = model.rendererOverride, requested != model.renderer {
             Text("Deep views require perturbation; other overrides resume when you zoom out.").font(
               .caption)
           }

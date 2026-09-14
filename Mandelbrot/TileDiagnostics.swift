@@ -328,6 +328,12 @@
         MemoryLayout<ExtendedFloat>.stride == 16 && MemoryLayout<ExtendedComplex>.stride == 32
           && MemoryLayout<BLAEntry>.stride == 96, "Perturbation Metal ABI changed")
       let store = TileStore(budgetBytes: 150 * 1024 * 1024)
+      let pool = store.perturbationResources
+      let scratch = try pool.acquire(device: gpu.device, length: 258 * 258 * 48)
+      pool.recycle(scratch)
+      let reused = try pool.acquire(device: gpu.device, length: 258 * 258 * 48)
+      try require(scratch === reused, "Tile worker did not reuse its state buffer")
+      pool.recycle(reused)
       let size = CGSize(width: 256, height: 192)
       var view = try Viewport(real: "0", imag: "1", zoom: "1e1000")
       let start = ProcessInfo.processInfo.systemUptime

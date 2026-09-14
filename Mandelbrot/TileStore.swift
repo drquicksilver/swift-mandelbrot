@@ -66,11 +66,17 @@ struct TileStatistics: Equatable, Codable {
   let minimumLevel = -2
   var useBLA = true
   let budgetBytes: Int
+  let perturbationResources: PerturbationResources
+  private var referenceBytes = 0
   // Reserve a third for transactional recolouring, one orbit-state buffer,
   // mip replacements and the two in-flight display frames.
   private var residentLimit: Int {
-    (budgetBytes
-      - (viewport.logScale > 32 ? min(budgetBytes / 4, 12 * 1024 * 1024) : 2 * 1024 * 1024)) * 2 / 3
+    let orbit = (iterations + 1) * MemoryLayout<ExtendedComplex>.stride
+    let reserve =
+      viewport.logScale > 32
+      ? 4 * 1024 * 1024 + max(referenceBytes, min(perturbationResources.referenceBudget, orbit * 3))
+        + orbit : 2 * 1024 * 1024
+    return max(2 * 1024 * 1024, (budgetBytes - reserve) * 2 / 3)
   }
   private var tileCost = 1024 * 1024
   private var tick: UInt64 = 0
@@ -110,6 +116,8 @@ struct TileStatistics: Equatable, Codable {
       let defaultBudget = 500 * 1024 * 1024
     #endif
     self.budgetBytes = max(8 * 1024 * 1024, budgetBytes ?? defaultBudget)
+    perturbationResources = PerturbationResources(
+      referenceBudget: min(self.budgetBytes / 4, 64 * 1024 * 1024))
   }
   private func invalidate() {
     generation &+= 1
@@ -386,12 +394,9 @@ struct TileStatistics: Equatable, Codable {
           let bounds = self.grid.bounds(key)
           let samples = try gpu.texture(width: resolution, height: resolution, format: .r32Float)
           let colour = try gpu.texture(width: resolution, height: resolution, format: .rgba8Unorm)
-          let renderer =
-            (key.level > 40 ? .perturbation : self.override)
-            ?? (key.level > 32
-              ? .perturbation
-              : Viewport(center: bounds.center, scale: 3 / bounds.span).recommendedRenderer(
-                pixelWidth: 256))
+          let renderer = PrecisionPolicy.renderer(
+            logScale: Double(key.level), pixelWidth: 256, center: bounds.center,
+            override: self.override)
           var cancelled = false
           if renderer == .perturbation {
             let bits = max(192, key.level + 128)
@@ -399,10 +404,12 @@ struct TileStatistics: Equatable, Codable {
             let topLeft = bounds.preciseOrigin.offset(x: step * -0.5, y: step * 0.5, bits: bits)
             var region = PerturbationRegion(
               topLeft: topLeft, step: step, width: resolution, height: resolution, bits: bits)
-            region.preferredReference =
-              self.grid.deepAnchor ?? DeepPoint(self.grid.anchor, bits: bits)
+            // Reference selection is independent of the grid's indexing anchor.
+            region.preferredReference = self.viewport.preciseCenter
             let metrics = try await gpu.perturb(
-              into: samples, region: region, iterations: self.iterations, useBLA: self.useBLA)
+              into: samples, region: region, iterations: self.iterations, useBLA: self.useBLA,
+              resources: self.perturbationResources)
+            self.referenceBytes = metrics.referenceBytes
             self.counters.batches += metrics.batches
             self.counters.referenceOrbits += metrics.references
             self.counters.referenceCacheHits += metrics.referenceCacheHits
