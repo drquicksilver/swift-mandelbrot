@@ -495,3 +495,29 @@ GPU execution or total UI frame time. Raw counters are in
 `evidence/review-deep/geometry.json`; the HUD now separates CPU draw preparation,
 demand updates and GPU time. The iPhone 16 Pro is listed as unavailable by
 `devicectl`, and no iPhone 11 Pro is connected, so phone timings remain unmeasured.
+
+## Deep-zoom review: hierarchical BLA
+
+M1 Pro, 64×48, median of three runs after one warmup, including fresh CPU
+reference generation, BLA preparation and completed GPU colouring (no readback):
+
+| Location | BLA off | Fixed 32 | Hierarchy | Longest applied jump |
+| --- | ---: | ---: | ---: | ---: |
+| c=i, 1e1000, 5,000 iterations | 158.94 ms | 114.14 ms | 107.98 ms | 2,048 |
+| period-312 minibrot, 1e100, 60,000 iterations | 735.11 ms | 440.05 ms | 434.44 ms | 16,384 |
+
+Raw data: `evidence/review-deep/hierarchy.json`. Run
+`python3 tests/precision/measure_review.py APP hierarchy` to reproduce all three
+modes. This replaces the theoretical 32-step ceiling with actual long jumps;
+the end-to-end gain over fixed blocks is modest because reference construction
+and the non-skippable part of the orbit still cost time.
+
+The hierarchy retains extended-range coefficients throughout construction. A
+synthetic test merges a coefficient beyond Double's exponent range and verifies
+its positive, similarly extended validity radius. Five guard bits per merge
+level reserve accumulated-error margin. This was necessary to pass the tiled
+minibrot oracle without relaxing its tolerance: maximum PNG error is 8/255.
+The full-frame minibrot test passes off/fixed/on; hierarchical maximum smooth
+sample error is 207.35 with seven colour-boundary outliers out of 192 pixels.
+These finite-precision boundary errors remain covered by the previously declared
+budgets, rather than being presented as exact agreement.

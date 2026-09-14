@@ -35,6 +35,7 @@ struct PerturbParameters {
  XC origin; XF stepX,stepY;
  uint width,height,iterations,referenceCount;
  uint start,count,pass,pad;
+ uint blaBase,pad1,pad2,pad3;
 };
 struct BLA { XC a,b; XF radius; uint length,pad0,pad1,pad2; };
 struct PerturbState { XC delta; uint n,ref,done,pad; };
@@ -71,9 +72,18 @@ kernel void perturbTile(texture2d<float,access::read_write> output [[texture(0)]
      atomic_fetch_add_explicit(flags+1,1,memory_order_relaxed);break;
    }
    if((p.pad&1u) && s.ref>=1 && (s.ref-1)%32==0) {
-     BLA b=blas[(s.ref-1)/32];
+     uint index=p.blaBase+(s.ref-1)/32;
+     BLA b=blas[index];
+     if(p.pad&4u) {
+       while(index>1 && (index&1u)==0) {
+         BLA parent=blas[index/2];
+         if(parent.length<2 || s.n+parent.length>p.iterations || !less(abs2(s.delta),mul(parent.radius,parent.radius))) break;
+         index/=2;b=parent;
+       }
+     }
      if(b.length>=2 && s.n+b.length<=p.iterations && less(abs2(s.delta),mul(b.radius,b.radius))) {
        s.delta=add(mul(b.a,s.delta),mul(b.b,dc));
+       atomic_fetch_max_explicit(flags+7,b.length,memory_order_relaxed);
        s.n+=b.length;s.ref+=b.length;skipped+=b.length-1;continue;
      }
    }
@@ -83,6 +93,9 @@ kernel void perturbTile(texture2d<float,access::read_write> output [[texture(0)]
  if(!s.done && s.n>=p.iterations){output.write(float4(-1),pos);s.done=1;}
  if(!s.done) atomic_fetch_add_explicit(flags+4,1,memory_order_relaxed);
  if(rebases) atomic_fetch_add_explicit(flags+2,rebases,memory_order_relaxed);
- if(skipped) atomic_fetch_add_explicit(flags+3,skipped,memory_order_relaxed);
+ if(skipped) {
+   uint previous=atomic_fetch_add_explicit(flags+3,skipped,memory_order_relaxed);
+   if(previous>0xffffffffu-skipped) atomic_fetch_add_explicit(flags+6,1,memory_order_relaxed);
+ }
  states[index]=s;
 }

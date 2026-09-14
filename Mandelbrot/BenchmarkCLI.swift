@@ -39,7 +39,7 @@
         --samples PATH     Raw float32 GPU samples; -1 means capped/inside
         --pipeline NAME    legacy, gpu or tiles (default: legacy); tiles exports PNGs
         --rebasing on|off  Critical-point rebasing; off is a recovery diagnostic
-        --bla on|off       Perturbation iteration skipping (default: on)
+        --bla on|off|fixed Perturbation hierarchy, no skipping, or 32-step blocks
         --timing SCOPE     end-to-end or kernel (GPU benchmark only)
         --help             Show this help
 
@@ -60,6 +60,7 @@
       var pipeline = "legacy"
       var timing = "end-to-end"
       var useBLA = true
+      var hierarchicalBLA = true
       var useRebasing = true
       var render = false
       var renderer = "metal"
@@ -107,8 +108,11 @@
             }
             useRebasing = value == "on"
           case "--bla":
-            guard ["on", "off"].contains(value) else { throw CLIError("BLA must be on or off") }
-            useBLA = value == "on"
+            guard ["on", "off", "fixed"].contains(value) else {
+              throw CLIError("BLA must be on, off or fixed")
+            }
+            useBLA = value != "off"
+            hierarchicalBLA = value == "on"
           case "--colouring":
             guard ["legacy", "smooth"].contains(value) else {
               throw CLIError("Colouring must be legacy or smooth")
@@ -389,6 +393,7 @@
         let size = options.size
         let store = TileStore()
         store.useBLA = options.useBLA
+        store.hierarchicalBLA = options.hierarchicalBLA
         store.update(
           viewport: view, size: CGSize(width: size.0, height: size.1), pixelWidth: Double(size.0),
           iterations: options.iterations,
@@ -429,7 +434,8 @@
             viewport: options.viewport,
             width: width, height: height, iterations: options.iterations,
             renderer: RendererID(rawValue: options.renderer)!, settings: options.colouring,
-            useBLA: options.useBLA, useRebasing: options.useRebasing)
+            useBLA: options.useBLA, useRebasing: options.useRebasing,
+            hierarchicalBLA: options.hierarchicalBLA)
           let image = try await gpu.image(frame.colour)
           let data = NSMutableData()
           guard
@@ -472,7 +478,8 @@
                 viewport: options.viewport,
                 width: width, height: height, iterations: options.iterations,
                 renderer: RendererID(rawValue: variant)!, settings: options.colouring,
-                useBLA: options.useBLA, useRebasing: options.useRebasing)
+                useBLA: options.useBLA, useRebasing: options.useRebasing,
+                hierarchicalBLA: options.hierarchicalBLA)
               let seconds =
                 options.timing == "kernel"
                 ? frame.kernelSeconds : Double(DispatchTime.now().uptimeNanoseconds - start) / 1e9

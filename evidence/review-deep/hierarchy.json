@@ -1,0 +1,461 @@
+[
+  {
+    "location": "i",
+    "bla": "off",
+    "report": {
+      "centerImag": 1,
+      "centerReal": 0,
+      "iterations": 5000,
+      "preciseCenterImag": "1",
+      "preciseCenterReal": "0",
+      "preciseScale": "1e1000",
+      "results": [
+        {
+          "height": 48,
+          "medianSeconds": 0.158940792,
+          "megapixelsPerSecond": 0.019327952008695165,
+          "perturbation": [
+            {
+              "avoidedGlitches": 0,
+              "batches": 47,
+              "blaSeconds": 6.250105798244476e-06,
+              "glitches": 0,
+              "kernelSeconds": 0.04426112421788275,
+              "longestBLASkip": 0,
+              "longestBatchMS": 1.1435416527092457,
+              "rebases": 4976,
+              "referenceBytes": 0,
+              "referenceCacheHits": 0,
+              "referenceSeconds": 0.10322708333842456,
+              "references": 1,
+              "skippedIterations": 0
+            },
+            {
+              "avoidedGlitches": 0,
+              "batches": 50,
+              "blaSeconds": 6.291782483458519e-06,
+              "glitches": 0,
+              "kernelSeconds": 0.047625874169170856,
+              "longestBLASkip": 0,
+              "longestBatchMS": 2.2144585382193327,
+              "rebases": 4976,
+              "referenceBytes": 0,
+              "referenceCacheHits": 0,
+              "referenceSeconds": 0.10428991680964828,
+              "references": 1,
+              "skippedIterations": 0
+            },
+            {
+              "avoidedGlitches": 0,
+              "batches": 42,
+              "blaSeconds": 6.291549652814865e-06,
+              "glitches": 0,
+              "kernelSeconds": 0.03973841620609164,
+              "longestBLASkip": 0,
+              "longestBatchMS": 1.4916250947862864,
+              "rebases": 4976,
+              "referenceBytes": 0,
+              "referenceCacheHits": 0,
+              "referenceSeconds": 0.10336058354005218,
+              "references": 1,
+              "skippedIterations": 0
+            }
+          ],
+          "samplesSeconds": [
+            0.158940792,
+            0.164527459,
+            0.153717708
+          ],
+          "variant": "perturbation",
+          "width": 64
+        }
+      ],
+      "runs": 3,
+      "timingScope": "gpu-compute-and-colour-no-readback",
+      "warmup": 1
+    }
+  },
+  {
+    "location": "i",
+    "bla": "fixed",
+    "report": {
+      "centerImag": 1,
+      "centerReal": 0,
+      "iterations": 5000,
+      "preciseCenterImag": "1",
+      "preciseCenterReal": "0",
+      "preciseScale": "1e1000",
+      "results": [
+        {
+          "height": 48,
+          "medianSeconds": 0.114139208,
+          "megapixelsPerSecond": 0.02691450250820034,
+          "perturbation": [
+            {
+              "avoidedGlitches": 0,
+              "batches": 10,
+              "blaSeconds": 0.0005954999942332506,
+              "glitches": 0,
+              "kernelSeconds": 0.008448625216260552,
+              "longestBLASkip": 32,
+              "longestBatchMS": 1.0395415592938662,
+              "rebases": 4976,
+              "referenceBytes": 0,
+              "referenceCacheHits": 0,
+              "referenceSeconds": 0.10235983319580555,
+              "references": 1,
+              "skippedIterations": 7716954
+            },
+            {
+              "avoidedGlitches": 0,
+              "batches": 9,
+              "blaSeconds": 0.0006149166729301214,
+              "glitches": 0,
+              "kernelSeconds": 0.0072205832693725824,
+              "longestBLASkip": 32,
+              "longestBatchMS": 1.1679583694785833,
+              "rebases": 4976,
+              "referenceBytes": 0,
+              "referenceCacheHits": 0,
+              "referenceSeconds": 0.10270641674287617,
+              "references": 1,
+              "skippedIterations": 7716954
+            },
+            {
+              "avoidedGlitches": 0,
+              "batches": 10,
+              "blaSeconds": 0.0006248750723898411,
+              "glitches": 0,
+              "kernelSeconds": 0.008207125589251518,
+              "longestBLASkip": 32,
+              "longestBatchMS": 1.012125052511692,
+              "rebases": 4976,
+              "referenceBytes": 0,
+              "referenceCacheHits": 0,
+              "referenceSeconds": 0.10230229166336358,
+              "references": 1,
+              "skippedIterations": 7716954
+            }
+          ],
+          "samplesSeconds": [
+            0.114401833,
+            0.113294375,
+            0.114139208
+          ],
+          "variant": "perturbation",
+          "width": 64
+        }
+      ],
+      "runs": 3,
+      "timingScope": "gpu-compute-and-colour-no-readback",
+      "warmup": 1
+    }
+  },
+  {
+    "location": "i",
+    "bla": "on",
+    "report": {
+      "centerImag": 1,
+      "centerReal": 0,
+      "iterations": 5000,
+      "preciseCenterImag": "1",
+      "preciseCenterReal": "0",
+      "preciseScale": "1e1000",
+      "results": [
+        {
+          "height": 48,
+          "medianSeconds": 0.1079825,
+          "megapixelsPerSecond": 0.028449054244900795,
+          "perturbation": [
+            {
+              "avoidedGlitches": 0,
+              "batches": 5,
+              "blaSeconds": 0.0006144165527075529,
+              "glitches": 0,
+              "kernelSeconds": 0.0024971666280180216,
+              "longestBLASkip": 2048,
+              "longestBatchMS": 0.9990416001528502,
+              "rebases": 4976,
+              "referenceBytes": 0,
+              "referenceCacheHits": 0,
+              "referenceSeconds": 0.10256745829246938,
+              "references": 1,
+              "skippedIterations": 7956571
+            },
+            {
+              "avoidedGlitches": 0,
+              "batches": 5,
+              "blaSeconds": 0.0005897916853427887,
+              "glitches": 0,
+              "kernelSeconds": 0.0025783334858715534,
+              "longestBLASkip": 2048,
+              "longestBatchMS": 0.9842498693615198,
+              "rebases": 4976,
+              "referenceBytes": 0,
+              "referenceCacheHits": 0,
+              "referenceSeconds": 0.10329612484201789,
+              "references": 1,
+              "skippedIterations": 7956571
+            },
+            {
+              "avoidedGlitches": 0,
+              "batches": 5,
+              "blaSeconds": 0.0005950417835265398,
+              "glitches": 0,
+              "kernelSeconds": 0.0029870830476284027,
+              "longestBLASkip": 2048,
+              "longestBatchMS": 1.195833319798112,
+              "rebases": 4976,
+              "referenceBytes": 0,
+              "referenceCacheHits": 0,
+              "referenceSeconds": 0.10210550017654896,
+              "references": 1,
+              "skippedIterations": 7956571
+            }
+          ],
+          "samplesSeconds": [
+            0.107633667,
+            0.108721417,
+            0.1079825
+          ],
+          "variant": "perturbation",
+          "width": 64
+        }
+      ],
+      "runs": 3,
+      "timingScope": "gpu-compute-and-colour-no-readback",
+      "warmup": 1
+    }
+  },
+  {
+    "location": "minibrot",
+    "bla": "off",
+    "report": {
+      "centerImag": 0.13182590182979556,
+      "centerReal": -0.7436439130937827,
+      "iterations": 60000,
+      "preciseCenterImag": "0.131825901829795556285614749363184601026644941156177737705885863783243014933509791041022680018090649355924958877245256720566473131420650939107528723995056981067345028457750564285687",
+      "preciseCenterReal": "-0.743643913093782735685578505664327465580278375890843525936608151593603260913826197894187695636482037827706527269578155881715384063045188162790549910747393313377742787435621225854959",
+      "preciseScale": "1e100",
+      "results": [
+        {
+          "height": 48,
+          "medianSeconds": 0.735109291,
+          "megapixelsPerSecond": 0.00417897044372957,
+          "perturbation": [
+            {
+              "avoidedGlitches": 0,
+              "batches": 540,
+              "blaSeconds": 6.458256393671036e-06,
+              "glitches": 0,
+              "kernelSeconds": 0.5358867088798434,
+              "longestBLASkip": 0,
+              "longestBatchMS": 1.6167082358151674,
+              "rebases": 27619,
+              "referenceBytes": 0,
+              "referenceCacheHits": 0,
+              "referenceSeconds": 0.08316895831376314,
+              "references": 1,
+              "skippedIterations": 0
+            },
+            {
+              "avoidedGlitches": 0,
+              "batches": 527,
+              "blaSeconds": 5.916692316532135e-06,
+              "glitches": 0,
+              "kernelSeconds": 0.5228310420643538,
+              "longestBLASkip": 0,
+              "longestBatchMS": 1.8708750139921904,
+              "rebases": 27619,
+              "referenceBytes": 0,
+              "referenceCacheHits": 0,
+              "referenceSeconds": 0.0822295832913369,
+              "references": 1,
+              "skippedIterations": 0
+            },
+            {
+              "avoidedGlitches": 0,
+              "batches": 533,
+              "blaSeconds": 4.624947905540466e-06,
+              "glitches": 0,
+              "kernelSeconds": 0.5281100017018616,
+              "longestBLASkip": 0,
+              "longestBatchMS": 1.4888332225382328,
+              "rebases": 27619,
+              "referenceBytes": 0,
+              "referenceCacheHits": 0,
+              "referenceSeconds": 0.08099225000478327,
+              "references": 1,
+              "skippedIterations": 0
+            }
+          ],
+          "samplesSeconds": [
+            0.745833041,
+            0.730241375,
+            0.735109291
+          ],
+          "variant": "perturbation",
+          "width": 64
+        }
+      ],
+      "runs": 3,
+      "scale": 1e+100,
+      "timingScope": "gpu-compute-and-colour-no-readback",
+      "warmup": 1
+    }
+  },
+  {
+    "location": "minibrot",
+    "bla": "fixed",
+    "report": {
+      "centerImag": 0.13182590182979556,
+      "centerReal": -0.7436439130937827,
+      "iterations": 60000,
+      "preciseCenterImag": "0.131825901829795556285614749363184601026644941156177737705885863783243014933509791041022680018090649355924958877245256720566473131420650939107528723995056981067345028457750564285687",
+      "preciseCenterReal": "-0.743643913093782735685578505664327465580278375890843525936608151593603260913826197894187695636482037827706527269578155881715384063045188162790549910747393313377742787435621225854959",
+      "preciseScale": "1e100",
+      "results": [
+        {
+          "height": 48,
+          "medianSeconds": 0.440048208,
+          "megapixelsPerSecond": 0.006981053312231646,
+          "perturbation": [
+            {
+              "avoidedGlitches": 0,
+              "batches": 286,
+              "blaSeconds": 0.005799291655421257,
+              "glitches": 0,
+              "kernelSeconds": 0.2830132490489632,
+              "longestBLASkip": 32,
+              "longestBatchMS": 2.324166474863887,
+              "rebases": 27595,
+              "referenceBytes": 0,
+              "referenceCacheHits": 0,
+              "referenceSeconds": 0.083179333480075,
+              "references": 1,
+              "skippedIterations": 58487142
+            },
+            {
+              "avoidedGlitches": 0,
+              "batches": 283,
+              "blaSeconds": 0.00563791673630476,
+              "glitches": 0,
+              "kernelSeconds": 0.27911375113762915,
+              "longestBLASkip": 32,
+              "longestBatchMS": 1.9342501182109118,
+              "rebases": 27595,
+              "referenceBytes": 0,
+              "referenceCacheHits": 0,
+              "referenceSeconds": 0.08093991666100919,
+              "references": 1,
+              "skippedIterations": 58487142
+            },
+            {
+              "avoidedGlitches": 0,
+              "batches": 287,
+              "blaSeconds": 0.005753000034019351,
+              "glitches": 0,
+              "kernelSeconds": 0.2833453742787242,
+              "longestBLASkip": 32,
+              "longestBatchMS": 1.9787081982940435,
+              "rebases": 27595,
+              "referenceBytes": 0,
+              "referenceCacheHits": 0,
+              "referenceSeconds": 0.08249004161916673,
+              "references": 1,
+              "skippedIterations": 58487142
+            }
+          ],
+          "samplesSeconds": [
+            0.440048208,
+            0.434339792,
+            0.441113209
+          ],
+          "variant": "perturbation",
+          "width": 64
+        }
+      ],
+      "runs": 3,
+      "scale": 1e+100,
+      "timingScope": "gpu-compute-and-colour-no-readback",
+      "warmup": 1
+    }
+  },
+  {
+    "location": "minibrot",
+    "bla": "on",
+    "report": {
+      "centerImag": 0.13182590182979556,
+      "centerReal": -0.7436439130937827,
+      "iterations": 60000,
+      "preciseCenterImag": "0.131825901829795556285614749363184601026644941156177737705885863783243014933509791041022680018090649355924958877245256720566473131420650939107528723995056981067345028457750564285687",
+      "preciseCenterReal": "-0.743643913093782735685578505664327465580278375890843525936608151593603260913826197894187695636482037827706527269578155881715384063045188162790549910747393313377742787435621225854959",
+      "preciseScale": "1e100",
+      "results": [
+        {
+          "height": 48,
+          "medianSeconds": 0.434439334,
+          "megapixelsPerSecond": 0.007071182923781943,
+          "perturbation": [
+            {
+              "avoidedGlitches": 0,
+              "batches": 293,
+              "blaSeconds": 0.005960583221167326,
+              "glitches": 0,
+              "kernelSeconds": 0.28876720811240375,
+              "longestBLASkip": 16384,
+              "longestBatchMS": 1.5470001380890608,
+              "rebases": 27577,
+              "referenceBytes": 0,
+              "referenceCacheHits": 0,
+              "referenceSeconds": 0.08260029181838036,
+              "references": 1,
+              "skippedIterations": 60285306
+            },
+            {
+              "avoidedGlitches": 0,
+              "batches": 284,
+              "blaSeconds": 0.005634249886497855,
+              "glitches": 0,
+              "kernelSeconds": 0.2803914181422442,
+              "longestBLASkip": 16384,
+              "longestBatchMS": 1.7372500151395798,
+              "rebases": 27577,
+              "referenceBytes": 0,
+              "referenceCacheHits": 0,
+              "referenceSeconds": 0.08045595837756991,
+              "references": 1,
+              "skippedIterations": 60285306
+            },
+            {
+              "avoidedGlitches": 0,
+              "batches": 283,
+              "blaSeconds": 0.005678791552782059,
+              "glitches": 0,
+              "kernelSeconds": 0.279639458283782,
+              "longestBLASkip": 16384,
+              "longestBatchMS": 1.7987082246690989,
+              "rebases": 27577,
+              "referenceBytes": 0,
+              "referenceCacheHits": 0,
+              "referenceSeconds": 0.08356762514449656,
+              "references": 1,
+              "skippedIterations": 60285306
+            }
+          ],
+          "samplesSeconds": [
+            0.445347292,
+            0.434439334,
+            0.434075125
+          ],
+          "variant": "perturbation",
+          "width": 64
+        }
+      ],
+      "runs": 3,
+      "scale": 1e+100,
+      "timingScope": "gpu-compute-and-colour-no-readback",
+      "warmup": 1
+    }
+  }
+]

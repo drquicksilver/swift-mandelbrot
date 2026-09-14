@@ -66,6 +66,7 @@ struct TileStatistics: Equatable, Codable {
   private(set) var fallback: [TileRecord] = []
   let minimumLevel = -2
   var useBLA = true
+  var hierarchicalBLA = true
   let budgetBytes: Int
   let perturbationResources: PerturbationResources
   private var referenceBytes = 0
@@ -77,7 +78,8 @@ struct TileStatistics: Equatable, Codable {
     let reserve =
       viewport.logScale > 32
       ? 4 * 1024 * 1024 + max(referenceBytes, min(perturbationResources.referenceBudget, orbit * 3))
-        + orbit : 2 * 1024 * 1024
+        + orbit + (useBLA ? BilinearApproximation.storageBytes(iterations: iterations) * 3 : 0)
+      : 2 * 1024 * 1024
     return max(2 * 1024 * 1024, (budgetBytes - reserve) * 2 / 3)
   }
   private var tileCost = 1024 * 1024
@@ -433,6 +435,7 @@ struct TileStatistics: Equatable, Codable {
             region.preferredReference = self.viewport.preciseCenter
             let metrics = try await gpu.perturb(
               into: samples, region: region, iterations: self.iterations, useBLA: self.useBLA,
+              hierarchicalBLA: self.hierarchicalBLA,
               resources: self.perturbationResources)
             self.referenceBytes = metrics.referenceBytes
             self.counters.batches += metrics.batches

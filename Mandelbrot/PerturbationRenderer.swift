@@ -14,6 +14,7 @@ struct PerturbationMetrics: Codable, Sendable {
   var avoidedGlitches = 0
   var rebases = 0
   var skippedIterations = 0
+  var longestBLASkip = 0
   var longestBatchMS = 0.0
 }
 struct PerturbationRegion: Sendable {
@@ -46,6 +47,8 @@ private struct PerturbationParameters {
   var stepX, stepY: ExtendedFloat
   var width, height, iterations, referenceCount: UInt32
   var start, count, pass, padding: UInt32
+  var blaBase: UInt32
+  var padding1: UInt32 = 0, padding2: UInt32 = 0, padding3: UInt32 = 0
 }
 
 extension GPUContext {
@@ -53,7 +56,7 @@ extension GPUContext {
   /// bounded GPU batches, with cancellation on both CPU and GPU boundaries.
   func perturb(
     into samples: MTLTexture, region: PerturbationRegion, iterations: Int, useBLA: Bool = true,
-    useRebasing: Bool = true, resources: PerturbationResources? = nil
+    useRebasing: Bool = true, hierarchicalBLA: Bool = true, resources: PerturbationResources? = nil
   ) async throws
     -> PerturbationMetrics
   {
@@ -90,9 +93,11 @@ extension GPUContext {
         let dy = max(
           abs((region.topLeft.y - point.y).wide / region.stepX),
           abs((far.y - point.y).wide / region.stepX))
-        let table = try BilinearApproximation.build(
-          orbit: reference, maximumDelta: region.stepX * (hypot(dx, dy) * 1.01),
-          iterations: iterations)
+        let table =
+          useBLA
+          ? try BilinearApproximation.build(
+            orbit: reference, maximumDelta: region.stepX * (hypot(dx, dy) * 1.01),
+            iterations: iterations) : BilinearApproximation.disabled
         return (reference, hit, table, ProcessInfo.processInfo.systemUptime - start)
       }
       let (reference, hit, table, blaSeconds) = try await withTaskCancellationHandler {
@@ -115,7 +120,7 @@ extension GPUContext {
       else { throw GPUFailure("Reference allocation failed") }
       guard
         let blas = device.makeBuffer(
-          bytes: table, length: table.count * MemoryLayout<BLAEntry>.stride,
+          bytes: table.entries, length: table.entries.count * MemoryLayout<BLAEntry>.stride,
           options: .storageModeShared)
       else { throw GPUFailure("BLA allocation failed") }
       let words = flags.contents().bindMemory(to: UInt32.self, capacity: 8)
@@ -129,7 +134,9 @@ extension GPUContext {
         stepY: ExtendedFloat(region.stepY),
         width: UInt32(region.width), height: UInt32(region.height), iterations: UInt32(iterations),
         referenceCount: UInt32(referenceCount),
-        start: 0, count: 8, pass: UInt32(pass), padding: (useBLA ? 1 : 0) | (useRebasing ? 0 : 2))
+        start: 0, count: 8, pass: UInt32(pass),
+        padding: (useBLA ? 1 : 0) | (useRebasing ? 0 : 2) | (hierarchicalBLA ? 4 : 0),
+        blaBase: UInt32(table.leafOffset))
       let maximumBatch = min(128, max(1, Int(UInt32.max) / (32 * region.width * region.height)))
       var batch = min(8, maximumBatch)
       while p.start < iterations {
@@ -138,6 +145,8 @@ extension GPUContext {
         words[3] = 0
         words[4] = 0
         words[5] = 0
+        words[6] = 0
+        words[7] = 0
         p.count = UInt32(min(batch, iterations - Int(p.start)))
         guard let command = computeQueue.makeCommandBuffer(),
           let encoder = command.makeComputeCommandEncoder()
@@ -156,7 +165,8 @@ extension GPUContext {
         metrics.longestBatchMS = max(metrics.longestBatchMS, seconds * 1000)
         metrics.avoidedGlitches += Int(words[5])
         metrics.rebases += Int(words[2])
-        metrics.skippedIterations += Int(words[3])
+        metrics.skippedIterations += Int(words[3]) + (Int(words[6]) << 32)
+        metrics.longestBLASkip = max(metrics.longestBLASkip, Int(words[7]))
         p.start += p.count
         if words[4] == 0 { break }
         batch = max(

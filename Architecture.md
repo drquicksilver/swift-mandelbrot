@@ -156,13 +156,14 @@ Algorithm sources (equations reimplemented here, no source code copied):
 [Claude Heiland-Allen, deep zoom theory and practice](https://mathr.co.uk/blog/2021-05-14_deep_zoom_theory_and_practice.html)
 and [rebasing and bilinear approximation](https://mathr.co.uk/blog/2022-02-21_deep_zoom_theory_and_practice_again.html).
 
-BLA composes conservative 32-step blocks starting at reference iteration one.
-Each block carries complex A/B coefficients and a validity radius constrained at
-every intermediate iteration. Blocks near a critical point or bailout are
-rejected; ordinary perturbation handles those iterations. This bounds work per
-GPU operation and table size instead of building an unrestricted skip hierarchy.
-`--bla off` provides a direct numerical/performance control. Per-batch counters
-record actual skipped iterations and avoid cumulative UInt32 overflow.
+BLA builds 32-step leaves and a binary merge hierarchy. Coefficients and validity
+radii retain separate exponents during CPU construction as well as GPU use, so
+long jumps cannot overflow Double. Each merge reserves five additional guard bits
+for accumulated error, constrained by the independent tiled minibrot golden.
+The kernel chooses the longest aligned valid jump. `--bla off`, `fixed`, and `on`
+compare ordinary perturbation, 32-step leaves, and the hierarchy respectively.
+Counters include the longest applied jump and a two-word skipped-iteration sum.
+CPU construction and GPU table storage are reserved in the tile memory budget.
 
 Tiles prefer their shared high-precision grid anchor as a reference. A separate
 actor caches at most three reference orbits, with a 4 MiB orbit-data cap. Reference

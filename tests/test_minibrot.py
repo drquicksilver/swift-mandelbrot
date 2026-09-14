@@ -6,7 +6,7 @@ f=json.loads((root/'minibrot.json').read_text())
 base=[app,'--pipeline','gpu','--renderer','perturbation','--center-real',f['centerReal'],'--center-imag',f['centerImag'],'--scale',f['scale'],'--iterations',str(f['iterations']),'--palette','ink','--density','512']
 with tempfile.TemporaryDirectory() as folder:
  raw=pathlib.Path(folder)/'samples.f32';png=pathlib.Path(folder)/'image.png'
- for bla in ['off','on']:
+ for bla in ['off','fixed','on']:
   subprocess.run(base+['--render','--size','16x12','--bla',bla,'--samples',str(raw),'--output',str(png)],check=True,stdout=subprocess.DEVNULL)
   actual=struct.unpack('<192f',raw.read_bytes());expected=struct.unpack('<192f',(root/'minibrot.f32').read_bytes())
   errors=[abs(a-b) for a,b in zip(actual,expected)]

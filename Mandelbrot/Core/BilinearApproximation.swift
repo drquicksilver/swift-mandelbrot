@@ -1,74 +1,93 @@
 import Foundation
 
-/// A bounded BLA block: delta' = A*delta + B*deltaC. Coefficients retain their
-/// exponent when sent to Metal. Zero radius means 'perform ordinary iterations'.
+/// Metal ABI: delta' = A*delta + B*deltaC within radius. All values retain their
+/// exponent, including CPU construction of arbitrarily long merged blocks.
 struct BLAEntry: Sendable {
   var a, b: ExtendedComplex
   var radius: ExtendedFloat
   var length: UInt32
   var padding0: UInt32 = 0, padding1: UInt32 = 0, padding2: UInt32 = 0
 }
-private struct BLAComplex {
-  var x: Double, y: Double
-  var magnitude: Double { hypot(x, y) }
-  static func * (a: Self, b: Self) -> Self {
-    Self(x: a.x * b.x - a.y * b.y, y: a.x * b.y + a.y * b.x)
-  }
-  static func + (a: Self, b: Self) -> Self { Self(x: a.x + b.x, y: a.y + b.y) }
-  var packed: ExtendedComplex { ExtendedComplex(x: ExtendedFloat(x), y: ExtendedFloat(y)) }
+struct BLATable: Sendable {
+  let entries: [BLAEntry]
+  let leafOffset: Int
 }
 extension ExtendedComplex {
   init(x: ExtendedFloat, y: ExtendedFloat) {
     self.x = x
     self.y = y
   }
+  var wide: WideComplex { WideComplex(x: x.wide, y: y.wide) }
 }
 extension ExtendedFloat {
-  var double: Double {
-    WideReal(Double(mantissa.x) + Double(mantissa.y), exponent: Int(exponent)).double
-  }
+  var wide: WideReal { WideReal(Double(mantissa.x) + Double(mantissa.y), exponent: Int(exponent)) }
+  var double: Double { wide.double }
 }
 enum BilinearApproximation {
   static let blockLength = 32
+  static func storageBytes(iterations: Int) -> Int {
+    var leaves = 1
+    while leaves < (iterations + blockLength - 1) / blockLength { leaves *= 2 }
+    return leaves * 2 * MemoryLayout<BLAEntry>.stride
+  }
+  private struct Block {
+    var a = WideComplex(1, 0), b = WideComplex(0, 0), radius = WideReal(0)
+    var length = 0
+    var packed: BLAEntry {
+      BLAEntry(a: a.packed, b: b.packed, radius: ExtendedFloat(radius), length: UInt32(length))
+    }
+  }
+  static var disabled: BLATable {
+    BLATable(entries: [Block().packed, Block().packed], leafOffset: 1)
+  }
+  private static func merge(_ first: Block, _ second: Block, dc: WideReal) -> Block {
+    if first.length == 0 { return second }
+    if second.length == 0 { return first }
+    let bound: WideReal
+    if first.a.magnitude.mantissa > 0 {
+      bound = max(WideReal(0), second.radius - first.b.magnitude * dc).divided(
+        by: first.a.magnitude)
+    } else {
+      bound = WideReal(0)
+    }
+    return Block(
+      a: second.a * first.a, b: second.a * first.b + second.b, radius: min(first.radius, bound),
+      length: first.length + second.length)
+  }
   static func build(orbit: ReferenceOrbit, maximumDelta: WideReal, iterations: Int = Int.max) throws
-    -> [BLAEntry]
+    -> BLATable
   {
-    var result: [BLAEntry] = []
-    let orbitCount = min(orbit.values.count, iterations == Int.max ? Int.max : iterations + 1)
-    // A conservative upper bound; conversion underflow is rounded UP to the
-    // smallest normal Double, so radius construction never understates |dc|.
-    let dc = max(Double.leastNormalMagnitude, maximumDelta.double)
-    for start in stride(from: 1, to: orbitCount, by: blockLength) {
+    let count = min(orbit.values.count, iterations == Int.max ? Int.max : iterations + 1)
+    let leaves = max(1, (count - 1 + blockLength - 1) / blockLength)
+    var offset = 1
+    while offset < leaves { offset *= 2 }
+    var blocks = Array(repeating: Block(), count: offset * 2)
+    let dc = maximumDelta * 1.000000000001
+    for index in 0..<leaves {
       try Task.checkCancellation()
-      var a = BLAComplex(x: 1, y: 0)
-      var b = BLAComplex(x: 0, y: 0)
-      var radius = Double.greatestFiniteMagnitude
-      let length = min(blockLength, orbitCount - 1 - start)
-      for n in start..<(start + length) {
-        let z = orbit.values[n]
-        let norm = hypot(z.x.double, z.y.double)
-        let factor = BLAComplex(x: 2 * z.x.double, y: 2 * z.y.double)
-        // Keep every intermediate orbit far from a glitch or bailout, and
-        // the omitted quadratic term below FloatFloat precision with margin.
-        let local = norm < 128 ? pow(2, -44) * norm / (factor.magnitude + 1) : 0
-        if a.magnitude > 0 {
-          radius = min(radius, max(0, (local - b.magnitude * dc) / a.magnitude))
-        } else {
-          radius = 0
-        }
-        b = factor * b + BLAComplex(x: 1, y: 0)
-        a = factor * a
+      let start = 1 + index * blockLength
+      var block = Block()
+      for n in start..<max(start, min(start + blockLength, count - 1)) {
+        let z = orbit.values[n].wide
+        let factor = z * WideComplex(2, 0)
+        let radius =
+          z.magnitude < WideReal(128)
+          ? z.magnitude * WideReal(1, exponent: -44).divided(by: factor.magnitude + WideReal(1))
+          : WideReal(0)
+        let single = Block(a: factor, b: WideComplex(1, 0), radius: radius, length: 1)
+        block = merge(block, single, dc: dc)
       }
-      if length < 2 || !radius.isFinite { radius = 0 }
-      result.append(
-        BLAEntry(a: a.packed, b: b.packed, radius: ExtendedFloat(radius), length: UInt32(length)))
+      blocks[offset + index] = block
     }
-    if result.isEmpty {
-      result.append(
-        BLAEntry(
-          a: BLAComplex(x: 0, y: 0).packed, b: BLAComplex(x: 0, y: 0).packed,
-          radius: ExtendedFloat(0), length: 0))
+    if offset > 1 {
+      for index in stride(from: offset - 1, through: 1, by: -1) {
+        if index.isMultiple(of: 128) { try Task.checkCancellation() }
+        blocks[index] = merge(blocks[index * 2], blocks[index * 2 + 1], dc: dc)
+        // Reserve five guard bits per merge level for accumulated coefficient
+        // and approximation error; the hard tiled oracle constrains this margin.
+        blocks[index].radius = blocks[index].radius * (1.0 / 32)
+      }
     }
-    return result
+    return BLATable(entries: blocks.map(\.packed), leafOffset: offset)
   }
 }
