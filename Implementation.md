@@ -54,3 +54,12 @@ Interactive GUI inspection could not proceed because Computer Use permissions
 remained pending; no physical phone measurements were obtained. Hands-on testing
 on iPhone 11 Pro and iPhone 16 Pro remains necessary before claiming frame pacing
 or touch quality on those devices.
+
+## Review stabilisation
+
+- Failure handling: at most three attempts per failing tile/operation, delayed
+  retries independent of display frames, and explicit recovery. An injected
+  allocation failure verifies 120 updates cannot restart terminal failures.
+- ProMotion: explicit iOS Info.plist boolean; `make ios` checks the generated app.
+  The suggested custom build setting alone was ignored by this Xcode generator.
+  Earlier claims that the opt-in was already enabled were incorrect.

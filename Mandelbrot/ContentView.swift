@@ -99,7 +99,10 @@ struct TileHUD: View {
         "GPU frame \(store.statistics.frameMS,specifier:"%.2f") ms · max batch \(store.statistics.longestBatchMS,specifier:"%.2f") ms"
       )
       Text("\(store.statistics.cacheHits) hits · \(store.statistics.evictions) evictions")
-      if let error = store.error { Text(error).foregroundStyle(.red) }
+      if let error = store.error {
+        Text(error).foregroundStyle(.red)
+        Button("Retry rendering") { store.retryFailedWork() }
+      }
     }.font(.caption.monospacedDigit()).padding().background(
       .regularMaterial, in: RoundedRectangle(cornerRadius: 12)
     ).padding()

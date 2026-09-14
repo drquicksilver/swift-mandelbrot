@@ -43,6 +43,13 @@ struct TileStatistics: Equatable, Codable {
   private var worker: Task<Void, Never>?
   private var generation: UInt64 = 0
   private var failed: Set<TileKey> = []
+  private var failureAttempts: [TileKey: Int] = [:]
+  private var operationFailures = 0
+  private var retryTask: Task<Void, Never>?
+  private var retryBlocked = false
+  private var terminalFailure = false
+  private let retryDelay: Duration
+  private let beforeTileAllocation: ((TileKey) throws -> Void)?
   private(set) var lod = 0.0
   private(set) var fallback: [TileRecord] = []
   let minimumLevel = -2
@@ -64,7 +71,10 @@ struct TileStatistics: Equatable, Codable {
     records.values.reduce(0) { $0 + $1.bytes } + fallback.reduce(0) { $0 + $1.bytes }
   }
 
-  init(budgetBytes: Int? = nil) {
+  init(budgetBytes: Int? = nil, retryDelay: Duration = .milliseconds(250),
+       beforeTileAllocation: ((TileKey) throws -> Void)? = nil) {
+    self.retryDelay = retryDelay
+    self.beforeTileAllocation = beforeTileAllocation
     #if os(iOS)
       let defaultBudget = 150 * 1024 * 1024
     #else
@@ -76,6 +86,9 @@ struct TileStatistics: Equatable, Codable {
     generation &+= 1
     worker?.cancel()
     failed.removeAll()
+    failureAttempts.removeAll()
+    operationFailures = 0
+    retryTask?.cancel(); retryTask = nil; retryBlocked = false; terminalFailure = false
     error = nil
     // Retain coarse coverage across repeated changes, even if the interrupted
     // generation had not finished a tile yet. World bounds survive rebasing.
@@ -139,6 +152,34 @@ struct TileStatistics: Equatable, Codable {
     suspended = true
     generation &+= 1
     worker?.cancel()
+  }
+  func retryFailedWork() {
+    failed.removeAll(); failureAttempts.removeAll(); operationFailures = 0
+    retryTask?.cancel(); retryTask = nil; retryBlocked = false; terminalFailure = false
+    error = nil
+    startWorker()
+  }
+  private func handleFailure(_ error: Error, key: TileKey?) {
+    self.error = String(describing: error)
+    let attempts: Int
+    if let key {
+      failureAttempts[key, default: 0] += 1
+      attempts = failureAttempts[key]!
+    } else {
+      operationFailures += 1; attempts = operationFailures
+    }
+    if attempts >= 3 {
+      if let key { failed.insert(key) }
+      terminalFailure = true
+      return
+    }
+    retryBlocked = true
+    retryTask = Task { [weak self] in
+      guard let self else { return }
+      do { try await Task.sleep(for: self.retryDelay * attempts) } catch { return }
+      self.retryBlocked = false; self.retryTask = nil
+      self.startWorker()
+    }
   }
   private func nextKey() -> TileKey? {
     let primary = needed.filter { records[$0] == nil && !failed.contains($0) }
@@ -234,7 +275,7 @@ struct TileStatistics: Equatable, Codable {
     }
   }
   private func startWorker() {
-    guard !suspended, worker == nil, let gpu = GPUContext.shared, needsRecolour || nextKey() != nil
+    guard !suspended, !retryBlocked, !terminalFailure, worker == nil, let gpu = GPUContext.shared, needsRecolour || nextKey() != nil
     else { return }
     let generation = self.generation
     worker = Task { [weak self] in
@@ -244,9 +285,12 @@ struct TileStatistics: Equatable, Codable {
         self.publish()
         self.startWorker()
       }
+      var workingKey: TileKey?
       do {
         if self.needsRecolour { try await self.recolour(gpu, generation: generation) }
         while !Task.isCancelled, self.generation == generation, let key = self.nextKey() {
+          workingKey = key
+          try self.beforeTileAllocation?(key)
           let resolution = TileGrid.textureSize
           self.evict(reserving: self.tileCost)
           // Prefetch never churns other prefetch entries endlessly.
@@ -304,6 +348,8 @@ struct TileStatistics: Equatable, Codable {
             readyAt: ProcessInfo.processInfo.systemUptime)
           record.lastUsed = self.tick
           self.records[key] = record
+          self.failureAttempts.removeValue(forKey: key)
+          self.error = nil
           self.tileCost = max(samples.allocatedSize + colour.allocatedSize, self.tileCost)
           self.counters.computed += 1
           if !self.needed.contains(key) {
@@ -314,8 +360,7 @@ struct TileStatistics: Equatable, Codable {
           self.publish()
         }
       } catch is CancellationError { self.counters.cancelled += 1 } catch {
-        self.error = String(describing: error)
-        self.suspended = true
+        self.handleFailure(error, key: workingKey)
       }
     }
   }
@@ -331,7 +376,7 @@ struct TileStatistics: Equatable, Codable {
     }.min { $0.bounds.span < $1.bounds.span }
   }
   func waitUntilReady() async throws {
-    while !isIdle { try await Task.sleep(for: .milliseconds(2)) }
+    while !isIdle || retryBlocked { try await Task.sleep(for: .milliseconds(2)) }
     if let error { throw GPUFailure(error) }
     guard allVisibleReady else { throw GPUFailure("Tile refinement incomplete") }
   }

@@ -195,9 +195,32 @@
         "cachePrefetched": Double(store.statistics.prefetched),
       ]
     }
+    static func checkFailureRecovery() async throws {
+      var allocations = 0
+      var fail = true
+      let store = TileStore(retryDelay: .milliseconds(1)) { _ in
+        allocations += 1
+        if fail { throw GPUFailure("Injected allocation failure") }
+      }
+      let size = CGSize(width: 128, height: 128)
+      func update() { store.update(viewport: Viewport(), size: size, pixelWidth: 128,
+        iterations: 200, override: nil, colouring: ColourSettings()) }
+      update()
+      do { try await store.waitUntilReady(); throw GPUFailure("Failure was hidden") }
+      catch { try require(store.error != nil, "Failure was not reported") }
+      try require(allocations == 3, "Retry budget was not enforced")
+      for _ in 0..<120 { update() }
+      try await Task.sleep(for: .milliseconds(5))
+      try require(allocations == 3, "Failed allocations restarted at display rate")
+      fail = false
+      store.retryFailedWork()
+      try await store.waitUntilReady()
+      try require(store.error == nil && store.allVisibleReady, "Explicit retry did not recover")
+    }
     static func run() async -> Int32 {
       do {
         guard let gpu = GPUContext.shared else { throw GPUFailure("GPU unavailable") }
+        try await checkFailureRecovery()
         try await checkColourBlend(gpu)
         try await checkResumption(gpu)
         try await checkMipmaps(gpu)
