@@ -9,11 +9,12 @@ import SwiftUI
     static func dismantleNSView(_ view: MTKView, coordinator: CanvasCoordinator) {
       view.isPaused = true
       view.delegate = nil
+      coordinator.model.tiles.onContentChange = nil
       coordinator.model.tiles.cancel()
     }
     func updateNSView(_ view: MTKView, context: Context) {
       context.coordinator.model = model
-      view.isPaused = !model.isActive
+      context.coordinator.wake()
     }
   }
 #else
@@ -24,11 +25,12 @@ import SwiftUI
     static func dismantleUIView(_ view: MTKView, coordinator: CanvasCoordinator) {
       view.isPaused = true
       view.delegate = nil
+      coordinator.model.tiles.onContentChange = nil
       coordinator.model.tiles.cancel()
     }
     func updateUIView(_ view: MTKView, context: Context) {
       context.coordinator.model = model
-      view.isPaused = !model.isActive
+      context.coordinator.wake()
     }
   }
 #endif
@@ -36,23 +38,33 @@ import SwiftUI
 @MainActor final class CanvasCoordinator: NSObject, MTKViewDelegate {
   var model: ExplorerModel
   private var framesInFlight = 0
+  private weak var view: MTKView?
   init(model: ExplorerModel) { self.model = model }
   func makeView() -> MTKView {
-    let view = MTKView(frame: .zero, device: GPUContext.shared?.device)
+    let view = ScreenAwareMetalView(frame: .zero, device: GPUContext.shared?.device)
+    self.view = view
+    view.screenChanged = { [weak self] in self?.wake() }
+    model.tiles.onContentChange = { [weak self] in self?.wake() }
+    view.enableSetNeedsDisplay = true
     view.colorPixelFormat = .bgra8Unorm
     view.framebufferOnly = true
     view.clearColor = MTLClearColor(red: 0.01, green: 0.01, blue: 0.02, alpha: 1)
-    #if os(macOS)
-      view.preferredFramesPerSecond = NSScreen.main?.maximumFramesPerSecond ?? 60
-    #else
-      view.preferredFramesPerSecond = UIScreen.main.maximumFramesPerSecond
-    #endif
     view.delegate = self
     return view
   }
+  func wake() {
+    guard let view else { return }
+    view.isPaused = !model.isActive
+    #if os(macOS)
+      view.preferredFramesPerSecond = view.window?.screen?.maximumFramesPerSecond ?? 60
+    #else
+      view.preferredFramesPerSecond = view.window?.screen.maximumFramesPerSecond ?? 60
+    #endif
+  }
   func mtkView(_ view: MTKView, drawableSizeWillChange size: CGSize) {}
   func draw(in view: MTKView) {
-    guard model.isActive else { return }
+    guard model.isActive, view.window != nil else { view.isPaused = true; return }
+    let now = ProcessInfo.processInfo.systemUptime
     model.advanceMotion(now: ProcessInfo.processInfo.systemUptime)
     model.tiles.update(
       viewport: model.viewport, size: view.bounds.size, pixelWidth: view.drawableSize.width,
@@ -77,6 +89,23 @@ import SwiftUI
         self.model.tiles.recordFrame(seconds: time, now: ProcessInfo.processInfo.systemUptime)
       }
     }
+    #if !targetEnvironment(simulator)
+    drawable.addPresentedHandler { [weak self] drawable in
+      let time = drawable.presentedTime
+      Task { @MainActor [weak self] in self?.model.tiles.recordPresentation(at: time) }
+    }
+    #endif
     command.commit()
+    model.tiles.retireFallback(now: now)
+    view.isPaused = !model.motion.active && !model.tiles.hasActiveFades(now: now)
   }
+}
+
+@MainActor final class ScreenAwareMetalView: MTKView {
+  var screenChanged: (() -> Void)?
+  #if os(macOS)
+  override func viewDidMoveToWindow() { super.viewDidMoveToWindow(); screenChanged?() }
+  #else
+  override func didMoveToWindow() { super.didMoveToWindow(); screenChanged?() }
+  #endif
 }

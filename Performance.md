@@ -323,3 +323,15 @@ Seven lookup textures are created once during GPU initialisation, not once per
 tile recolour. Identity checks and all palette/sample tests pass. Five M1 Pro
 traces (`evidence/product/review-palette-cache.json`): median elapsed 467.361 ms. The trace includes fixed sleeps, so
 this is a regression measurement rather than an isolated palette speedup claim.
+
+## Review: event-driven drawing and demand
+
+Settled MTKViews pause; tile completion, appearance changes and navigation wake
+them. Motion and unfinished fades sustain the display timer. Unchanged demand
+returns before rebuilding sets or touching LRU state; eviction sorts only under
+pressure. GPU frame statistics sort at 4 Hz, not every frame. A regression
+sends 120 unchanged updates and verifies no work or notifications are created.
+Five M1 Pro traces (`evidence/product/review-demand.json`): median last measured
+demand update 0.028 ms. The hardware HUD now measures recent drawable presentation cadence separately
+from GPU duration. Simulator Metal does not expose presentation timestamps.
+Actual phone idle energy use and display pacing still require device measurement.

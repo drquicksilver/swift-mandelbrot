@@ -71,3 +71,7 @@ or touch quality on those devices.
   fallback. Tile records now carry their iteration limit.
 - Palettes: immutable lookup textures shared across all tile recolours; texture
   identity and sample invariance checked by the headless tests.
+- Idle work: completion-driven MTKView wakeups, motion/fade-only continuous
+  drawing, unchanged-demand early returns, pressure-only LRU sorting, and hardware
+  presentation timing. Refresh rate comes from the view window. Regression checks
+  idle demand, palette wakeups and resume; iOS metadata/build checks pass.

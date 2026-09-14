@@ -5,6 +5,8 @@ import Metal
 
 struct TileStatistics: Equatable, Codable {
   var tiles = 0, bytes = 0, computed = 0, cancelled = 0, batches = 0, cacheHits = 0, evictions = 0
+  var demandUpdates = 0
+  var updateMS = 0.0, presentationFPS = 0.0
   var mipmaps = 0, prefetched = 0, pending = 0, budgetBytes = 0
   var longestBatchMS = 0.0, frameMS = 0.0, frameP95MS = 0.0, frameMaxMS = 0.0
 }
@@ -66,6 +68,18 @@ struct TileStatistics: Equatable, Codable {
   private var suspended = false
   private var lastFramePublish = 0.0
   private var frameTimes: [Double] = []
+  private var presentationTimes: [Double] = []
+  var onContentChange: (() -> Void)?
+  private struct Demand: Equatable {
+    let viewport: Viewport
+    let size: CGSize
+    let pixelWidth: Double
+    let iterations: Int
+    let override: RendererID?
+    let colouring: ColourSettings
+    let zoomDirection: Int
+  }
+  private var lastDemand: Demand?
   private(set) var error: String?
   var isIdle: Bool { worker == nil }
   var allVisibleReady: Bool { !visible.isEmpty && visible.allSatisfy { records[$0] != nil } }
@@ -110,6 +124,13 @@ struct TileStatistics: Equatable, Codable {
     override: RendererID?, colouring: ColourSettings, zoomDirection: Int = 0
   ) {
     guard size.width > 0, size.height > 0 else { return }
+    let demand = Demand(viewport: viewport, size: size, pixelWidth: pixelWidth,
+      iterations: iterations, override: override, colouring: colouring, zoomDirection: zoomDirection)
+    guard suspended || demand != lastDemand else { return }
+    let start = ProcessInfo.processInfo.systemUptime
+    defer { counters.updateMS = (ProcessInfo.processInfo.systemUptime - start) * 1000 }
+    counters.demandUpdates += 1
+    lastDemand = demand
     suspended = false
     tick &+= 1
     self.viewport = viewport
@@ -216,6 +237,8 @@ struct TileStatistics: Equatable, Codable {
     }
   }
   private func evict(reserving bytes: Int) {
+    retireFallback(now: ProcessInfo.processInfo.systemUptime)
+    guard residentBytes + bytes > residentLimit else { return }
     for record in records.values.filter({ !needed.contains($0.key) }).sorted(by: {
       $0.lastUsed < $1.lastUsed
     }) {
@@ -238,12 +261,27 @@ struct TileStatistics: Equatable, Codable {
     counters.frameMS = seconds * 1000
     frameTimes.append(seconds * 1000)
     if frameTimes.count > 120 { frameTimes.removeFirst() }
-    let sorted = frameTimes.sorted()
-    counters.frameP95MS = sorted[min(sorted.count - 1, Int(Double(sorted.count) * 0.95))]
-    counters.frameMaxMS = sorted.last ?? 0
     if now - lastFramePublish > 0.25 {
+      let sorted = frameTimes.sorted()
+      counters.frameP95MS = sorted[min(sorted.count - 1, Int(Double(sorted.count) * 0.95))]
+      counters.frameMaxMS = sorted.last ?? 0
       lastFramePublish = now
       publish()
+    }
+  }
+  func recordPresentation(at time: Double) {
+    guard time > 0 else { return }
+    if let last = presentationTimes.last, time - last > 0.25 { presentationTimes.removeAll() }
+    presentationTimes.append(time)
+    if presentationTimes.count > 120 { presentationTimes.removeFirst() }
+    if presentationTimes.count > 1, let first = presentationTimes.first, time > first {
+      counters.presentationFPS = Double(presentationTimes.count - 1) / (time - first)
+    }
+  }
+  func hasActiveFades(now: Double) -> Bool {
+    needed.contains { key in
+      guard let record = records[key] else { return false }
+      return now - record.readyAt < TilePresentation.fadeDuration
     }
   }
   private func recolour(_ gpu: GPUContext, generation: UInt64) async throws {
@@ -263,6 +301,7 @@ struct TileStatistics: Equatable, Codable {
       record.isMip = false
     }
     needsRecolour = false
+    onContentChange?()
     // Rebuild bottom-up from the new palette, never reuse old colour mipmaps.
     for key in Set(records.keys.map(\.parent)).sorted(by: { $0.level > $1.level }) {
       try await averageParent(of: key.children[0], gpu: gpu, generation: generation, cascade: false)
@@ -281,6 +320,7 @@ struct TileStatistics: Equatable, Codable {
       guard self.generation == generation else { throw CancellationError() }
       parent.colour = colour
       parent.isMip = true
+      onContentChange?()
       counters.mipmaps += 1
       if !cascade { break }
       key = key.parent
@@ -295,6 +335,7 @@ struct TileStatistics: Equatable, Codable {
       defer {
         self.worker = nil
         self.publish()
+        self.onContentChange?()
         self.startWorker()
       }
       var workingKey: TileKey?
@@ -370,6 +411,7 @@ struct TileStatistics: Equatable, Codable {
           }
           try await self.averageParent(of: key, gpu: gpu, generation: generation)
           self.publish()
+          self.onContentChange?()
         }
       } catch is CancellationError { self.counters.cancelled += 1 } catch {
         self.handleFailure(error, key: workingKey)

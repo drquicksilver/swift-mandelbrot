@@ -253,6 +253,26 @@
       store.retireFallback(now: ProcessInfo.processInfo.systemUptime + 1)
       try require(store.fallback.isEmpty, "Completed fallback was not released")
     }
+    static func checkDemandWakeups() async throws {
+      let store = TileStore(), size = CGSize(width: 256, height: 256)
+      var notifications = 0
+      store.onContentChange = { notifications += 1 }
+      func update(_ palette: Palette = .blueGold) {
+        store.update(viewport: Viewport(), size: size, pixelWidth: 256, iterations: 200,
+                     override: nil, colouring: ColourSettings(palette: palette))
+      }
+      update(); try await store.waitUntilReady()
+      let updates = store.statistics.demandUpdates, initial = notifications
+      for _ in 0..<120 { update() }
+      try require(notifications == initial, "Idle updates scheduled content changes")
+      store.recordFrame(seconds: 0, now: ProcessInfo.processInfo.systemUptime + 1)
+      try require(store.statistics.demandUpdates == updates, "Idle frames rebuilt demand")
+      try require(!store.hasActiveFades(now: ProcessInfo.processInfo.systemUptime + 1), "Settled tiles keep drawing alive")
+      update(.fire); try await store.waitUntilReady()
+      try require(notifications > initial, "Palette completion did not wake presentation")
+      store.cancel(); update(.fire); try await store.waitUntilReady()
+      try require(store.allVisibleReady, "Resuming unchanged demand lost readiness")
+    }
     static func run() async -> Int32 {
       do {
         guard let gpu = GPUContext.shared else { throw GPUFailure("GPU unavailable") }
@@ -260,6 +280,7 @@
           let first = try gpu.paletteTexture(palette), second = try gpu.paletteTexture(palette)
           try require(first === second, "Palette GPU texture was rebuilt")
         }
+        try await checkDemandWakeups()
         try await checkIterationContinuity(gpu)
         try await checkFailureRecovery()
         try await checkColourBlend(gpu)

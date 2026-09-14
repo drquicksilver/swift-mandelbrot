@@ -8,6 +8,7 @@ struct ContentView: View {
     GeometryReader { geometry in
       ZStack(alignment: .bottomTrailing) {
         ViewerView(model: model)
+        TileFailureNotice(store: model.tiles)
         if model.showHUD {
           TileHUD(store: model.tiles, renderer: model.renderer, iterations: model.iterations)
         }
@@ -98,6 +99,7 @@ struct TileHUD: View {
       Text(
         "GPU frame \(store.statistics.frameMS,specifier:"%.2f") ms · max batch \(store.statistics.longestBatchMS,specifier:"%.2f") ms"
       )
+      Text("Demand update \(store.statistics.updateMS, specifier: "%.2f") ms · recent presentation \(store.statistics.presentationFPS, specifier: "%.0f") fps")
       Text("\(store.statistics.cacheHits) hits · \(store.statistics.evictions) evictions")
       if let error = store.error {
         Text(error).foregroundStyle(.red)
@@ -106,5 +108,18 @@ struct TileHUD: View {
     }.font(.caption.monospacedDigit()).padding().background(
       .regularMaterial, in: RoundedRectangle(cornerRadius: 12)
     ).padding()
+  }
+}
+
+struct TileFailureNotice: View {
+  @ObservedObject var store: TileStore
+  var body: some View {
+    if let error = store.error {
+      VStack {
+        Text(error)
+        Button("Retry rendering") { store.retryFailedWork() }
+      }.padding().background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12))
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomLeading).padding()
+    }
   }
 }
