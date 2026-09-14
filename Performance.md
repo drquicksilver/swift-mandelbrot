@@ -149,3 +149,14 @@ This document outlines independent experiments to measure performance impacts in
 | float-math      | 0.123s / 4.28 Mpx/s | 0.471s / 4.45 Mpx/s | 1.883s / 4.46 Mpx/s | 7.491s / 4.48 Mpx/s |
 | parallel        | 0.022s / 23.84 Mpx/s| 0.072s / 29.25 Mpx/s| 0.282s / 29.78 Mpx/s| 1.114s / 30.12 Mpx/s|
 | simd4-float     | 0.136s / 3.85 Mpx/s | 0.533s / 3.93 Mpx/s | 2.108s / 3.98 Mpx/s | 8.424s / 3.98 Mpx/s |
+
+## 1.2 follow-up: strict Float math cost
+
+The controlled `evidence/floatfloat/benchmarks-{before,after}.json` measurements
+at scale 1e7 show the Float kernel's end-to-end cost increasing from 8.907 ms to
+9.660 ms at 512² (+8.5%), and 31.784 ms to 35.390 ms at 1024² (+11.3%). These are
+whole-image timings, including CPU colour conversion, not isolated GPU timings.
+Corrected FloatFloat costs 104.593 ms at 1024² versus 35.664 ms for the incorrect
+shader. Precision is required; keep safe math enabled. CPU-precomputed FloatFloat
+coordinates will be introduced with the shared GPU pipeline, with new measurements,
+rather than adding a second temporary parameter layout to the legacy lab kernels.
