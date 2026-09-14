@@ -75,7 +75,7 @@ struct BenchmarkMeasurement: Identifiable {
   }
   var markdown: String {
     var text =
-      "# Mandelbrot benchmark\n\(DeviceDescription.current)\nCenter: \(viewport.center.x), \(viewport.center.y); scale: \(viewport.scale); iterations: \(iterations)\nScope: \(kernelOnly ? "GPU compute only" : "CPU legacy / GPU smooth compute + colour; no display/readback")\n\nMedian of 3 runs after 1 warmup; includes colour conversion.\n\n| Renderer | Size | Seconds | Mpx/s |\n| --- | --- | ---: | ---: |\n"
+      "# Mandelbrot benchmark\n\(DeviceDescription.current)\nCenter: \(viewport.center.x), \(viewport.center.y); scale: \(viewport.scale); iterations: \(iterations)\nScope: \(kernelOnly ? "GPU compute only" : "CPU legacy / GPU smooth compute + colour; no display/readback")\n\nMedian of 3 runs after 1 warmup.\n\n| Renderer | Size | Seconds | Mpx/s |\n| --- | --- | ---: | ---: |\n"
     for row in rows {
       text += String(
         format: "| %@ | %d² | %.6f | %.2f |\n", row.renderer.rawValue, row.size, row.seconds,

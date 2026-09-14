@@ -1,6 +1,7 @@
 # Renderer architecture through 2.1
 
-The viewer draws from a quadtree cache every display frame. Refinement runs
+The viewer draws from a quadtree cache while motion or refinement changes the image,
+and pauses when settled. Refinement runs
 independently, so moving the camera does not wait for a full-resolution render.
 The CPU implementations remain available as numerical references and developer
 overrides. `Mandelbrot/Core` also builds as a Swift package for unit tests.
@@ -23,7 +24,7 @@ flowchart LR
 `TileGrid` uses 256×256 interior samples and a one-sample gutter on every edge.
 A level-L tile spans `3 / 2^L` of the complex plane. Keys contain a level, signed
 anchor-relative indices and an anchor epoch; negative parent indices use floor
-division. Rebase when indices exceed 2³⁰, retaining coarse old-generation coverage
+division. Rebase when indices exceed 2³⁰, retaining detailed old-generation coverage
 using its original world bounds. Double coordinates and FloatFloat are sufficient
 for this milestone's explicitly capped range; these are not arbitrary-precision
 coordinates and do not implement 2.2.
@@ -38,8 +39,10 @@ marks a sample at its iteration cap. A private, unfinished tile uses -2 internal
 ## Work and presentation
 
 `TileStore` runs one worker, including across cancellation: a replacement worker
-starts only after the old command completes. Work is coarse before fine, then
-centre before edges. Invisible work is discarded between commands. An orbit
+starts only after the old command completes. Required work is restricted to the
+visible level and its two nearest ancestors, coarse before fine within that band,
+then centre before edges. Cold jumps therefore get useful nearby detail without
+computing every level from the root. Invisible work is discarded between commands. An orbit
 state buffer makes iteration batches resumable; measured GPU duration adapts the
 batch toward 1 ms, bounded to 8–512 iterations over one 258² tile. All kernels
 use rounded-up uniform threadgroups and reject out-of-range threads before memory
@@ -50,18 +53,31 @@ submitted arithmetic, not OS scheduling latency or a guaranteed frame deadline.
 presentation commands in flight. It transforms cached tiles with the current
 camera; CPU readback exists only for tests and exports. Scene deactivation and
 canvas removal stop refinement and motion. CPU overrides use the legacy image
-presentation path.
+presentation path; their separate input clocks run only during CPU inertia.
+Tile completion, palette changes and navigation wake a paused view; motion and
+unfinished fades sustain its timer. Unchanged demand returns before allocating
+sets or updating LRU state. The hardware HUD distinguishes drawable presentation
+cadence from GPU execution time; simulator presentation timestamps are unavailable.
+An explicit iOS plist enables ProMotion timing hints and is checked in the built
+app by `make ios` and `make ios-device`.
+
+Tile/operation failures receive at most three attempts with delayed retries.
+A terminal failure stays stopped until explicit retry or a render-generation reset.
+A visible error notice provides recovery even when the developer HUD is hidden.
 
 Each visible cell finds cached ancestors and blends the two nearest levels
 according to fractional LOD. New detail fades in over 125 ms. All filtering and
 level blending operates on colours, never interpolated escape counts. The debug
 overlay draws cell borders and base-level labels in the fragment shader.
+Iteration changes retain the old detailed working set as display-only fallback.
+Finer old data outranks coarse replacements; new base and fine levels fade against
+the previous generation before it is released. Each record stores its iteration
+limit. Orbit state is still transient, so this does not yet extend capped pixels.
 
 When all four children exist, a compute kernel averages their coloured pixels
-2×2 into the parent's interior. Its directly sampled gutter remains until adjacent
-coverage exists. Raw parent data stays authoritative. Palette changes recolour raw
+2×2 into the parent's interior. Its gutter remains directly sampled. Raw parent data stays authoritative. Palette changes recolour raw
 samples into replacement textures, swap the palette transaction together, and
-rebuild derived mipmaps upward. This costs GPU colouring work, but no fractal
+rebuild derived mipmaps upward. Seven immutable lookup textures are shared. This costs GPU colouring work, but no fractal
 iterations or CPU pixel conversion; changing a palette is not literally free.
 
 ## Cache policy
@@ -72,7 +88,11 @@ is only its 256 KiB raw payload. Two thirds of the budget, less scratch headroom
 are available for resident tiles; the rest covers recolouring, orbit state and
 transient replacements. This is a cache budget, not a cap on total app memory.
 
-Visible tiles and their ancestors are protected. Other records use LRU eviction.
+Visible tiles and their two nearest ancestor levels are protected. Distant ancestors
+remain reusable LRU entries. This review decision replaces the original plan's
+requirement to protect the entire chain: the old policy reduced phone detail by
+thousands of times at deep zoom. A 1e10 regression now preserves the requested LOD
+under the 150 MiB budget, using 12 tiles and 9.375 MiB. Other records use LRU eviction.
 If protected demand would exceed the budget, sampling LOD decreases while the
 camera stays fixed. Zoom-in prefetch requests one child level after visible work;
 zoom-out's next level is already present in the ancestor chain. Prefetch yields
@@ -85,7 +105,27 @@ viewport maths and inertia. Headless Metal integration checks resumed computatio
 against the full kernel byte-for-byte, actual shader blend weights, all parent
 mipmap pixels against CPU box averages, raw-texture reuse, palette invalidation,
 parent coverage, prefetch, cancellation, LRU budgets and deep anchor rebasing.
+Independent CPU Double product PNGs cover pixel-centre coordinates, fractional LOD,
+offset views and mip boundaries. The original endpoint-mapped lab fixtures remain
+fixed, with separate error budgets by precision and location. Injected allocation
+failures check retry limits; continuity tests compare pixels across iteration
+changes; unchanged-demand tests ensure 120 idle updates schedule no new work.
 
 `Performance.md` records GPU timings and the meaning of each measurement. Build
 validation includes simulator and physical iOS targets. Actual 60 Hz/120 Hz frame
 pacing and touch feel on iPhone 11 Pro and iPhone 16 Pro still need device testing.
+
+## Before automatic depth or perturbation
+
+The current 65,535 iteration ceiling keeps Float32 smooth-count spacing at or below
+1/256. Coordinate depth alone does not reduce this precision. Before permitting
+much larger iteration counts, use an integer escape iteration plus a separate
+floating smoothing correction, and keep palette phase calculations from collapsing
+them back into one large Float. Unresolved and proven-interior status also need
+separate representation once periodicity checking is introduced.
+
+Extending capped tiles should preserve escaped samples, but retaining a full orbit
+buffer costs about 1 MiB per tile. Design bounded/selective state retention with
+2.3; storing coordinates alone only enables recomputation. Larger GPU batches and
+multi-tile commands remain measured follow-ups, not prerequisites for the corrected
+working-set policy. Do not assume a separate display queue guarantees preemption.

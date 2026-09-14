@@ -10,7 +10,9 @@ Requires Xcode 26.2 or newer with the Metal toolchain. Targets iOS 18+ and macOS
 ```sh
 make build       # Release macOS app in /tmp/mandelbrot-development
 make test        # Swift unit + CLI + CPU/GPU golden-image tests; GPU required
-make ios         # iPhone/iPad simulator build
+make ios         # iPhone/iPad simulator build + generated plist check
+make ios-device  # unsigned physical-iOS build + generated plist check
+make format-check # enforce the committed Swift formatting convention
 ```
 
 Run `/tmp/mandelbrot-development/Build/Products/Release/Mandelbrot.app/Contents/MacOS/Mandelbrot`
@@ -46,7 +48,10 @@ Export the same tiled compositor without opening a window:
 
 ![Deep tiled rendering](evidence/product/tiles-deep.png)
 
-Physical iPhone frame pacing and interactive GUI inspection have not been verified
-in this implementation session. The reproducible headless tests and both iOS
-build targets pass; the [implementation record](Implementation.md) states the
-remaining device validation explicitly.
+The user has reported smooth navigation on a phone and Mac. The review fixes add
+bounded retries, a small deep working set, iteration-change continuity and idle
+sleeping. Physical frame pacing and the revised full-screen touch layout still
+need device verification. The [implementation record](Implementation.md) tracks
+completed work and the remaining validation. Independent CPU product-image
+references run as part of `make test`; regenerate deliberately with
+`python3 tests/test_product_golden.py --record`.

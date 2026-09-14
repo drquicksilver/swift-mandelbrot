@@ -79,3 +79,25 @@ or touch quality on those devices.
   offset fractional LOD, Seahorse detail and mip boundaries. References are
   generated without invoking the app. Legacy fixtures remain unchanged, with
   tighter precision/location-specific error budgets and explicit headroom.
+- Formatting: `.swift-format`, `make format` and `make format-check`; the mechanical
+  whole-project pass is separate from behaviour changes.
+- Native input: command matching is centralised with key/modifier regressions;
+  CPU input clocks stop when idle and remain paused for GPU rendering.
+- iOS full-screen follow-up: the fractal and its geometry ignore the safe area,
+  controls remain inset, and the status bar is hidden. The Mac layout is preserved.
+- Reporting: Mac hardware model comes from `hw.model`; kernel-only benchmark
+  exports no longer claim to include colour conversion.
+
+`Implementation.md` is the completion record; `plan.md` remains the roadmap and
+`Architecture.md` describes the current design. The original review document and
+subsequent safe-area note remain reviewer-owned. The user's hands-on report
+confirms smooth navigation before this pass; revised idle behaviour, high-refresh
+presentation, both landscape orientations and touch anchors still need phone
+verification. No 2.2/2.3/2.8 feature work or iteration-state retention was folded
+into stabilisation. The reasons for deferring large batches and count-format
+changes are documented in Architecture.md.
+
+Final stabilisation verification: `make test`, `make format-check`, `make ios`,
+`make ios-device`, final tile checks and five isolated trace runs passed. Product
+PNG inspection at the mip-boundary fixture showed no visible tile seam. Final
+measurements and their limits are recorded in Performance.md.

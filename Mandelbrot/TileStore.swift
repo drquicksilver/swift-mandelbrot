@@ -270,6 +270,13 @@ struct TileStatistics: Equatable, Codable {
     while residentBytes + bytes > residentLimit && !fallback.isEmpty { fallback.removeLast() }
   }
   private func publish() {
+    // Flush the final frame window when work settles, so headless reports do not
+    // omit the last fraction of a second between periodic HUD updates.
+    if worker == nil, !frameTimes.isEmpty {
+      let sorted = frameTimes.sorted()
+      counters.frameP95MS = sorted[min(sorted.count - 1, Int(Double(sorted.count) * 0.95))]
+      counters.frameMaxMS = max(counters.frameMaxMS, sorted.last ?? 0)
+    }
     counters.tiles = records.count
     counters.bytes = residentBytes
     counters.budgetBytes = budgetBytes
@@ -278,12 +285,12 @@ struct TileStatistics: Equatable, Codable {
   }
   func recordFrame(seconds: Double, now: Double) {
     counters.frameMS = seconds * 1000
+    counters.frameMaxMS = max(counters.frameMaxMS, seconds * 1000)
     frameTimes.append(seconds * 1000)
     if frameTimes.count > 120 { frameTimes.removeFirst() }
     if now - lastFramePublish > 0.25 {
       let sorted = frameTimes.sorted()
       counters.frameP95MS = sorted[min(sorted.count - 1, Int(Double(sorted.count) * 0.95))]
-      counters.frameMaxMS = sorted.last ?? 0
       lastFramePublish = now
       publish()
     }

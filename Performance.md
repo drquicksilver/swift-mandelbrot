@@ -348,3 +348,27 @@ Legacy budgets now distinguish Float from FloatFloat and specific pipelines;
 headroom is retained rather than fitting thresholds exactly to one device.
 Cross-device tolerance calibration remains open until comparable device data
 exists. `make test` includes the new product goldens.
+
+## Review stabilisation: final measurements
+
+Five isolated M1 Pro runs: `evidence/product/review-final.json`. Deep rendering
+uses 256², scale 1e10, 4000 iterations and the iOS 150 MiB cache budget.
+
+| Measurement | Result |
+| --- | ---: |
+| Useful deep coverage, median | 71.333 ms |
+| Complete deep detail, median | 161.353 ms |
+| Deep resident cache | 9.375 MiB |
+| Deep GPU batch, worst observed | 2.066 ms |
+| Compositor p95, median of runs | 0.315 ms |
+| Compositor GPU duration, worst observed | 0.888 ms |
+| Last demand update, median of runs | 0.032 ms |
+
+The earlier deep path took 1488.170 ms and retained 115.625 MiB on Mac;
+under the phone budget it also reduced sampling detail. The new regression
+requires the requested LOD to survive. Frame statistics now flush their final
+window when work settles, and preserve the worst observed GPU duration.
+The input display link/timer is paused or absent for GPU rendering and idle CPU
+rendering. These are implementation and offscreen measurements, not claims of
+measured phone battery savings or sustained 120 fps. Both iOS build targets
+verify the generated ProMotion boolean; `make test` and `make format-check` pass.
