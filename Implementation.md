@@ -197,3 +197,12 @@ Decrease hysteresis matches increases. Tests verify lower-cap images against fre
 renders, zero sampling on a decrease/return, exact escaped-sample preservation,
 and continued refinement/cancellation/fallback correctness. Core, CLI, tile and
 independent numerical/product goldens pass.
+
+### Follow-up review: shallow anchor and navigation regression
+
+Returning to shallow coordinates now restores the canonical shallow grid and
+clears cached deep bounds. Using the canonical grid also preserves the same tile
+coverage as a fresh session. Regression traces exercise returns from 1e12 and
+1e1000 and a 201-view 1x–1e30–1x trip with fixed versus automatic limits. They
+check anchor demotion, fresh-session tile work, and sampling counts rather than
+flaky timing thresholds; timings are printed for profiling. Tile integration passes.

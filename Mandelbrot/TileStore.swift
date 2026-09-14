@@ -187,6 +187,12 @@ struct TileStatistics: Equatable, Codable {
     }
     self.iterations = iterations
     self.override = override
+    if viewport.deepCenter == nil && grid.deepAnchor != nil {
+      invalidate()
+      boundsCache.removeAll()
+      // Restore the canonical shallow grid, matching a fresh session.
+      grid.rebase(to: CGPoint(x: -0.5, y: 0))
+    }
     lod = max(
       Double(minimumLevel),
       min(Viewport.maximumLogScale, grid.idealLevel(viewport: viewport, pixelWidth: pixelWidth)))

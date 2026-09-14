@@ -479,6 +479,7 @@
         try await checkHighIterationColour(gpu)
         try await checkDepthControls()
         try await checkIterationReuse(gpu)
+        try await checkNavigationRoundTrip()
         try await checkResumption(gpu)
         try await checkMipmaps(gpu)
         let cacheMetrics = try await checkCache()
