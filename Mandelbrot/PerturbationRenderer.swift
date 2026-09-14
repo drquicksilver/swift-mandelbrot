@@ -60,7 +60,7 @@ extension GPUContext {
   func perturb(
     into samples: MTLTexture, region: PerturbationRegion, iterations: Int, useBLA: Bool = true,
     useRebasing: Bool = true, hierarchicalBLA: Bool = true, resources: PerturbationResources? = nil,
-    preserveEscaped: Bool = false
+    preserveEscaped: Bool = false, fixedBLARadius: Bool = false
   ) async throws
     -> PerturbationMetrics
   {
@@ -122,7 +122,8 @@ extension GPUContext {
           let table =
             useBLA
             ? try BilinearApproximation.build(
-              orbit: ref, maximumDelta: maximumDelta, iterations: iterations)
+              orbit: ref, maximumDelta: maximumDelta, iterations: iterations,
+              mergeGuardBits: fixedBLARadius ? 0 : 5, jumpGuardBits: fixedBLARadius ? 5 : 0)
             : BilinearApproximation.disabled
           return (table, ProcessInfo.processInfo.systemUptime - start)
         }

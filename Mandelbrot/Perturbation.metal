@@ -107,3 +107,15 @@ kernel void perturbTile(texture2d<uint,access::read_write> output [[texture(0)]]
  }
  states[index]=s;
 }
+
+// Diagnostic only: both paths start from identical packed inputs. The exported
+// results are also checked against independent high-precision recurrence.
+struct BLACase { XC delta,dc; uint start,entry,pad0,pad1; };
+kernel void measureBLA(device const XC *orbit [[buffer(0)]],device const BLA *blocks [[buffer(1)]],
+ device const BLACase *cases [[buffer(2)]],device XC *results [[buffer(3)]],
+ constant uint &count [[buffer(4)]],uint2 pos [[thread_position_in_grid]]) {
+ uint i=pos.x;if(pos.y>0 || i>=count)return;
+ BLACase c=cases[i];BLA b=blocks[c.entry];XC z=c.delta;
+ for(uint n=0;n<b.length;n++) z=add(add(times(mul(orbit[c.start+n],z),2),mul(z,z)),c.dc);
+ results[2*i]=z;results[2*i+1]=add(mul(b.a,c.delta),mul(b.b,c.dc));
+}

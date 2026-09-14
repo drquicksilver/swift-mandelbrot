@@ -13,6 +13,16 @@ enum MandelbrotMain {
   @MainActor static func main() async {
     #if os(macOS)
       let arguments = Array(CommandLine.arguments.dropFirst())
+      if let index = arguments.firstIndex(of: "--test-bla") {
+        guard index + 1 < arguments.count else {
+          FileHandle.standardError.write(Data("--test-bla requires a fixture JSON path\n".utf8))
+          exit(2)
+        }
+        exit(await BLADiagnostics.run(fixture: arguments[index + 1]))
+      }
+      if arguments.contains("--benchmark-reference") {
+        exit(await TileDiagnostics.runReferenceBenchmark())
+      }
       if arguments.contains("--test-tiles") { exit(await TileDiagnostics.run()) }
       if arguments.contains("--benchmark") || arguments.contains("--render")
         || arguments.contains("--help")

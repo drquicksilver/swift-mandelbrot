@@ -1,0 +1,5 @@
+Iteration reuse: decrease/return sampled zero pixels; increase sampled 820 capped pixels
+Shallow return from 1e12: 2 tiles; anchor demoted; update max 0.04054163582623005 ms
+Shallow return from 1e1000: 2 tiles; anchor demoted; update max 0.041708117350935936 ms
+1x–1e30 round trip sampled pixels: fixed 27424368, automatic 27427626
+Cold automatic 1e1000: limit 266000, first deep tile 41.186916641891 ms, ready 245.4688334837556 ms, reference length 4098

@@ -54,7 +54,10 @@ enum BilinearApproximation {
       a: second.a * first.a, b: second.a * first.b + second.b, radius: min(first.radius, bound),
       length: first.length + second.length)
   }
-  static func build(orbit: ReferenceOrbit, maximumDelta: WideReal, iterations: Int = Int.max) throws
+  static func build(
+    orbit: ReferenceOrbit, maximumDelta: WideReal, iterations: Int = Int.max,
+    mergeGuardBits: Int = 5, jumpGuardBits: Int = 0
+  ) throws
     -> BLATable
   {
     let count = min(orbit.values.count, iterations == Int.max ? Int.max : iterations + 1)
@@ -83,11 +86,16 @@ enum BilinearApproximation {
       for index in stride(from: offset - 1, through: 1, by: -1) {
         if index.isMultiple(of: 128) { try Task.checkCancellation() }
         blocks[index] = merge(blocks[index * 2], blocks[index * 2 + 1], dc: dc)
-        // Reserve five guard bits per merge level for accumulated coefficient
-        // and approximation error; the hard tiled oracle constrains this margin.
-        blocks[index].radius = blocks[index].radius * (1.0 / 32)
+        // Retain the validated production margin. Fixed per-jump allowances
+        // remain an explicit diagnostic until full tiled validation passes.
+        blocks[index].radius = blocks[index].radius * WideReal(1, exponent: -mergeGuardBits)
       }
     }
-    return BLATable(entries: blocks.map(\.packed), leafOffset: offset)
+    return BLATable(
+      entries: blocks.map { block in
+        var entry = block.packed
+        entry.radius = ExtendedFloat(block.radius * WideReal(1, exponent: -jumpGuardBits))
+        return entry
+      }, leafOffset: offset)
   }
 }

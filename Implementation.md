@@ -221,3 +221,24 @@ produced its first deep tile in 35 ms and settled in 231 ms on the M1 Pro. It
 needed only 4,098 reference values. These are headless tile-readiness timings,
 not phone frame-pacing measurements. An exact-centre capped pixel separately
 forces reference extension. Full tests and unchanged deep/minibrot budgets pass.
+
+### Follow-up review: isolated BLA metrology and final checks
+
+Added diagnostic GPU jumps from identical packed starting states and independent
+180-digit Decimal recurrence. Across both scenes, 440 cases include zero deltas
+and 12.5%, 50% and 99% of each validity radius, with lengths through 16,384.
+Approximation error must be below 1e-12 relative to the output-term scale;
+ordinary GPU recurrence and on/off differences must remain below 1e-10.
+
+A fixed five-bit allowance per jump passes these strict local tests and is
+available via `--bla-radius fixed`. It still fails the unchanged tiled minibrot
+image budget (33/255 maximum versus 12 allowed), so production retains the
+compounded margin. No tolerance was loosened or margin fitted to the failing
+pixels. Both policies remain reproducibly testable; this validation limitation
+is documented rather than claiming the hierarchy issue is fully resolved.
+
+Shallow transition cleanup now waits for the old worker before releasing its
+reference cache and spare state buffer. Final full tests, strict formatting,
+iOS Simulator and physical-device builds pass. The iPhone 16 Pro remains listed
+as unavailable and no iPhone 11 Pro is present; actual phone measurements remain
+outstanding. Final timings, images and test counters are in `evidence/followup`.

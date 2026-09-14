@@ -22,6 +22,8 @@
         let before = store.statistics.computed
         update(store, shallow)
         try await store.waitUntilReady()
+        let referenceBytes = await store.perturbationResources.references.bytes
+        try require(referenceBytes == 0, "Shallow return retained deep reference storage")
         try require(store.grid.deepAnchor == nil, "Deep anchor survived shallow navigation")
         try require(
           store.statistics.computed - before <= fresh.statistics.computed,

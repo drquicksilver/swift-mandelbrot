@@ -69,9 +69,11 @@ struct TileStatistics: Equatable, Codable {
   let minimumLevel = -2
   var useBLA = true
   var hierarchicalBLA = true
+  var fixedBLARadius = false
   let budgetBytes: Int
   let perturbationResources: PerturbationResources
   private var referenceBytes = 0
+  private var needsReferenceReset = false
   private var boundsCache: [TileKey: TileBounds] = [:]
   // Reserve a third for transactional recolouring, one orbit-state buffer,
   // mip replacements and the two in-flight display frames.
@@ -192,6 +194,7 @@ struct TileStatistics: Equatable, Codable {
       boundsCache.removeAll()
       // Restore the canonical shallow grid, matching a fresh session.
       grid.rebase(to: CGPoint(x: -0.5, y: 0))
+      needsReferenceReset = true
     }
     lod = max(
       Double(minimumLevel),
@@ -433,6 +436,14 @@ struct TileStatistics: Equatable, Codable {
       }
       var workingKey: TileKey?
       do {
+        if self.needsReferenceReset {
+          // The previous worker has stopped before clearing its shared resources.
+          await self.perturbationResources.references.clear()
+          self.perturbationResources.clearScratch()
+          self.referenceBytes = 0
+          self.needsReferenceReset = false
+          try Task.checkCancellation()
+        }
         if self.needsRecolour { try await self.recolour(gpu, generation: generation) }
         while !Task.isCancelled, self.generation == generation, let key = self.nextKey() {
           workingKey = key
@@ -465,7 +476,8 @@ struct TileStatistics: Equatable, Codable {
             let metrics = try await gpu.perturb(
               into: samples, region: region, iterations: limit, useBLA: self.useBLA,
               hierarchicalBLA: self.hierarchicalBLA,
-              resources: self.perturbationResources, preserveEscaped: previous != nil)
+              resources: self.perturbationResources, preserveEscaped: previous != nil,
+              fixedBLARadius: self.fixedBLARadius)
             self.referenceBytes = metrics.referenceBytes
             self.counters.batches += metrics.batches
             self.counters.referenceOrbits += metrics.references

@@ -1,0 +1,46 @@
+[
+  {
+    "scene": "i",
+    "policy": "compound",
+    "cases": 104,
+    "longest": 2048,
+    "maximumErrors": [
+      1.3519935002019715e-14,
+      1.314740357431e-14,
+      1.3412827172290733e-14
+    ]
+  },
+  {
+    "scene": "i",
+    "policy": "fixed",
+    "cases": 104,
+    "longest": 2048,
+    "maximumErrors": [
+      1.3519935002019715e-14,
+      2.3900094302823748e-15,
+      1.2674939064393482e-14
+    ]
+  },
+  {
+    "scene": "minibrot",
+    "policy": "compound",
+    "cases": 116,
+    "longest": 16384,
+    "maximumErrors": [
+      9.006164695010987e-13,
+      5.989421238749297e-14,
+      8.976723751074608e-13
+    ]
+  },
+  {
+    "scene": "minibrot",
+    "policy": "fixed",
+    "cases": 116,
+    "longest": 16384,
+    "maximumErrors": [
+      1.1120110232623074e-12,
+      7.352759405510271e-15,
+      1.1071762356549187e-12
+    ]
+  }
+]

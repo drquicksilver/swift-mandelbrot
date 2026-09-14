@@ -4,6 +4,16 @@
   import Metal
 
   extension TileDiagnostics {
+    static func runReferenceBenchmark() async -> Int32 {
+      do {
+        guard let gpu = GPUContext.shared else { throw GPUFailure("GPU unavailable") }
+        try await checkStreamedReferences(gpu)
+        return 0
+      } catch {
+        FileHandle.standardError.write(Data("Reference benchmark failed: \(error)\n".utf8))
+        return 1
+      }
+    }
     static func checkStreamedReferences(_ gpu: GPUContext) async throws {
       let view = try Viewport(real: "0", imag: "1", zoom: "1e1000")
       let limit = IterationPolicy.estimate(logScale: view.logScale)

@@ -17,6 +17,11 @@ actor ReferenceOrbitCache {
   var bytes: Int {
     entries.reduce(0) { $0 + $1.storageBytes }
   }
+  func clear() {
+    entries.removeAll()
+    for request in pending.values { request.task.cancel() }
+    pending.removeAll()
+  }
   static func precision(_ bits: Int) -> Int { max(256, (bits + 255) / 256 * 256) }
   private func nearby(_ a: DeepPoint, _ b: DeepPoint, radius: WideReal) -> Bool {
     if radius.mantissa == 0 {

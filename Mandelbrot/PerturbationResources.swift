@@ -23,6 +23,11 @@ final class PerturbationResources: @unchecked Sendable {
     }
     return buffer
   }
+  func clearScratch() {
+    lock.lock()
+    defer { lock.unlock() }
+    spare = nil
+  }
   func recycle(_ buffer: MTLBuffer) {
     lock.lock()
     defer { lock.unlock() }

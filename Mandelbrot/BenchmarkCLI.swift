@@ -41,6 +41,7 @@
                           count 0xffffffff means capped; eight bytes per pixel
         --pipeline NAME    legacy, gpu or tiles (default: legacy); tiles exports PNGs
         --rebasing on|off  Critical-point rebasing; off is a recovery diagnostic
+        --bla-radius MODE compound (default) or fixed (experimental error margin)
         --bla on|off|fixed Perturbation hierarchy, no skipping, or 32-step blocks
         --timing SCOPE     end-to-end or kernel (GPU benchmark only)
         --help             Show this help
@@ -64,6 +65,7 @@
       var timing = "end-to-end"
       var useBLA = true
       var hierarchicalBLA = true
+      var fixedBLARadius = false
       var useRebasing = true
       var render = false
       var renderer = "metal"
@@ -94,7 +96,7 @@
               "--iterations", "--center-real", "--center-imag", "--scale", "--pipeline", "--timing",
               "--colouring", "--palette", "--density", "--offset", "--samples", "--sample-records",
               "--bla",
-              "--rebasing",
+              "--rebasing", "--bla-radius",
             ]).contains(flag)
           else {
             throw CLIError("Unknown option: \(flag)")
@@ -111,6 +113,11 @@
               throw CLIError("Rebasing must be on or off")
             }
             useRebasing = value == "on"
+          case "--bla-radius":
+            guard ["compound", "fixed"].contains(value) else {
+              throw CLIError("BLA radius must be compound or fixed")
+            }
+            fixedBLARadius = value == "fixed"
           case "--bla":
             guard ["on", "off", "fixed"].contains(value) else {
               throw CLIError("BLA must be on, off or fixed")
@@ -417,6 +424,7 @@
         let store = TileStore()
         store.useBLA = options.useBLA
         store.hierarchicalBLA = options.hierarchicalBLA
+        store.fixedBLARadius = options.fixedBLARadius
         store.update(
           viewport: view, size: CGSize(width: size.0, height: size.1), pixelWidth: Double(size.0),
           iterations: options.iterations,
@@ -458,7 +466,7 @@
             width: width, height: height, iterations: options.iterations,
             renderer: RendererID(rawValue: options.renderer)!, settings: options.colouring,
             useBLA: options.useBLA, useRebasing: options.useRebasing,
-            hierarchicalBLA: options.hierarchicalBLA)
+            hierarchicalBLA: options.hierarchicalBLA, fixedBLARadius: options.fixedBLARadius)
           let image = try await gpu.image(frame.colour)
           let data = NSMutableData()
           guard
@@ -509,7 +517,7 @@
                 width: width, height: height, iterations: options.iterations,
                 renderer: RendererID(rawValue: variant)!, settings: options.colouring,
                 useBLA: options.useBLA, useRebasing: options.useRebasing,
-                hierarchicalBLA: options.hierarchicalBLA)
+                hierarchicalBLA: options.hierarchicalBLA, fixedBLARadius: options.fixedBLARadius)
               let seconds =
                 options.timing == "kernel"
                 ? frame.kernelSeconds : Double(DispatchTime.now().uptimeNanoseconds - start) / 1e9
