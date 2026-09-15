@@ -54,7 +54,7 @@ because several plan items depend on it.
   of the quadtree, so cache use stays bounded.
 - **Precision per tile.** Each tile's level decides its renderer (float,
   double-float, or perturbation). Renderer selection falls out naturally.
-- **Pays off again.** Zoom movies (2.7) are just the chain of ancestor tiles
+- **Pays off again.** Zoom movies (2.8) are just the chain of ancestor tiles
   along a path, rendered as keyframes. This is the technique used by
   zoomasm/Kalles Fraktaler.
 
@@ -171,7 +171,7 @@ capped tile pixels currently restart in bounded worker scratch. Two layers:
 - *Correction from data:* use the coarse pass (or the parent tile) to decide.
   Without detecting interior points you can't tell a genuinely interior pixel
   from one that needed more iterations, so this depends on periodicity checking
-  (2.9). Any pixels that hit the limit are then either known to be inside or
+  (2.10). Any pixels that hit the limit are then either known to be inside or
   genuinely unresolved:
   - raise the limit (to about 2× the current one) while more than about 0.1% of
     pixels are unresolved;
@@ -190,7 +190,39 @@ capped tile pixels currently restart in bounded worker scratch. Two layers:
 - *UI:* the +/− controls become a "detail" multiplier on the automatic value.
   Friends and family never need to touch it.
 
-**2.4 Navigation feel: trackpad panning, rotation, gentle bounds.**
+**2.4 Coverage pyramid.** This logically belongs to the tile cache (2.1), but
+comes after 2.3 because it was added later. Alongside the visible-detail cache,
+keep a bounded pyramid of coarse tiles so zooming out never shows undrawn areas.
+Today only a three-level band above the visible level is protected, and there's
+no zoom-out prefetch. After a jump, zooming out more than about 4× shows holes
+until tiles are computed.
+- *Which tiles.* For zoom-out offsets j = 1…8, then sparse offsets 12, 16, 24,
+  32, … up to the root, request coverage at level L − j − 2 (about quarter
+  resolution, so only a few tiles per offset). Select every tile intersecting
+  the projected, possibly rotated, zoomed-out view, plus a small margin. Keep
+  levels −2…0 permanently under a fixed world anchor.
+- *Storage.* Reuse the existing raw tiles, colouring path, compositor and
+  mipmaps. Mark coverage entries separately and give them a reserved budget
+  (about 30–40 tiles, ~25–30 MB). Protect them from LRU eviction. Never
+  invalidate them on iteration changes; recolour them when the palette changes.
+- *Scheduling.* Root first (shallow and cheap), then the preview band, then
+  visible detail, then near coverage, then sparse coverage, then zoom-in
+  prefetch. Add zoom-out prefetch as the window moves up. Coverage must never
+  delay the visible view: computing the whole ancestor chain first is what made
+  cold jumps slow before.
+- *Memory pressure.* Trim from the far end and thin the sparse levels before
+  touching the root or the first near levels.
+- *Composition.* When a detail tile is missing, use the best available
+  coverage, looked up directly by level. The current ancestor walk stops after
+  62 levels, far short of the root at deep zoom. Keep old-anchor coverage as
+  bounds-based fallback until new-anchor coverage replaces it, so re-anchoring
+  never opens holes.
+- *Tests.* Simulate rapid and long zoom-outs, including after a cold jump to
+  1e100. Verify every output pixel has a valid tile (no magenta sentinel), that
+  the time until visible tiles are ready after a cold jump hasn't changed, and
+  that the coverage budget stays bounded on iPhone.
+
+**2.5 Navigation feel: trackpad panning, rotation, gentle bounds.**
 - *Mac two-finger scrolling pans.* When `hasPreciseScrollingDeltas` is true
   (trackpad, Magic Mouse), `scrollWheel` pans by `scrollingDeltaX/Y` instead of
   zooming; the deltas already follow the system's natural-scrolling setting.
@@ -218,8 +250,8 @@ capped tile pixels currently restart in bounded worker scratch. Two layers:
     don't change.
   - `visible()` must cover the actual rotated rectangle. Covering its
     axis-aligned bounding box needs about 2.2× the tiles on a 16:9 screen at 45°.
-  - The angle is stored wherever a view is: bookmarks and share links (2.5),
-    exports and the CLI (`--rotation`), zoom movies (2.7).
+  - The angle is stored wherever a view is: bookmarks and share links (2.6),
+    exports and the CLI (`--rotation`), zoom movies (2.8).
   - Tests: a rotated-compositor golden, and a round trip of the conversions with
     rotation.
 - *Gentle bounds.* Zooming out past the whole set, or panning far into empty
@@ -228,19 +260,19 @@ capped tile pixels currently restart in bounded worker scratch. Two layers:
   motion model as inertia, so they're frame-rate independent and combine with a
   fling.
 
-**2.5 Locations: bookmarks, history, sharing.** A `Location` type (center
+**2.6 Locations: bookmarks, history, sharing.** A `Location` type (center
 stored as an arbitrary-precision decimal string, scale, iterations, palette).
 Back and forward history. A universal link or `mandelbrot://` URL scheme, and
 the share sheet. A starter gallery of famous spots, which doubles as onboarding
 for friends and family.
 
-**2.6 Julia companion.** A picture-in-picture panel (iPad and Mac:
+**2.7 Julia companion.** A picture-in-picture panel (iPad and Mac:
 side-by-side, iPhone: a corner inset) showing the Julia set for the point under
 the cursor or finger, updated live. It's cheap: one small float render per
 frame. Tap to swap the main and companion views. The Julia view reuses the same
 tile cache and palettes.
 
-**2.7 Zoom movies.** Pick a start location (by default the whole set) and an
+**2.8 Zoom movies.** Pick a start location (by default the whole set) and an
 end location (the current view or a bookmark). Render the keyframe chain (one
 image per zoom level of 2× along the path, straight from the quadtree). Then
 compose an exponential zoom video by interpolating between keyframes, and
@@ -248,15 +280,15 @@ write it with AVAssetWriter (HEVC/H.264). Options: duration, resolution
 (1080p/4K), palette cycling, ease in and out. Render in the background with
 progress, and share the result. This is the feature people will post.
 
-**2.8 High-resolution still export.** Tiled supersampled render at any size.
+**2.9 High-resolution still export.** Tiled supersampled render at any size.
 PNG with the location embedded in the metadata. Shares code with the CLI
 `--render`.
 
-**2.9 Cheap performance wins.** Skip the main cardioid and the period-2 bulb,
+**2.10 Cheap performance wins.** Skip the main cardioid and the period-2 bulb,
 and use periodicity checking for points inside the set. Measure each as a
 benchmark variant.
 
-**2.10 Device validation and resilience.** Hands-on testing found problems the
+**2.11 Device validation and resilience.** Hands-on testing found problems the
 headless tests missed, so real devices get a dedicated pass. The iPhone 11 Pro
 is the floor.
 - *Profile both phones in Instruments* (Metal System Trace, Allocations):
@@ -277,7 +309,7 @@ is the floor.
   caught the sticky deep anchor and the cache wipes on iteration changes. Run it
   from `make soak`, outside the default `make test`.
 
-**2.11 Automatic colour.** Palette density is fixed at 64 iterations per cycle,
+**2.12 Automatic colour.** Palette density is fixed at 64 iterations per cycle,
 which suits shallow views. At 1e100, counts in view run from about 22,000 to
 34,000. Choose density and offset from the range of escaped counts in view,
 using a log mapping or a histogram-based mapping. Deep views then look good
@@ -285,10 +317,10 @@ without opening Settings. Use the protected tiles' samples (already on the GPU)
 for the statistics, and change the mapping smoothly with hysteresis so colours
 don't pulse while moving. The manual density and offset controls become
 adjustments on top of the automatic value, like the detail multiplier in 2.3.
-A prerequisite for zoom movies (2.7): a movie crosses a huge range of depths,
+A prerequisite for zoom movies (2.8): a movie crosses a huge range of depths,
 and a fixed density will look wrong at one end.
 
-**2.12 Deep-zoom performance, round two.** Only if the 2.10 measurements show
+**2.13 Deep-zoom performance, round two.** Only if the 2.11 measurements show
 cold deep views are too slow on the phones.
 - *Boost reference backend.* Boost measured 5.3–5.7× faster per iteration for
   saved reference orbits. Put reference computation behind a protocol, add a
@@ -301,7 +333,7 @@ cold deep views are too slow on the phones.
 - *BLA tuning.* Set ε and the per-jump margin from the isolated BLA-on vs
   BLA-off error measurements, not from comparisons against the oracle.
 
-**2.13 Tidy up before shipping.** Employers will read this repository.
+**2.14 Tidy up before shipping.** Employers will read this repository.
 - One pixel-mapping convention everywhere: the full-frame CLI and GPU paths
   still sample at endpoints, while tiles use pixel centres. Re-record the
   affected goldens deliberately.
@@ -311,7 +343,7 @@ cold deep views are too slow on the phones.
   `Implementation.md` into `Architecture.md` and the README.
 - Remove dead code and stale comments.
 
-**2.14 Ready for the App Store and for employers.**
+**2.15 Ready for the App Store and for employers.**
 - *App Store:* iPhone and iPad layouts, app icon variants, launch screen,
   first-run hint ("pinch to zoom"), the privacy label (no data collected),
   and TestFlight for friends and family first.
@@ -345,12 +377,13 @@ cold deep views are too slow on the phones.
    changes are safe) → 1.6.
 2. **Looks and feel:** 1.4 → 1.5 → 1.7 → 1.8. At this point you can ship to
    friends on TestFlight.
-3. **Smooth motion:** 2.1 (a–d); 2.9 (periodicity checking) → 2.3.
+3. **Smooth motion:** 2.1 (a–d); 2.10 (periodicity checking) → 2.3 → 2.4
+   (coverage pyramid).
    The depth-based starting guess from 2.3 can land at any time, even now.
 4. **Deep:** 2.2 (library spike first).
-5. **Feel:** 2.4 (Mac panning, rotation, gentle bounds). Do it before 2.5, so
+5. **Feel:** 2.5 (Mac panning, rotation, gentle bounds). Do it before 2.6, so
    bookmarks store the angle from the start.
-6. **Validate:** 2.10 on both phones, then 2.12 only if the measurements call
+6. **Validate:** 2.11 on both phones, then 2.13 only if the measurements call
    for it.
-7. **Share:** 2.5 → 2.11 (automatic colour, before movies) → 2.7 → 2.6 → 2.8.
-8. **Ship:** 2.13 → 2.14 → App Store.
+7. **Share:** 2.6 → 2.12 (automatic colour, before movies) → 2.8 → 2.7 → 2.9.
+8. **Ship:** 2.14 → 2.15 → App Store.
