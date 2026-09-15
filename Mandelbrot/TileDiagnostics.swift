@@ -267,6 +267,11 @@
       try require(deep.grid.anchorID > 0, "Deep coordinates did not rebase")
       try require(
         deep.needed.allSatisfy { deep.records[$0] != nil }, "Deep ancestors are incomplete")
+      try require(
+        deep.coverage.count <= 40
+          && deep.coverage.contains(where: { $0.level == deep.minimumLevel })
+          && deep.coverage.filter { deep.records[$0] != nil }.count == deep.coverage.count,
+        "Deep coverage pyramid was not bounded and ready")
       let deepMS = (ProcessInfo.processInfo.systemUptime - deepStart) * 1000
       deep.cancel()
       store.cancel()
@@ -440,6 +445,21 @@
         try require(
           !(fallback[i] == 255 && fallback[i + 1] == 0 && fallback[i + 2] == 255),
           "Deep parent fallback left a hole")
+      }
+      // The root coverage tile was prepared independently of the 62-level
+      // ancestor walk.  A long zoom-out after a cold deep jump must therefore
+      // still compose a complete frame before the new visible tiles arrive.
+      view.zoom(by: pow(2, -128), at: CGPoint(x: 128, y: 96), in: size, pixelWidth: 256)
+      store.update(
+        viewport: view, size: size, pixelWidth: 256, iterations: 5000, override: nil,
+        colouring: ColourSettings(density: 8))
+      let zoomedOut = try await gpu.readback(
+        TileCompositor.snapshot(
+          store: store, viewport: view, width: 256, height: 192, sentinel: true))
+      for i in stride(from: 0, to: zoomedOut.count, by: 4) {
+        try require(
+          !(zoomedOut[i] == 255 && zoomedOut[i + 1] == 0 && zoomedOut[i + 2] == 255),
+          "Coverage pyramid left a long-zoom-out hole")
       }
       try await store.waitUntilReady()
       try require(

@@ -93,7 +93,10 @@ struct TileGrid: Sendable {
   func idealLevel(viewport: Viewport, pixelWidth: Double) -> Double {
     viewport.logScale + log2(max(1, pixelWidth) / Double(Self.samples))
   }
-  func visible(viewport: Viewport, size: CGSize, level: Int) -> [TileKey] {
+  /// Tiles for the current view, optionally projected through a future zoom-out.
+  /// Keeping the projection here makes deep and ordinary coordinate paths agree.
+  func visible(viewport: Viewport, size: CGSize, level: Int, zoomOut: Int = 0) -> [TileKey] {
+    let projection = pow(2, Double(max(0, zoomOut)))
     let minX: Double
     let maxX: Double
     let minY: Double
@@ -104,7 +107,7 @@ struct TileGrid: Sendable {
       let c = viewport.preciseCenter
       let x = (c.x - anchor.x).wide / wide
       let y = (anchor.y - c.y).wide / wide
-      let half = viewport.wideSpan / wide / 2
+      let half = viewport.wideSpan / wide * projection / 2
       let tall = half * size.height / max(1, size.width)
       minX = x - half
       maxX = x + half
@@ -112,9 +115,10 @@ struct TileGrid: Sendable {
       maxY = y + tall
     } else {
       let span = span(at: level)
-      let height = viewport.span * size.height / max(1, size.width)
-      minX = (viewport.center.x - viewport.span / 2 - anchor.x) / span
-      maxX = (viewport.center.x + viewport.span / 2 - anchor.x) / span
+      let width = viewport.span * projection
+      let height = width * size.height / max(1, size.width)
+      minX = (viewport.center.x - width / 2 - anchor.x) / span
+      maxX = (viewport.center.x + width / 2 - anchor.x) / span
       minY = (anchor.y - (viewport.center.y + height / 2)) / span
       maxY = (anchor.y - (viewport.center.y - height / 2)) / span
     }

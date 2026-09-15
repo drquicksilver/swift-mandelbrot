@@ -1,4 +1,4 @@
-# Implementation through 2.1
+# Implementation through 2.4
 
 Work is staged on `feature/gpu-tile-explorer`. The target devices are iPhone 11 Pro
 and iPhone 16 Pro. Minimum deployment: iOS 18, macOS 15.7. Physical-device frame
@@ -242,3 +242,14 @@ reference cache and spare state buffer. Final full tests, strict formatting,
 iOS Simulator and physical-device builds pass. The iPhone 16 Pro remains listed
 as unavailable and no iPhone 11 Pro is present; actual phone measurements remain
 outstanding. Final timings, images and test counters are in `evidence/followup`.
+
+### 2.4 Coverage pyramid
+
+Added a separately marked, LRU-protected coverage set capped at 40 tiles. It
+plans a root tile, eight near zoom-out projections, and a sparse tail, then
+schedules root before the local preview/visible band and all lower-priority work.
+Composition now considers coverage directly by precise bounds, so it is not
+limited by the local 62-level ancestor walk. Old-anchor coverage remains valid
+through rebasing until the new root completes. Unit and headless tests cover
+projected selection, the cap, and a sentinel-free 128× deep zoom-out after a
+cold jump. `make test` and `make format-check` pass.

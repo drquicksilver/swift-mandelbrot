@@ -25,6 +25,18 @@ import Testing
   #expect(deep.allSatisfy { abs($0.x) < 10 && abs($0.y) < 10 })
 }
 
+@Test func projectedZoomOutCoverageStaysCoarse() {
+  let grid = TileGrid(anchor: CGPoint(x: -0.5, y: 0))
+  let view = Viewport(center: CGPoint(x: -0.743643887, y: 0.131825904), scale: 1e10)
+  let size = CGSize(width: 320, height: 200)
+  let detail = Int(ceil(grid.idealLevel(viewport: view, pixelWidth: 320)))
+  let near = grid.visible(viewport: view, size: size, level: detail - 6, zoomOut: 4)
+  let root = grid.visible(viewport: view, size: size, level: -2, zoomOut: detail)
+  #expect(!near.isEmpty && near.count <= 16)
+  #expect(!root.isEmpty && root.count <= 16)
+  #expect(near.allSatisfy { $0.level == detail - 6 })
+}
+
 @Test func refinementFadesAndFractionalLevels() {
   #expect(TilePresentation.fade(readyAt: 1, now: 1) == 0)
   #expect(TilePresentation.fade(readyAt: 1, now: 1.0625) == 0.5)

@@ -26,6 +26,8 @@ struct TileStatistics: Equatable, Codable {
   var cappedPixels = TileGrid.textureSize * TileGrid.textureSize
   var lastUsed: UInt64 = 0
   var isMip = false
+  /// Coverage tiles are deliberately retained across ordinary LRU pressure.
+  var isCoverage = false
   init(
     key: TileKey, bounds: TileBounds, samples: MTLTexture, colour: MTLTexture, readyAt: Double,
     iterations: Int
@@ -49,6 +51,9 @@ struct TileStatistics: Equatable, Codable {
   private(set) var visible: [TileKey] = []
   private(set) var needed: Set<TileKey> = []
   private(set) var prefetch: Set<TileKey> = []
+  private(set) var coverage: Set<TileKey> = []
+  private var nearCoverage: Set<TileKey> = []
+  private var sparseCoverage: Set<TileKey> = []
   private(set) var viewport = Viewport()
   private(set) var size = CGSize(width: 1, height: 1)
   private(set) var colouring = ColourSettings()
@@ -67,6 +72,7 @@ struct TileStatistics: Equatable, Codable {
   private(set) var lod = 0.0
   private(set) var fallback: [TileRecord] = []
   let minimumLevel = -2
+  private let coverageTileLimit = 40
   var useBLA = true
   var hierarchicalBLA = true
   var fixedBLARadius = false
@@ -112,6 +118,10 @@ struct TileStatistics: Equatable, Codable {
   var residentBytes: Int {
     records.values.reduce(0) { $0 + $1.bytes } + fallback.reduce(0) { $0 + $1.bytes }
   }
+  var coverageBytes: Int {
+    records.values.filter(\.isCoverage).reduce(0) { $0 + $1.bytes }
+      + fallback.filter(\.isCoverage).reduce(0) { $0 + $1.bytes }
+  }
 
   init(
     budgetBytes: Int? = nil, retryDelay: Duration = .milliseconds(250),
@@ -151,9 +161,17 @@ struct TileStatistics: Equatable, Codable {
     // The same key can have two iteration generations; newest complete data wins.
     var retained = Dictionary(fallback.map { ($0.key, $0) }, uniquingKeysWith: { _, new in new })
     for record in records.values where needed.contains(record.key) { retained[record.key] = record }
-    fallback = retained.values.filter { $0.bounds.intersects(viewport: viewport, size: size) }
-      .sorted { $0.key.level > $1.key.level }
+    // An old-anchor coverage tile is still a valid bounds-based safety net while
+    // a new anchor is being populated, even if it does not intersect this frame.
+    for record in records.values where record.isCoverage { retained[record.key] = record }
+    fallback = retained.values.filter {
+      $0.isCoverage || $0.bounds.intersects(viewport: viewport, size: size)
+    }
+    .sorted { $0.key.level > $1.key.level }
     records.removeAll()
+    coverage.removeAll()
+    nearCoverage.removeAll()
+    sparseCoverage.removeAll()
   }
   func update(
     viewport: Viewport, size: CGSize, pixelWidth: Double, iterations: Int,
@@ -227,11 +245,12 @@ struct TileStatistics: Equatable, Codable {
       visible = grid.visible(viewport: viewport, size: size, level: level)
       needed = ancestors()
     }
+    configureCoverage(detailLevel: level)
     prefetch =
       zoomDirection > 0 && level < Int(Viewport.maximumLogScale)
       ? Set(visible.flatMap(\.children)) : []
     // Zoom-out's next level is already protected in the ancestor chain.
-    for key in needed {
+    for key in needed.union(coverage) {
       if let record = records[key] {
         if record.lastUsed != tick - 1 { counters.cacheHits += 1 }
         record.lastUsed = tick
@@ -245,6 +264,49 @@ struct TileStatistics: Equatable, Codable {
     }
     evict(reserving: 0)
     startWorker()
+  }
+  private func configureCoverage(detailLevel: Int) {
+    // Near offsets make the next eight zoom-out steps cheap.  The sparse tail
+    // makes a long zoom-out drawable without eagerly walking an ancestor chain.
+    let nearOffsets = Array(1...8)
+    let sparseOffsets = [12, 16, 24, 32, 48, 64, 96, 128, 192, 256, 384, 512]
+    func keys(for offsets: [Int]) -> Set<TileKey> {
+      var result: Set<TileKey> = []
+      for offset in offsets {
+        let target = max(minimumLevel, detailLevel - offset - 2)
+        result.formUnion(
+          grid.visible(
+            viewport: viewport, size: size, level: target, zoomOut: offset))
+        if target == minimumLevel { break }
+      }
+      return result
+    }
+    var near = keys(for: nearOffsets)
+    var sparse = keys(for: sparseOffsets).subtracting(near)
+    // Root coverage is scheduled first.  Cap the remaining levels deterministically
+    // so an extreme aspect ratio cannot consume the visible-detail budget.
+    let root = Set(
+      grid.visible(
+        viewport: viewport, size: size, level: minimumLevel,
+        zoomOut: max(0, detailLevel - minimumLevel - 2)))
+    var selected = root
+    func add(_ source: inout Set<TileKey>) {
+      for key in source.sorted(by: {
+        $0.level != $1.level
+          ? $0.level < $1.level
+          : ($0.y != $1.y ? $0.y < $1.y : $0.x < $1.x)
+      })
+      where selected.count < coverageTileLimit {
+        selected.insert(key)
+      }
+      source = source.intersection(selected)
+    }
+    add(&near)
+    add(&sparse)
+    coverage = selected
+    nearCoverage = near
+    sparseCoverage = sparse
+    for record in records.values { record.isCoverage = coverage.contains(record.key) }
   }
   func cancel() {
     suspended = true
@@ -291,14 +353,27 @@ struct TileStatistics: Equatable, Codable {
     return record.iterations < iterations && record.cappedPixels > 0
   }
   private func nextKey() -> TileKey? {
-    let primary = needed.filter { needsSampling($0) && !failed.contains($0) }
+    func pending(_ keys: Set<TileKey>) -> Set<TileKey> {
+      keys.filter { needsSampling($0) && !failed.contains($0) }
+    }
+    let root = pending(coverage.filter { $0.level == minimumLevel })
+    let preview = pending(needed)
+    let near = pending(nearCoverage)
+    let sparse = pending(sparseCoverage)
+    let zoomIn = pending(prefetch)
     let candidates =
-      primary.isEmpty ? prefetch.filter { needsSampling($0) && !failed.contains($0) } : primary
-    guard !primary.isEmpty || needed.count * tileCost + tileCost <= residentLimit else {
+      !root.isEmpty
+      ? root : !preview.isEmpty ? preview : !near.isEmpty ? near : !sparse.isEmpty ? sparse : zoomIn
+    guard
+      !preview.isEmpty || !root.isEmpty || !near.isEmpty || !sparse.isEmpty
+        || needed.count * tileCost + tileCost <= residentLimit
+    else {
       return nil
     }
-    if primary.isEmpty && residentBytes + tileCost > residentLimit
-      && !records.keys.contains(where: { !needed.contains($0) && !prefetch.contains($0) })
+    if candidates == zoomIn && residentBytes + tileCost > residentLimit
+      && !records.keys.contains(where: {
+        !needed.contains($0) && !coverage.contains($0) && !prefetch.contains($0)
+      })
     {
       return nil
     }
@@ -315,15 +390,21 @@ struct TileStatistics: Equatable, Codable {
   private func evict(reserving bytes: Int) {
     retireFallback(now: ProcessInfo.processInfo.systemUptime)
     guard residentBytes + bytes > residentLimit else { return }
-    for record in records.values.filter({ !needed.contains($0.key) }).sorted(by: {
-      $0.lastUsed < $1.lastUsed
-    }) {
+    for record in records.values.filter({ !needed.contains($0.key) && !coverage.contains($0.key) })
+      .sorted(by: {
+        $0.lastUsed < $1.lastUsed
+      })
+    {
       if residentBytes + bytes <= residentLimit { break }
       records.removeValue(forKey: record.key)
       counters.evictions += 1
     }
     // Coarse replacements are not a reason to discard old fine detail.
     retireFallback(now: ProcessInfo.processInfo.systemUptime)
+    while residentBytes + bytes > residentLimit,
+      let index = fallback.lastIndex(where: { !$0.isCoverage })
+    { fallback.remove(at: index) }
+    // Old generations are lowest-value coverage once new coverage has arrived.
     while residentBytes + bytes > residentLimit && !fallback.isEmpty { fallback.removeLast() }
   }
   private func publish() {
@@ -341,7 +422,7 @@ struct TileStatistics: Equatable, Codable {
     counters.tiles = records.count
     counters.bytes = residentBytes
     counters.budgetBytes = budgetBytes
-    counters.pending = needed.filter { needsSampling($0) }.count
+    counters.pending = needed.union(coverage).filter { needsSampling($0) }.count
     statistics = counters
   }
   func recordPreparation(seconds: Double) {
@@ -503,7 +584,10 @@ struct TileStatistics: Equatable, Codable {
             var start = 0
             var batch = 64
             while start < limit {
-              if Task.isCancelled || (!self.needed.contains(key) && !self.prefetch.contains(key)) {
+              if Task.isCancelled
+                || (!self.needed.contains(key) && !self.coverage.contains(key)
+                  && !self.prefetch.contains(key))
+              {
                 cancelled = true
                 break
               }
@@ -533,6 +617,7 @@ struct TileStatistics: Equatable, Codable {
           try Task.checkCancellation()
           guard self.generation == generation else { throw CancellationError() }
           record.cappedPixels = summary.capped
+          record.isCoverage = self.coverage.contains(key)
           self.counters.sampledPixels += previous?.cappedPixels ?? (resolution * resolution)
           self.counters.reusedPixels +=
             previous.map { resolution * resolution - $0.cappedPixels } ?? 0
@@ -542,7 +627,7 @@ struct TileStatistics: Equatable, Codable {
           self.error = nil
           self.tileCost = max(samples.allocatedSize + colour.allocatedSize, self.tileCost)
           self.counters.computed += 1
-          if !self.needed.contains(key) {
+          if !self.needed.contains(key) && !self.coverage.contains(key) {
             self.counters.prefetched += 1
             self.prefetch.remove(key)
           }
@@ -559,7 +644,12 @@ struct TileStatistics: Equatable, Codable {
     if allVisibleReady
       && visible.allSatisfy({ now - records[$0]!.readyAt >= TilePresentation.fadeDuration })
     {
-      fallback.removeAll()
+      // Detail can fade away, but old-anchor coverage remains until the current
+      // pyramid has its root tile.  This prevents re-anchoring from opening holes.
+      let rootReady = coverage.contains { key in
+        key.level == minimumLevel && records[key] != nil
+      }
+      fallback.removeAll { !$0.isCoverage || rootReady }
     }
   }
   func fallbackAvailable(for key: TileKey, maximumLevel: Int? = nil) -> TileRecord? {
@@ -580,9 +670,14 @@ struct TileStatistics: Equatable, Codable {
         break
       }
     }
-    guard let old = fallbackAvailable(for: key) else { return current }
-    if let current, current.key.level >= old.key.level { return current }
-    return old
+    let directCoverage = (Array(records.values) + fallback).filter { record in
+      guard record.isCoverage, record.key.level <= key.level else { return false }
+      let r = bounds(key).relative(to: record.bounds)
+      return r.x >= -1e-12 && r.y >= -1e-12 && r.x + r.extent <= 1 + 1e-12
+        && r.y + r.extent <= 1 + 1e-12
+    }.max { $0.key.level < $1.key.level }
+    let old = fallbackAvailable(for: key)
+    return [current, directCoverage, old].compactMap { $0 }.max { $0.key.level < $1.key.level }
   }
   func waitUntilReady() async throws {
     while !isIdle || retryBlocked { try await Task.sleep(for: .milliseconds(2)) }

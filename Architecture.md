@@ -98,14 +98,20 @@ are available for resident tiles; the rest covers recolouring, orbit state and
 transient replacements. This is a cache budget, not a cap on total app memory.
 
 Visible tiles and their two nearest ancestor levels are protected. Distant ancestors
-remain reusable LRU entries. This review decision replaces the original plan's
+remain reusable LRU entries. A separate, 40-tile coverage pyramid projects the
+next eight zoom-out steps plus a sparse tail and a direct root tile. The root runs
+before the visible band; near and sparse coverage yield to it. Coverage records are
+LRU-protected, can be recoloured or iteration-extended like normal raw tiles, and
+are selected by bounds rather than the ordinary 62-level ancestor walk. An
+old-anchor coverage record remains a fallback until the new root is ready. This
+review decision replaces the original plan's
 requirement to protect the entire chain: the old policy reduced phone detail by
 thousands of times at deep zoom. A 1e10 regression now preserves the requested LOD
 under the 150 MiB budget, using 12 tiles and 9.375 MiB. Other records use LRU eviction.
 If protected demand would exceed the budget, sampling LOD decreases while the
 camera stays fixed. Zoom-in prefetch requests one child level after visible work;
-zoom-out's next level is already present in the ancestor chain. Prefetch yields
-to visible work and stops at the available budget without eviction churn.
+zoom-out coverage is independently budgeted and stops at its 40-tile cap without
+eviction churn.
 
 ## Validation
 
@@ -113,7 +119,8 @@ to visible work and stops at the available budget without eviction churn.
 viewport maths and inertia. Headless Metal integration checks resumed computation
 against the full kernel byte-for-byte, actual shader blend weights, all parent
 mipmap pixels against CPU box averages, raw-texture reuse, palette invalidation,
-parent coverage, prefetch, cancellation, LRU budgets and deep anchor rebasing.
+parent coverage, coverage-pyramid root fallback, long zoom-out sentinel frames,
+prefetch, cancellation, LRU budgets and deep anchor rebasing.
 Independent CPU Double product PNGs cover pixel-centre coordinates, fractional LOD,
 offset views and mip boundaries. The original endpoint-mapped lab fixtures remain
 fixed, with separate error budgets by precision and location. Injected allocation

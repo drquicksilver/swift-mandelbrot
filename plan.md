@@ -190,37 +190,18 @@ capped tile pixels currently restart in bounded worker scratch. Two layers:
 - *UI:* the +/− controls become a "detail" multiplier on the automatic value.
   Friends and family never need to touch it.
 
-**2.4 Coverage pyramid.** This logically belongs to the tile cache (2.1), but
-comes after 2.3 because it was added later. Alongside the visible-detail cache,
-keep a bounded pyramid of coarse tiles so zooming out never shows undrawn areas.
-Today only a three-level band above the visible level is protected, and there's
-no zoom-out prefetch. After a jump, zooming out more than about 4× shows holes
-until tiles are computed.
-- *Which tiles.* For zoom-out offsets j = 1…8, then sparse offsets 12, 16, 24,
-  32, … up to the root, request coverage at level L − j − 2 (about quarter
-  resolution, so only a few tiles per offset). Select every tile intersecting
-  the projected, possibly rotated, zoomed-out view, plus a small margin. Keep
-  levels −2…0 permanently under a fixed world anchor.
-- *Storage.* Reuse the existing raw tiles, colouring path, compositor and
-  mipmaps. Mark coverage entries separately and give them a reserved budget
-  (about 30–40 tiles, ~25–30 MB). Protect them from LRU eviction. Never
-  invalidate them on iteration changes; recolour them when the palette changes.
-- *Scheduling.* Root first (shallow and cheap), then the preview band, then
-  visible detail, then near coverage, then sparse coverage, then zoom-in
-  prefetch. Add zoom-out prefetch as the window moves up. Coverage must never
-  delay the visible view: computing the whole ancestor chain first is what made
-  cold jumps slow before.
-- *Memory pressure.* Trim from the far end and thin the sparse levels before
-  touching the root or the first near levels.
-- *Composition.* When a detail tile is missing, use the best available
-  coverage, looked up directly by level. The current ancestor walk stops after
-  62 levels, far short of the root at deep zoom. Keep old-anchor coverage as
-  bounds-based fallback until new-anchor coverage replaces it, so re-anchoring
-  never opens holes.
-- *Tests.* Simulate rapid and long zoom-outs, including after a cold jump to
-  1e100. Verify every output pixel has a valid tile (no magenta sentinel), that
-  the time until visible tiles are ready after a cold jump hasn't changed, and
-  that the coverage budget stays bounded on iPhone.
+**2.4 Coverage pyramid.** Completed. Alongside the visible-detail cache, a
+bounded pyramid of coarse tiles keeps zooming out drawable after cold jumps.
+- *Selection and storage.* The current implementation projects the axis-aligned
+  future viewport through offsets 1…8 and a sparse 12…512 tail, with a direct
+  root request. It caps the active set at 40 separately marked, LRU-protected
+  raw tiles. Coverage participates in palette recolouring and iteration reuse.
+- *Scheduling and composition.* The root is scheduled first, then the local
+  preview/visible band, near coverage, sparse coverage and zoom-in prefetch.
+  Bounds-based direct coverage lookup bypasses the 62-level ancestor limit.
+  Old-anchor coverage stays as fallback until a new root has completed.
+- *Tests.* Unit coverage projection tests and headless deep cold-jump/128×
+  zoom-out magenta-sentinel checks verify bounded, hole-free composition.
 
 **2.5 Navigation feel: trackpad panning, rotation, gentle bounds.**
 - *Mac two-finger scrolling pans.* When `hasPreciseScrollingDeltas` is true
