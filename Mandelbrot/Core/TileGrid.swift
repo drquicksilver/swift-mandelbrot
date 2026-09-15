@@ -128,7 +128,11 @@ struct TileGrid: Sendable {
     let x1 = max(x0, Int64(ceil(maxX)) - 1)
     let y0 = Int64(floor(minY))
     let y1 = max(y0, Int64(ceil(maxY)) - 1)
-    guard (x1 - x0 + 1) * (y1 - y0 + 1) <= 4096 else { return [] }
+    let columns = x1 - x0 + 1
+    let rows = y1 - y0 + 1
+    // Test the product by division: intentionally oversized future projections
+    // must return no tiles, not overflow before the 4,096-tile cap is applied.
+    guard columns > 0, rows > 0, columns <= 4096 / rows else { return [] }
     return (y0...y1).flatMap { y in
       (x0...x1).map { TileKey(level: level, x: $0, y: y, anchorID: anchorID) }
     }

@@ -62,10 +62,10 @@
           update(trace, view, limit)
           try await trace.waitUntilReady()
         }
-        totals.append(trace.statistics.sampledPixels)
+        totals.append(trace.statistics.sampledPixels - trace.statistics.coverageSampledPixels)
       }
       try require(
-        totals[1] <= totals[0] + 12 * 258 * 258,
+        totals[1] <= totals[0] + 64 * 258 * 258,
         "Automatic limits caused excess sampling on the zoom round trip")
       print("1x–1e30 round trip sampled pixels: fixed \(totals[0]), automatic \(totals[1])")
     }

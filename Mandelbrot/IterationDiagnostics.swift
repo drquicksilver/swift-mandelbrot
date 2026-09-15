@@ -41,7 +41,10 @@
         store.statistics.sampledPixels == sampled, "Returning to cached limit recomputed samples")
       var before: [TileKey: Data] = [:]
       for (key, record) in store.records { before[key] = try await gpu.readback(record.samples) }
-      let expected = store.needed.reduce(0) { $0 + (store.records[$1]?.cappedPixels ?? 0) }
+      let expected = store.needed.reduce(0) { total, key in
+        guard let record = store.records[key], !record.isCoverage else { return total }
+        return total + record.cappedPixels
+      }
       update(store, 800)
       try await store.waitUntilReady()
       try require(

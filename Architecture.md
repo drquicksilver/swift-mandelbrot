@@ -98,11 +98,15 @@ are available for resident tiles; the rest covers recolouring, orbit state and
 transient replacements. This is a cache budget, not a cap on total app memory.
 
 Visible tiles and their two nearest ancestor levels are protected. Distant ancestors
-remain reusable LRU entries. A separate, 40-tile coverage pyramid projects the
-next eight zoom-out steps plus a sparse tail and a direct root tile. The root runs
-before the visible band; near and sparse coverage yield to it. Coverage records are
-LRU-protected, can be recoloured or iteration-extended like normal raw tiles, and
-are selected by bounds rather than the ordinary 62-level ancestor walk. An
+remain reusable LRU entries. A separate coverage pyramid reserves up to 30 MiB
+and 40 tiles from bytes left after the visible band, always including the root's four-cell anchor footprint, projecting the next eight zoom-out steps plus a sparse tail and a
+direct root tile. It selects root, near and sparse groups in that order, while
+work within the selected set remains coarse-first. An over-budget coverage key is
+deferred from all scheduling sets, which guarantees that the main-actor worker
+makes progress. Coverage records are LRU-protected, can be recoloured, use their
+own level-appropriate iteration limit and are never extended for a later detail
+limit. They are selected through a small bounds-ordered index rather than the
+ordinary 62-level ancestor walk. An
 old-anchor coverage record remains a fallback until the new root is ready. This
 review decision replaces the original plan's
 requirement to protect the entire chain: the old policy reduced phone detail by
@@ -120,7 +124,8 @@ viewport maths and inertia. Headless Metal integration checks resumed computatio
 against the full kernel byte-for-byte, actual shader blend weights, all parent
 mipmap pixels against CPU box averages, raw-texture reuse, palette invalidation,
 parent coverage, coverage-pyramid root fallback, long zoom-out sentinel frames,
-prefetch, cancellation, LRU budgets and deep anchor rebasing.
+constrained phone-shaped coverage pressure and non-extension, prefetch,
+cancellation, LRU budgets and deep anchor rebasing.
 Independent CPU Double product PNGs cover pixel-centre coordinates, fractional LOD,
 offset views and mip boundaries. The original endpoint-mapped lab fixtures remain
 fixed, with separate error budgets by precision and location. Injected allocation

@@ -245,11 +245,14 @@ outstanding. Final timings, images and test counters are in `evidence/followup`.
 
 ### 2.4 Coverage pyramid
 
-Added a separately marked, LRU-protected coverage set capped at 40 tiles. It
-plans a root tile, eight near zoom-out projections, and a sparse tail, then
-schedules root before the local preview/visible band and all lower-priority work.
-Composition now considers coverage directly by precise bounds, so it is not
-limited by the local 62-level ancestor walk. Old-anchor coverage remains valid
-through rebasing until the new root completes. Unit and headless tests cover
-projected selection, the cap, and a sentinel-free 128× deep zoom-out after a
-cold jump. `make test` and `make format-check` pass.
+Added a separately marked, LRU-protected coverage set with a 30 MiB / 40-tile
+reservation drawn only from bytes left after the visible band. It plans a root tile, eight near zoom-out projections, and a sparse
+tail, then schedules root before the local preview/visible band and all
+lower-priority work. Composition now considers a bounds-ordered coverage index,
+so it is not limited by the local 62-level ancestor walk. Old-anchor coverage
+remains valid through rebasing until the new root completes. Coverage uses its
+own level estimate and does not extend at higher detail limits. A budget-pressure
+skip removes the key from every coverage queue, preventing the main-actor retry
+spin found in review. Unit and headless tests cover projected selection, a
+phone-shaped constrained budget, non-extension, and a sentinel-free 128× deep
+zoom-out after a cold jump. `make test` and `make format-check` pass.

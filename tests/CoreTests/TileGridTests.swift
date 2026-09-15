@@ -37,6 +37,14 @@ import Testing
   #expect(near.allSatisfy { $0.level == detail - 6 })
 }
 
+@Test func oversizedProjectedCoverageIsRejectedWithoutOverflow() {
+  let grid = TileGrid(anchor: CGPoint(x: -0.5, y: 0))
+  let keys = grid.visible(
+    viewport: Viewport(center: CGPoint(x: -0.743643887, y: 0.131825904), scale: 128),
+    size: CGSize(width: 1_170, height: 2_532), level: -2, zoomOut: 64)
+  #expect(keys.isEmpty)
+}
+
 @Test func refinementFadesAndFractionalLevels() {
   #expect(TilePresentation.fade(readyAt: 1, now: 1) == 0)
   #expect(TilePresentation.fade(readyAt: 1, now: 1.0625) == 0.5)

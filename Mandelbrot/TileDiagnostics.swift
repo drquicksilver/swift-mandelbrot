@@ -262,8 +262,14 @@
         deep.lod == deep.grid.idealLevel(viewport: view, pixelWidth: 256),
         "Phone memory budget silently reduced deep detail")
       try require(deep.needed.count <= 12, "Cold view still requires distant ancestors")
+      let deepDetailBytes = deep.records.values.filter { !$0.isCoverage }.reduce(0) {
+        $0 + $1.bytes
+      }
       try require(
-        deep.statistics.bytes < 20 * 1024 * 1024, "Deep working set is unexpectedly large")
+        deepDetailBytes < 20 * 1024 * 1024 && deep.residentBytes <= deep.tileResidentLimit
+          && deep.coverageBytes <= deep.coverageBudgetBytes,
+        "Deep detail \(deepDetailBytes), coverage \(deep.coverageBytes)/\(deep.coverageBudgetBytes), resident \(deep.residentBytes)/\(deep.tileResidentLimit) exceeded its budget"
+      )
       try require(deep.grid.anchorID > 0, "Deep coordinates did not rebase")
       try require(
         deep.needed.allSatisfy { deep.records[$0] != nil }, "Deep ancestors are incomplete")
@@ -283,6 +289,39 @@
         "cacheMipmaps": Double(store.statistics.mipmaps),
         "cachePrefetched": Double(store.statistics.prefetched),
       ]
+    }
+    static func checkCoveragePressure() async throws {
+      // This is deliberately much larger than the old 256×192 diagnostic view.
+      // It leaves enough detail demand to pressure coverage, but must settle
+      // without a retry spin or exceeding either reservation.
+      let store = TileStore(budgetBytes: 32 * 1024 * 1024)
+      let size = CGSize(width: 1_170, height: 2_532)
+      let view = Viewport(
+        center: CGPoint(x: -0.743643887037151, y: 0.13182590420533), scale: 128)
+      func update(_ iterations: Int) {
+        store.update(
+          viewport: view, size: size, pixelWidth: 1_170, iterations: iterations, override: nil,
+          colouring: ColourSettings())
+      }
+      update(200)
+      try await store.waitUntilReady()
+      try require(
+        store.residentBytes <= store.tileResidentLimit, "Coverage exceeded resident budget")
+      try require(store.coverageBytes <= store.coverageBudgetBytes, "Coverage exceeded reservation")
+      let coverage = store.records.values.filter(\.isCoverage)
+      try require(!coverage.isEmpty, "Pressure trace did not retain coverage")
+      let samples = Dictionary(uniqueKeysWithValues: coverage.map { ($0.key, $0.samples) })
+      update(4_000)
+      try await store.waitUntilReady()
+      for (key, texture) in samples {
+        guard store.records[key]?.isCoverage == true else { continue }
+        try require(
+          store.records[key]?.samples === texture,
+          "Coverage was extended at the visible-detail iteration limit")
+      }
+      try require(
+        store.residentBytes <= store.tileResidentLimit, "Iteration update exceeded budget")
+      store.cancel()
     }
     static func checkFailureRecovery() async throws {
       var allocations = 0
@@ -419,9 +458,10 @@
         viewport: view, size: size, pixelWidth: 256, iterations: 5000, override: nil,
         colouring: ColourSettings(density: 8))
       try await store.waitUntilReady()
+      try await store.waitUntilRootCoverageReady()
       let completed = ProcessInfo.processInfo.systemUptime - start
       try require(
-        store.lod > 3300 && store.statistics.tiles <= 16,
+        store.lod > 3300 && store.records.values.filter({ !$0.isCoverage }).count <= 16,
         "Deep tile levels were clamped or unbounded")
       try require(
         store.statistics.referenceCacheHits > 0 && store.statistics.perturbationSkipped > 0,
@@ -434,6 +474,9 @@
       for _ in 0..<120 {
         _ = try await TileCompositor.snapshot(store: store, viewport: view, width: 256, height: 192)
       }
+      try require(
+        store.statistics.preparationP95MS < 1,
+        "Coverage lookup made deep compositor preparation exceed 1 ms p95")
       view.zoom(by: 1.15, at: CGPoint(x: 128, y: 96), in: size, pixelWidth: 256)
       store.update(
         viewport: view, size: size, pixelWidth: 256, iterations: 5000, override: nil,
@@ -453,6 +496,9 @@
       store.update(
         viewport: view, size: size, pixelWidth: 256, iterations: 5000, override: nil,
         colouring: ColourSettings(density: 8))
+      try require(
+        store.visible.allSatisfy { store.bestAvailable(for: $0) != nil },
+        "Coverage root was unavailable before long zoom-out composition")
       let zoomedOut = try await gpu.readback(
         TileCompositor.snapshot(
           store: store, viewport: view, width: 256, height: 192, sentinel: true))
@@ -504,6 +550,7 @@
         try await checkResumption(gpu)
         try await checkMipmaps(gpu)
         let cacheMetrics = try await checkCache()
+        try await checkCoveragePressure()
         let deepMetrics = try await checkDeepTiles(gpu)
         let store = TileStore()
         let size = CGSize(width: 512, height: 320)

@@ -194,14 +194,21 @@ capped tile pixels currently restart in bounded worker scratch. Two layers:
 bounded pyramid of coarse tiles keeps zooming out drawable after cold jumps.
 - *Selection and storage.* The current implementation projects the axis-aligned
   future viewport through offsets 1…8 and a sparse 12…512 tail, with a direct
-  root request. It caps the active set at 40 separately marked, LRU-protected
-  raw tiles. Coverage participates in palette recolouring and iteration reuse.
+  root request. It reserves up to 30 MiB of bytes left after the required visible
+  band, always including the root's four-cell anchor footprint (and at most 40 separately marked, LRU-protected raw tiles), selecting
+  root then near offsets before sparse ones.
+  Pressure defers an unfit coverage request rather than spinning or exceeding
+  the resident budget. Coverage participates in palette recolouring, but uses
+  its own level estimate and is never extended by a detail-limit increase.
 - *Scheduling and composition.* The root is scheduled first, then the local
   preview/visible band, near coverage, sparse coverage and zoom-in prefetch.
   Bounds-based direct coverage lookup bypasses the 62-level ancestor limit.
   Old-anchor coverage stays as fallback until a new root has completed.
 - *Tests.* Unit coverage projection tests and headless deep cold-jump/128×
-  zoom-out magenta-sentinel checks verify bounded, hole-free composition.
+  zoom-out magenta-sentinel checks verify bounded, hole-free composition. A
+  constrained phone-shaped pressure trace verifies worker progress, the byte
+  reservation, and non-extension. The root remains grid-anchor-relative rather
+  than fixed-world-relative; 2.5 rotation must expand the projected footprint.
 
 **2.5 Navigation feel: trackpad panning, rotation, gentle bounds.**
 - *Mac two-finger scrolling pans.* When `hasPreciseScrollingDeltas` is true
