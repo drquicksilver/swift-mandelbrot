@@ -294,13 +294,33 @@ view and the Mandelbrot continues live in the panel.
   point outside escapes; for c = -1 the critical point never escapes. Plus the
   render cache, pointer tracking, and gesture routing while swapped.
 
-**2.8 Zoom movies.** Pick a start location (by default the whole set) and an
-end location (the current view or a bookmark). Render the keyframe chain (one
-image per zoom level of 2× along the path, straight from the quadtree). Then
-compose an exponential zoom video by interpolating between keyframes, and
-write it with AVAssetWriter (HEVC/H.264). Options: duration, resolution
-(1080p/4K), palette cycling, ease in and out. Render in the background with
-progress, and share the result. This is the feature people will post.
+**2.8 Zoom movies.** ✅ Completed. Pick a start (the whole set by default, or
+any gallery place or bookmark) and an end (the current view), then render an
+exponential zoom and share it. ⌘M, or the toolbar button.
+- *Keyframes.* One per zoom level of 2× along the path, rendered straight from
+  the tile cache and compositor at the movie's resolution, with the automatic
+  depth estimate per level (or the destination's fixed limit). Only the two
+  keyframes a frame needs stay resident.
+- *Path.* `ZoomPath` places the centre so the offset from the destination shrinks
+  with the span, with the remainder drawn down linearly, so the destination
+  drifts gently to the centre instead of lurching; the first and last frames are
+  exactly the start and end views. Rotation interpolates; depth and palette
+  offset follow the level.
+- *Composition.* Each frame samples the two bracketing keyframes through an
+  affine map built from the two viewports (so rotation and drift both follow)
+  and cross-fades, in one draw call.
+- *Encoding.* AVAssetWriter, HEVC where the hardware takes it and H.264
+  otherwise, drawn straight into the writer's pixel buffers through a Metal
+  texture cache. Options: duration, 720p/1080p/4K, frame rate, palette cycles
+  (the phase advances with depth) and ease in/out. It renders in the background
+  with progress and a cancel button, then offers `ShareLink`.
+- *CLI.* `--movie --to LINK [--from LINK] --output out.mov --size WxH --duration
+  S --fps N --cycles N --ease on|off`, which is how the headless test drives it.
+- *Tests.* Path unit tests (keyframe chain, drift, exact ends, easing, depth,
+  cycling, refusal of a path with nowhere to go, and precision at 1e100); a
+  headless render read back with AVAssetReader for frame count, timing and
+  size, with the first and last frames compared against direct renders of the
+  start and end views (9.3/255 mean error through HEVC), and a cycled render.
 
 **2.9 High-resolution still export.** Tiled supersampled render at any size.
 PNG with the location embedded in the metadata. Shares code with the CLI

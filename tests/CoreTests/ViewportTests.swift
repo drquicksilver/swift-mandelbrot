@@ -150,3 +150,84 @@ import Testing
     #expect(seen.insert(place.name).inserted)
   }
 }
+
+@Test func zoomPathKeepsTheDestinationStill() throws {
+  let start = Location(name: "Whole", real: "-0.5", imag: "0", scale: "1")
+  let end = Location(
+    name: "Deep", real: "-0.743643887037151", imag: "0.13182590420533", scale: "1e12",
+    rotationDegrees: 20)
+  let path = try ZoomPath(start: start, end: end)
+  let size = CGSize(width: 640, height: 360)
+  #expect(path.keyframeLevels.first == path.startLog)
+  #expect(abs(path.keyframeLevels.last! - path.endLog) < 1e-9)
+  // One keyframe per zoom level of 2x, and each is a level apart.
+  #expect(path.keyframeLevels.count == Int(ceil(path.endLog - path.startLog)) + 1)
+  for (a, b) in zip(path.keyframeLevels, path.keyframeLevels.dropFirst()) {
+    #expect(b - a <= 1 + 1e-9 && b > a)
+  }
+  // The destination drifts gently to the centre and is always on screen: its
+  // offset shrinks with the span rather than swinging about.
+  let destination = try end.viewport().preciseCenter
+  var previousOffset = Double.infinity
+  for level in stride(from: path.startLog, through: path.endLog, by: 0.37) {
+    let view = try path.viewport(at: level)
+    let screen = view.screen(for: destination, in: size)
+    let offset = hypot(screen.x - 320, screen.y - 180)
+    #expect(offset <= previousOffset + 1e-9)
+    #expect(abs(screen.x - 320) <= 320 && abs(screen.y - 180) <= 180)
+    #expect(abs(view.logScale - level) < 1e-9)
+    previousOffset = offset
+  }
+  // It converges steadily rather than lurching at the end: half way through,
+  // the destination is already most of the way to the centre.
+  let middle = try path.viewport(at: (path.startLog + path.endLog) / 2)
+    .screen(for: destination, in: size)
+  let first = try path.viewport(at: path.startLog).screen(for: destination, in: size)
+  #expect(
+    hypot(middle.x - 320, middle.y - 180) < hypot(first.x - 320, first.y - 180) * 0.75)
+  #expect(hypot(try path.viewport(at: path.endLog).screen(for: destination, in: size).x - 320, 0) < 0.01)
+  // The ends are exactly the start and end views.
+  let opening = try path.viewport(at: path.startLog)
+  #expect(abs(opening.center.x - -0.5) < 1e-9 && abs(opening.center.y) < 1e-9)
+  #expect(opening.angle == 0)
+  let last = try path.viewport(at: path.endLog)
+  #expect(abs(Viewport.normalised(last.angle - 20 * .pi / 180)) < 1e-9)
+  #expect(abs((last.preciseCenter.x - destination.x).wide / last.wideSpan) < 1e-6)
+  // Easing starts and ends gently but covers the whole path.
+  #expect(path.level(at: 0) == path.startLog)
+  #expect(abs(path.level(at: 1) - path.endLog) < 1e-9)
+  #expect(path.level(at: 0.5) > path.startLog && path.level(at: 0.5) < path.endLog)
+  #expect(path.level(at: 0.1) - path.startLog < (path.endLog - path.startLog) * 0.1)
+  let linear = try ZoomPath(start: start, end: end, eased: false)
+  #expect(abs(linear.level(at: 0.25) - (linear.startLog + (linear.endLog - linear.startLog) / 4)) < 1e-9)
+  // Depth follows the automatic estimate unless the destination fixes it.
+  #expect(path.iterations(at: 40) == IterationPolicy.estimate(logScale: 40))
+  var fixed = end
+  fixed.iterations = 1234
+  #expect(try ZoomPath(start: start, end: fixed).iterations(at: 40) == 1234)
+  // Palette cycling advances the phase with depth.
+  #expect(path.paletteOffset(at: path.startLog, cycles: 3) == end.offset)
+  #expect(abs(path.paletteOffset(at: path.endLog, cycles: 3) - (end.offset + 3)) < 1e-9)
+  #expect(path.paletteOffset(at: path.endLog, cycles: 0) == end.offset)
+  // A path needs somewhere to go.
+  #expect(throws: (any Error).self) { try ZoomPath(start: end, end: end) }
+}
+
+@Test func zoomPathStaysPreciseAtExtremeDepth() throws {
+  let deep = Location.gallery.first { $0.scale == "1e100" }!
+  let path = try ZoomPath(start: Location(real: "-0.5", imag: "0", scale: "1"), end: deep)
+  #expect(path.keyframeLevels.count > 330)
+  let destination = try deep.viewport().preciseCenter
+  let size = CGSize(width: 320, height: 200)
+  var last = Double.infinity
+  for level in [50.0, 120, 250, path.endLog] {
+    let view = try path.viewport(at: level)
+    let screen = view.screen(for: destination, in: size)
+    let offset = hypot(screen.x - 160, screen.y - 100)
+    #expect(offset <= last + 1e-9)
+    #expect(view.deepCenter != nil)
+    last = offset
+  }
+  // The last frame is the destination itself, to well under a pixel.
+  #expect(last < 0.01)
+}

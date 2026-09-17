@@ -129,6 +129,8 @@ import SwiftUI
   @Published var juliaViewport = Viewport(center: .zero, scale: 1)
   @Published var juliaFollows = true
   let julia = JuliaRenderer()
+  let movies = MovieRenderer()
+  @Published var showMovie = false
   /// The panel follows the cursor or finger while it is the companion.
   func trackJulia(at point: CGPoint) {
     guard showJulia, juliaFollows, !juliaSwapped else { return }
@@ -455,6 +457,7 @@ import SwiftUI
     case .bookmark: bookmarkCurrentView()
     case .julia: toggleJulia()
     case .swapJulia: swapJulia()
+    case .movie: showMovie = true
     case .benchmark: showBenchmark.toggle()
     case .help: showHelp.toggle()
     }

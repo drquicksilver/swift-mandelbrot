@@ -188,6 +188,23 @@ fragment float4 tileFragment(QuadOutput in [[stage_in]],texture2d<float> coarse 
     return float4(rgb,1);
 }
 
+// Zoom movies: each output frame samples the two keyframes that bracket it,
+// through an affine map built on the CPU from the two viewports, and cross-fades.
+struct MovieUniforms { float2 originA, duA, dvA, originB, duB, dvB; float blend, pad0, pad1, pad2; };
+vertex QuadOutput movieVertex(uint index [[vertex_id]]) {
+    constexpr float2 corners[] = {float2(0,0),float2(1,0),float2(0,1),float2(1,0),float2(1,1),float2(0,1)};
+    float2 c=corners[index];
+    return {float4(c.x*2-1,1-c.y*2,0,1),c};
+}
+fragment float4 movieFragment(QuadOutput in [[stage_in]],texture2d<float> first [[texture(0)]],
+                              texture2d<float> second [[texture(1)]],
+                              constant MovieUniforms &p [[buffer(0)]]) {
+    constexpr sampler s(coord::normalized,address::clamp_to_edge,filter::linear);
+    float2 a=p.originA+in.uv.x*p.duA+in.uv.y*p.dvA;
+    float2 b=p.originB+in.uv.x*p.duB+in.uv.y*p.dvB;
+    return float4(mix(first.sample(s,a).rgb,second.sample(s,b).rgb,p.blend),1);
+}
+
 // Only the worker sees unfinished records; counts remain exact at the product cap.
 struct TileWorkParameters { GPUParameters image; uint start, count, padding0, padding1; };
 kernel void resumeTile(texture2d<uint,access::read_write> out [[texture(0)]],

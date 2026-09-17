@@ -86,6 +86,7 @@ struct ContentView: View {
           }
           viewerButton("Places", icon: "bookmark") { model.showPlaces = true }
           viewerButton("Julia", icon: "circle.lefthalf.filled") { model.toggleJulia() }
+          viewerButton("Movie", icon: "film") { model.showMovie = true }
           viewerButton("Settings", icon: "slider.horizontal.3") { model.showSettings = true }
           viewerButton("Controls", icon: "questionmark.circle") { model.showHelp = true }
         }
@@ -136,6 +137,11 @@ struct ContentView: View {
         } label: {
           Label("Julia Companion", systemImage: "circle.lefthalf.filled")
         }
+        Button {
+          model.showMovie = true
+        } label: {
+          Label("Zoom Movie", systemImage: "film")
+        }
         ShareLink(item: model.location.url) {
           Label("Share", systemImage: "square.and.arrow.up")
         }
@@ -156,6 +162,7 @@ struct ContentView: View {
       BenchmarkView(viewport: model.viewport, iterations: model.iterations)
     }
     .sheet(isPresented: $model.showPlaces) { PlacesView(model: model) }
+    .sheet(isPresented: $model.showMovie) { MovieView(model: model) }
     .sheet(isPresented: $model.showSettings) { AppearanceView(model: model) }
     .sheet(isPresented: $model.showHelp) { HelpView() }
     .focusedSceneValue(\.explorer, model)

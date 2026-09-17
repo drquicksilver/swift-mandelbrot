@@ -63,6 +63,7 @@ final class GPUContext: @unchecked Sendable {
   let juliaPipeline: MTLComputePipelineState
   let imagePipeline: MTLRenderPipelineState
   let tilePipeline: MTLRenderPipelineState
+  let moviePipeline: MTLRenderPipelineState
   let library: MTLLibrary
   private let palettes: [Palette: MTLTexture]
 
@@ -107,6 +108,9 @@ final class GPUContext: @unchecked Sendable {
     descriptor.vertexFunction = library.makeFunction(name: "tileVertex")
     descriptor.fragmentFunction = library.makeFunction(name: "tileFragment")
     tilePipeline = try device.makeRenderPipelineState(descriptor: descriptor)
+    descriptor.vertexFunction = library.makeFunction(name: "movieVertex")
+    descriptor.fragmentFunction = library.makeFunction(name: "movieFragment")
+    moviePipeline = try device.makeRenderPipelineState(descriptor: descriptor)
   }
   func texture(width: Int, height: Int, format: MTLPixelFormat) throws -> MTLTexture {
     let descriptor = MTLTextureDescriptor.texture2DDescriptor(

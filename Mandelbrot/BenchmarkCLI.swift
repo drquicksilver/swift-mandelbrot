@@ -41,6 +41,13 @@
                           count 0xffffffff means capped; eight bytes per pixel
         --pipeline NAME    legacy, gpu or tiles (default: legacy); tiles exports PNGs
         --rotation DEG     View rotation in degrees; tile pipeline only
+        --movie            Render a zoom movie to --output (.mov)
+        --to LINK          Destination mandelbrot:// link for --movie
+        --from LINK        Start link for --movie (default: the whole set)
+        --duration S       Movie duration in seconds (default: 8)
+        --fps N            Movie frame rate (default: 30)
+        --cycles N         Palette cycles across the descent (default: 0)
+        --ease on|off      Ease the movie in and out (default: on)
         --rebasing on|off  Critical-point rebasing; off is a recovery diagnostic
         --bla-radius MODE compound (default) or fixed (experimental error margin)
         --bla on|off|fixed Perturbation hierarchy, no skipping, or 32-step blocks
@@ -78,10 +85,15 @@
       var scale = 1.0
       var realText = "-0.5", imagText = "0", scaleText = "1"
       var rotationDegrees = 0.0
+      var movie = false
+      var movieFrom: String?
+      var movieTo: String?
+      var movieSettings = MovieSettings(duration: 8, width: 1280, height: 720)
       var viewport = Viewport()
       var center: CGPoint { CGPoint(x: centerReal, y: centerImag) }
 
       init(arguments: [String]) throws {
+        movie = arguments.contains("--movie")
         render = arguments.contains("--render")
         guard !(render && arguments.contains("--benchmark")) else {
           throw CLIError("Choose --render or --benchmark")
@@ -92,11 +104,11 @@
         while index < arguments.count {
           let flag = arguments[index]
           index += 1
-          if flag == "--benchmark" || flag == "--render" { continue }
+          if flag == "--benchmark" || flag == "--render" || flag == "--movie" { continue }
           guard
             (renderFlags + benchmarkFlags + [
               "--iterations", "--center-real", "--center-imag", "--scale", "--pipeline", "--timing",
-              "--rotation",
+              "--rotation", "--to", "--from", "--duration", "--fps", "--cycles", "--ease",
               "--colouring", "--palette", "--density", "--offset", "--samples", "--sample-records",
               "--bla",
               "--rebasing", "--bla-radius",
@@ -104,7 +116,11 @@
           else {
             throw CLIError("Unknown option: \(flag)")
           }
-          guard !(render ? benchmarkFlags : renderFlags).contains(flag) else {
+          // A movie takes the render flags it shares (--size, --output).
+          let forbidden =
+            movie
+            ? benchmarkFlags + ["--renderer", "--counts"] : (render ? benchmarkFlags : renderFlags)
+          guard !forbidden.contains(flag) else {
             throw CLIError("\(flag) is not available in this mode")
           }
           guard index < arguments.count else { throw CLIError("Missing value for \(flag)") }
@@ -152,6 +168,28 @@
               throw CLIError("Rotation must be degrees within [-360, 360]")
             }
             rotationDegrees = degrees
+          case "--to", "--from":
+            guard movie else { throw CLIError("\(flag) requires --movie") }
+            if flag == "--to" { movieTo = value } else { movieFrom = value }
+          case "--ease":
+            guard ["on", "off"].contains(value) else { throw CLIError("Ease must be on or off") }
+            movieSettings.eased = value == "on"
+          case "--duration", "--cycles":
+            guard let number = Double(value), number.isFinite, number >= 0 else {
+              throw CLIError("\(flag) needs a number")
+            }
+            if flag == "--duration" {
+              guard number > 0, number <= 600 else { throw CLIError("Duration must be in (0, 600]") }
+              movieSettings.duration = number
+            } else {
+              guard number <= 64 else { throw CLIError("Cycles must be at most 64") }
+              movieSettings.paletteCycles = number
+            }
+          case "--fps":
+            guard let number = Int(value), (1...120).contains(number) else {
+              throw CLIError("Frame rate must be in [1, 120]")
+            }
+            movieSettings.framesPerSecond = number
           case "--timing":
             guard ["end-to-end", "kernel"].contains(value) else {
               throw CLIError("Timing must be end-to-end or kernel")
@@ -301,6 +339,16 @@
             throw CLIError("Tile scale is outside the viewer's FloatFloat precision range")
           }
         }
+        if movie {
+          guard !render, !arguments.contains("--benchmark") else {
+            throw CLIError("Choose --movie, --render or --benchmark")
+          }
+          guard output != nil else { throw CLIError("--movie requires --output") }
+          guard movieTo != nil else { throw CLIError("--movie requires --to") }
+          let (width, height) = size
+          movieSettings.width = width
+          movieSettings.height = height
+        }
         if render && output == nil { throw CLIError("--render requires --output") }
         if let output, let counts,
           URL(fileURLWithPath: output).standardizedFileURL
@@ -374,6 +422,7 @@
         return 2
       }
 
+      if options.movie { return await renderMovie(options) }
       if options.pipeline == "tiles" { return await renderTiles(options) }
       if options.pipeline == "gpu" { return await runGPU(options) }
       if options.render { return await renderPNG(options) }
@@ -432,6 +481,42 @@
       return 0
     }
 
+    /// Zoom movies share the viewer's tile cache and compositor; the CLI exists
+    /// so a movie can be rendered and inspected without the app's UI.
+    @MainActor private static func renderMovie(_ options: Options) async -> Int32 {
+      do {
+        guard let destination = options.movieTo.flatMap({ URL(string: $0) }) else {
+          throw CLIError("--to needs a mandelbrot:// link")
+        }
+        let end = try Location(url: destination)
+        let start =
+          try options.movieFrom.flatMap { URL(string: $0) }.map { try Location(url: $0) }
+          ?? Location(real: "-0.5", imag: "0", scale: "1")
+        let path = try ZoomPath(start: start, end: end, eased: options.movieSettings.eased)
+        let renderer = MovieRenderer()
+        let url = URL(fileURLWithPath: options.output!)
+        let began = ProcessInfo.processInfo.systemUptime
+        _ = try await renderer.render(
+          path: path, settings: options.movieSettings, colouring: end.colouring, to: url)
+        let report: [String: Any] = [
+          "frames": options.movieSettings.frameCount,
+          "keyframes": path.keyframeLevels.count,
+          "width": options.movieSettings.width, "height": options.movieSettings.height,
+          "duration": options.movieSettings.duration,
+          "startLog": path.startLog, "endLog": path.endLog,
+          "seconds": ProcessInfo.processInfo.systemUptime - began,
+          "output": url.path,
+        ]
+        print(
+          String(
+            decoding: try JSONSerialization.data(
+              withJSONObject: report, options: [.prettyPrinted, .sortedKeys]), as: UTF8.self))
+        return 0
+      } catch {
+        writeError(String(describing: error))
+        return 2
+      }
+    }
     @MainActor private static func renderTiles(_ options: Options) async -> Int32 {
       do {
         guard let gpu = GPUContext.shared else { throw GPUFailure("GPU unavailable") }

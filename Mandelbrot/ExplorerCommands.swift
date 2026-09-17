@@ -3,7 +3,7 @@ import SwiftUI
 enum ExplorerCommand: String, CaseIterable, Identifiable {
   case reset, zoomIn, zoomOut, left, right, up, down, increaseIterations, decreaseIterations,
     rotateLeft, rotateRight, resetRotation, back, forward, places, bookmark, julia, swapJulia,
-    benchmark, help
+    movie, benchmark, help
   var id: String { rawValue }
   var title: String {
     switch self {
@@ -25,6 +25,7 @@ enum ExplorerCommand: String, CaseIterable, Identifiable {
     case .bookmark: return "Bookmark This View"
     case .julia: return "Julia Companion"
     case .swapJulia: return "Swap Main and Companion"
+    case .movie: return "Zoom Movie…"
     case .benchmark: return "Benchmarks"
     case .help: return "Controls"
     }
@@ -49,6 +50,7 @@ enum ExplorerCommand: String, CaseIterable, Identifiable {
     case .bookmark: return "d"
     case .julia: return "j"
     case .swapJulia: return "j"
+    case .movie: return "m"
     case .benchmark: return "b"
     case .help: return "/"
     }
@@ -84,6 +86,7 @@ enum ExplorerCommand: String, CaseIterable, Identifiable {
     case .bookmark: return "⌘ D"
     case .julia: return "⌘ J"
     case .swapJulia: return "⌘ ⇧ J"
+    case .movie: return "⌘ M"
     case .benchmark: return "⌘ B"
     case .help: return "?"
     }

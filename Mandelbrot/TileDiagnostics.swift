@@ -953,6 +953,7 @@
         try await checkRotationAndBounds()
         try await checkLocations()
         try await checkJuliaCompanion(gpu)
+        let movieMetrics = try await checkZoomMovie(gpu)
         try await checkRotatedComposition(gpu)
         try await checkStreamedReferences(gpu)
         try await checkResumption(gpu)
@@ -965,7 +966,7 @@
         var deepMetrics = try await checkDeepTiles(gpu)
         try await checkZoomOutCoverageQuality()
         for source in [
-          try await checkRealisticCoverage(), try await checkColdJumpLatency(),
+          movieMetrics, try await checkRealisticCoverage(), try await checkColdJumpLatency(),
           try await checkMovingPreparation(),
         ] {
           deepMetrics.merge(source) { _, new in new }

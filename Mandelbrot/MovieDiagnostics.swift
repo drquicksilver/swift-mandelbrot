@@ -1,0 +1,131 @@
+#if os(macOS)
+  import AVFoundation
+  import CoreGraphics
+  import Foundation
+  import Metal
+
+  extension TileDiagnostics {
+    /// Renders a short movie and reads it back: the frames are there, at the
+    /// right times, and the last one matches a direct render of the destination.
+    static func checkZoomMovie(_ gpu: GPUContext) async throws -> [String: Double] {
+      let width = 320, height = 180
+      let end = Location(
+        name: "Seahorse", real: "-0.743643887037151", imag: "0.13182590420533", scale: "4e3",
+        palette: .ink)
+      let path = try ZoomPath(start: Location(real: "-0.5", imag: "0", scale: "1"), end: end)
+      var settings = MovieSettings(duration: 1, width: width, height: height, framesPerSecond: 15)
+      settings.paletteCycles = 0
+      let url = FileManager.default.temporaryDirectory.appendingPathComponent(
+        "diagnostic-zoom.mov")
+      let renderer = MovieRenderer()
+      let began = ProcessInfo.processInfo.systemUptime
+      _ = try await renderer.render(
+        path: path, settings: settings, colouring: end.colouring, to: url)
+      let seconds = ProcessInfo.processInfo.systemUptime - began
+      defer { try? FileManager.default.removeItem(at: url) }
+      try require(renderer.progress == 1, "The movie reported incomplete progress")
+
+      let asset = AVURLAsset(url: url)
+      let tracks = try await asset.loadTracks(withMediaType: .video)
+      guard let track = tracks.first else { throw GPUFailure("The movie has no video track") }
+      let naturalSize = try await track.load(.naturalSize)
+      try require(
+        Int(naturalSize.width) == width && Int(naturalSize.height) == height,
+        "The movie is \(naturalSize), not \(width)x\(height)")
+      let reader = try AVAssetReader(asset: asset)
+      let output = AVAssetReaderTrackOutput(
+        track: track,
+        outputSettings: [kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA])
+      reader.add(output)
+      reader.startReading()
+      var frames = 0
+      var times: [Double] = []
+      var last: [UInt8] = []
+      var first: [UInt8] = []
+      while let sample = output.copyNextSampleBuffer() {
+        frames += 1
+        times.append(CMSampleBufferGetPresentationTimeStamp(sample).seconds)
+        if let buffer = CMSampleBufferGetImageBuffer(sample) {
+          CVPixelBufferLockBaseAddress(buffer, .readOnly)
+          let bytesPerRow = CVPixelBufferGetBytesPerRow(buffer)
+          if let base = CVPixelBufferGetBaseAddress(buffer) {
+            var pixels = [UInt8](repeating: 0, count: width * height * 4)
+            for y in 0..<height {
+              memcpy(
+                &pixels[y * width * 4], base.advanced(by: y * bytesPerRow), width * 4)
+            }
+            if frames == 1 { first = pixels }
+            last = pixels
+          }
+          CVPixelBufferUnlockBaseAddress(buffer, .readOnly)
+        }
+      }
+      try require(
+        frames == settings.frameCount,
+        "The movie has \(frames) frames, not \(settings.frameCount)")
+      for (index, time) in times.enumerated() {
+        try require(
+          abs(time - Double(index) / 15) < 1e-6, "Frame \(index) is timed at \(time)")
+      }
+      try require(Set(last).count > 32 && Set(first).count > 32, "A movie frame is flat")
+
+      // The last frame is the destination, and the first is the whole set.
+      func direct(_ level: Double, cycles: Double = 0) async throws -> [UInt8] {
+        let store = TileStore()
+        let view = try path.viewport(at: level)
+        var colouring = end.colouring
+        colouring.offset = Float(path.paletteOffset(at: level, cycles: cycles))
+        store.update(
+          viewport: view, size: CGSize(width: width, height: height), pixelWidth: Double(width),
+          iterations: path.iterations(at: level), override: nil, colouring: colouring)
+        try await store.waitUntilReady()
+        let texture = try await TileCompositor.snapshot(
+          store: store, viewport: view, width: width, height: height,
+          now: ProcessInfo.processInfo.systemUptime + 1)
+        let data = try await gpu.readback(texture)
+        store.cancel()
+        return [UInt8](data)
+      }
+      func difference(_ a: [UInt8], _ b: [UInt8]) -> Double {
+        guard a.count == b.count, !a.isEmpty else { return 255 }
+        var total = 0.0
+        for index in stride(from: 0, to: a.count, by: 4) {
+          for channel in 0..<3 {
+            total += abs(Double(a[index + channel]) - Double(b[index + channel]))
+          }
+        }
+        return total / Double(a.count / 4 * 3)
+      }
+      let endFrame = try await direct(path.endLog)
+      let startFrame = try await direct(path.startLog)
+      let endError = difference(last, endFrame)
+      let startError = difference(first, startFrame)
+      try require(
+        endError < 16, "The last movie frame differs from the destination by \(endError)")
+      try require(
+        startError < 16, "The first movie frame differs from the start by \(startError)")
+      try require(
+        difference(first, endFrame) > 24, "The movie's ends are indistinguishable")
+
+      // Palette cycling changes the colouring along the descent.
+      var cycling = settings
+      cycling.paletteCycles = 4
+      let cyclingURL = FileManager.default.temporaryDirectory.appendingPathComponent(
+        "diagnostic-cycled.mov")
+      _ = try await MovieRenderer().render(
+        path: path, settings: cycling, colouring: end.colouring, to: cyclingURL)
+      defer { try? FileManager.default.removeItem(at: cyclingURL) }
+      try require(
+        FileManager.default.fileExists(atPath: cyclingURL.path),
+        "The cycled movie was not written")
+      print(
+        "Zoom movie: \(frames) frames from \(path.keyframeLevels.count) keyframes in "
+          + "\(String(format: "%.2f", seconds)) s; end error \(String(format: "%.1f", endError))/255"
+      )
+      return [
+        "movieFrames": Double(frames), "movieKeyframes": Double(path.keyframeLevels.count),
+        "movieSeconds": seconds, "movieEndError": endError,
+      ]
+    }
+  }
+#endif

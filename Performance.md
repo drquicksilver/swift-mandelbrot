@@ -776,3 +776,24 @@ The extension check previously ran at 64×48, where every needed tile was also
 coverage and nothing was extended ("increase sampled 0 capped pixels"). At
 256×192 it extends 14,536 capped pixels and verifies escaped samples are
 unchanged.
+
+## 2.8 Zoom movies
+
+Measured on the Apple M1 Pro with the CLI (`--movie`), which shares the viewer's
+tile cache, compositor and encoder. Automatic depth per keyframe; HEVC.
+
+| Movie | Keyframes | Frames | Render time | File |
+| --- | ---: | ---: | ---: | ---: |
+| 1280×720, 8 s, 30 fps, to 4e3 | 13 | 240 | 6.6 s | 0.7 MiB |
+| 1920×1080, 8 s, 30 fps, to 1e12 | 41 | 240 | 242.4 s | 6.9 MiB |
+
+Frame composition is negligible: two textured quads and one encode per frame.
+Essentially all of the time is keyframe rendering, and at 1080p a keyframe needs
+about 60 tiles whose interior pixels each run to the iteration limit — about
+6 s per keyframe at 1e12. Periodicity checking (2.10) is the lever on that, not
+the movie path. A shallow 720p movie is already quick.
+
+The headless check renders 320×180 at 15 fps, reads the file back with
+AVAssetReader and compares the first and last frames against direct renders of
+the start and end views: mean channel error **9.3/255** through HEVC
+compression and the keyframe resampling.
