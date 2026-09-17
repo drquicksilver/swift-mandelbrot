@@ -8,7 +8,8 @@
     /// Renders a short movie and reads it back: the frames are there, at the
     /// right times, and the last one matches a direct render of the destination.
     static func checkZoomMovie(_ gpu: GPUContext) async throws -> [String: Double] {
-      let width = 320, height = 180
+      let width = 320
+      let height = 180
       let end = Location(
         name: "Seahorse", real: "-0.743643887037151", imag: "0.13182590420533", scale: "4e3",
         palette: .ink)
@@ -42,6 +43,8 @@
       var times: [Double] = []
       var last: [UInt8] = []
       var first: [UInt8] = []
+      var middle: [UInt8] = []
+      let middleIndex = settings.frameCount / 2
       while let sample = output.copyNextSampleBuffer() {
         frames += 1
         times.append(CMSampleBufferGetPresentationTimeStamp(sample).seconds)
@@ -55,6 +58,7 @@
                 &pixels[y * width * 4], base.advanced(by: y * bytesPerRow), width * 4)
             }
             if frames == 1 { first = pixels }
+            if frames == middleIndex + 1 { middle = pixels }
             last = pixels
           }
           CVPixelBufferUnlockBaseAddress(buffer, .readOnly)
@@ -106,6 +110,13 @@
         startError < 16, "The first movie frame differs from the start by \(startError)")
       try require(
         difference(first, endFrame) > 24, "The movie's ends are indistinguishable")
+      // A frame between keyframes blends both through the affine map: check one
+      // against a direct render at the same level, where nothing is blended.
+      let middleLevel = path.level(at: Double(middleIndex) / Double(settings.frameCount - 1))
+      let middleError = difference(middle, try await direct(middleLevel))
+      try require(
+        middleError < 20,
+        "An interpolated frame differs from a direct render by \(middleError)")
 
       // Palette cycling changes the colouring along the descent.
       var cycling = settings
@@ -120,11 +131,12 @@
         "The cycled movie was not written")
       print(
         "Zoom movie: \(frames) frames from \(path.keyframeLevels.count) keyframes in "
-          + "\(String(format: "%.2f", seconds)) s; end error \(String(format: "%.1f", endError))/255"
+          + "\(String(format: "%.2f", seconds)) s; end error \(String(format: "%.1f", endError))/255, "
+          + "middle error \(String(format: "%.1f", middleError))/255"
       )
       return [
         "movieFrames": Double(frames), "movieKeyframes": Double(path.keyframeLevels.count),
-        "movieSeconds": seconds, "movieEndError": endError,
+        "movieSeconds": seconds, "movieEndError": endError, "movieMiddleError": middleError,
       ]
     }
   }
