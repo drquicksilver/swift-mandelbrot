@@ -276,11 +276,23 @@ bounded pyramid of coarse tiles keeps zooming out drawable after cold jumps.
   distinct; a headless model check of opening links, history, and bookmark
   persistence, renaming and deletion; the built app's URL scheme is verified.
 
-**2.7 Julia companion.** A picture-in-picture panel (iPad and Mac:
-side-by-side, iPhone: a corner inset) showing the Julia set for the point under
-the cursor or finger, updated live. It's cheap: one small float render per
-frame. Tap to swap the main and companion views. The Julia view reuses the same
-tile cache and palettes.
+**2.7 Julia companion.** ✅ Completed. A panel showing the Julia set for the
+point under the cursor or finger, updated live: side by side on Mac and iPad, a
+corner inset on iPhone (⌘J, or the toolbar button). Tapping the panel swaps it
+with the main view (⌘⇧J); while swapped, gestures drive the companion's own
+view and the Mandelbrot continues live in the panel.
+- *Rendering.* One small GPU render per change, float below 2^18 and
+  double-float above, sampled at pixel centres and coloured by the same palette
+  kernel as the tiles. The render is skipped when nothing has changed, and its
+  resolution is capped at about 2.2 MP so a full-screen swap cannot stall the
+  GPU.
+- *Deviations.* The companion does not use the tile cache: it is small, always
+  redrawn whole, and deliberately shallow (it stops at 2^26, where double-float
+  still holds). It shares the palettes, the sample format and the draw pipeline.
+- *Tests.* The kernel is checked against the mathematics rather than against
+  itself: for c = 0 every point inside the unit circle is captured and every
+  point outside escapes; for c = -1 the critical point never escapes. Plus the
+  render cache, pointer tracking, and gesture routing while swapped.
 
 **2.8 Zoom movies.** Pick a start location (by default the whole set) and an
 end location (the current view or a bookmark). Render the keyframe chain (one

@@ -43,6 +43,40 @@ kernel void renderSamples(texture2d<uint, access::write> out [[texture(0)]],
     out.write(n == p.maxIterations ? sampleStatus(sampleCapped) : escapeSample(n, p.smooth ? 1-log2(log2(sqrt(magnitude))) : 0),point);
 }
 
+// The Julia companion: one small render per frame, sampled at pixel centres,
+// sharing the sample record format, the palette kernel and the draw pipeline.
+struct JuliaParameters { GPUParameters image; float2 cr, ci; };
+kernel void renderJulia(texture2d<uint, access::write> out [[texture(0)]],
+                        constant JuliaParameters &j [[buffer(0)]], uint2 gid [[thread_position_in_grid]]) {
+    constant GPUParameters &p = j.image;
+    if (gid.x >= p.width || gid.y >= p.height) return;
+    uint n = 0;
+    float magnitude = 0;
+    if (p.precision == 0) {
+        float zr = p.realMin.x + (float(gid.x) + 0.5f) * p.stepX.x;
+        float zi = p.imagMax.x - (float(gid.y) + 0.5f) * p.stepY.x;
+        float cr = j.cr.x, ci = j.ci.x;
+        while (zr*zr+zi*zi <= 65536.0f && n < p.maxIterations) {
+            float next = zr*zr-zi*zi+cr;
+            zi = 2.0f*zr*zi+ci; zr = next; ++n;
+        }
+        magnitude = zr*zr+zi*zi;
+    } else {
+        float2 zr = dd_add(p.realMin, dd_mul_float(p.stepX, float(gid.x) + 0.5f));
+        float2 zi = dd_sub(p.imagMax, dd_mul_float(p.stepY, float(gid.y) + 0.5f));
+        while (n < p.maxIterations) {
+            float2 zr2 = dd_mul(zr,zr), zi2 = dd_mul(zi,zi);
+            float2 mag = dd_add(zr2,zi2);
+            magnitude = mag.x + mag.y;
+            if (mag.x > 65536.0f || (mag.x == 65536.0f && mag.y > 0.0f)) break;
+            float2 next = dd_add(dd_sub(zr2,zi2), j.cr);
+            zi = dd_add(dd_mul_float(dd_mul(zr,zi),2), j.ci); zr = next; ++n;
+        }
+    }
+    out.write(n == p.maxIterations ? sampleStatus(sampleCapped)
+              : escapeSample(n, 1-log2(log2(sqrt(magnitude)))), gid);
+}
+
 float3 hsvRGB(float h, float s, float v) {
     float3 k = fract(float3(h) + float3(0,2.0/3.0,1.0/3.0));
     return v * mix(float3(1), clamp(abs(k*6-3)-1,0.0f,1.0f),s);

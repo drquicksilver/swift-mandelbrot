@@ -60,6 +60,7 @@ final class GPUContext: @unchecked Sendable {
   let resumePipeline: MTLComputePipelineState
   let mipPipeline: MTLComputePipelineState
   let colourPipeline: MTLComputePipelineState
+  let juliaPipeline: MTLComputePipelineState
   let imagePipeline: MTLRenderPipelineState
   let tilePipeline: MTLRenderPipelineState
   let library: MTLLibrary
@@ -89,6 +90,8 @@ final class GPUContext: @unchecked Sendable {
       function: library.makeFunction(name: "resumeTile")!)
     mipPipeline = try device.makeComputePipelineState(
       function: library.makeFunction(name: "averageChildren")!)
+    juliaPipeline = try device.makeComputePipelineState(
+      function: library.makeFunction(name: "renderJulia")!)
     colourPipeline = try device.makeComputePipelineState(
       function: library.makeFunction(name: "colourSamples")!)
     let descriptor = MTLRenderPipelineDescriptor()
@@ -149,6 +152,38 @@ final class GPUContext: @unchecked Sendable {
     encoder.setBytes(&params, length: MemoryLayout<GPUParameters>.stride, index: 0)
     dispatch(
       encoder, pipeline: samplePipeline, width: Int(params.width), height: Int(params.rowCount))
+    encoder.endEncoding()
+    return try await submit(command)
+  }
+  /// One small Julia render: z starts at the pixel, c is the picked point.
+  func julia(into samples: MTLTexture, viewport: Viewport, c: CGPoint, iterations: Int) async throws
+    -> Double
+  {
+    guard let command = computeQueue.makeCommandBuffer(),
+      let encoder = command.makeComputeCommandEncoder()
+    else { throw GPUFailure("GPU queue unavailable") }
+    struct JuliaParameters {
+      var image: GPUParameters
+      var cr: SIMD2<Float>
+      var ci: SIMD2<Float>
+    }
+    let width = samples.width, height = samples.height
+    // Pixel centres, as the tiles use; the kernel adds the half step.
+    let span = viewport.span
+    let imaginarySpan = span * Double(height) / Double(width)
+    var image = GPUParameters(
+      viewport: viewport, width: width, height: height, iterations: iterations,
+      renderer: viewport.logScale > 18 ? .metalDouble : .metal)
+    image.realMin = GPUParameters.split(viewport.center.x - span / 2)
+    image.imagMax = GPUParameters.split(viewport.center.y + imaginarySpan / 2)
+    image.stepX = GPUParameters.split(span / Double(width))
+    image.stepY = GPUParameters.split(imaginarySpan / Double(height))
+    image.smooth = 1
+    var parameters = JuliaParameters(
+      image: image, cr: GPUParameters.split(c.x), ci: GPUParameters.split(c.y))
+    encoder.setTexture(samples, index: 0)
+    encoder.setBytes(&parameters, length: MemoryLayout<JuliaParameters>.stride, index: 0)
+    dispatch(encoder, pipeline: juliaPipeline, width: width, height: height)
     encoder.endEncoding()
     return try await submit(command)
   }

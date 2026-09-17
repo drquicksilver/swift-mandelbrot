@@ -4,16 +4,50 @@ struct ContentView: View {
   @StateObject private var model = ExplorerModel()
   @Environment(\.scenePhase) private var scenePhase
   @Environment(\.displayScale) private var displayScale
+  #if os(iOS)
+    @Environment(\.horizontalSizeClass) private var sizeClass
+    private var sideBySide: Bool { sizeClass != .compact }
+  #else
+    private var sideBySide: Bool { true }
+  #endif
   var body: some View {
     ZStack(alignment: .bottomTrailing) {
       // The geometry and input surface share the full drawable area. Controls
       // remain siblings in the safe area, so their insets do not shift the camera.
       GeometryReader { geometry in
-        ViewerView(model: model)
-          .onAppear { model.resize(geometry.size, displayScale: displayScale) }
-          .onChange(of: geometry.size) { _, size in model.resize(size, displayScale: displayScale) }
-          .onChange(of: displayScale) { _, scale in model.resize(geometry.size, displayScale: scale)
+        // A wide screen puts the companion beside the view; a phone insets it in
+        // a corner.  Either way the main area keeps the full input surface.
+        let panel = sideBySide
+          ? CGSize(width: max(220, geometry.size.width * 0.28), height: geometry.size.height)
+          : CGSize(
+            width: min(geometry.size.width * 0.42, 220),
+            height: min(geometry.size.width * 0.42, 220))
+        HStack(spacing: 0) {
+          ViewerView(model: model)
+            .onAppear { model.resize(viewerSize(geometry.size, panel), displayScale: displayScale) }
+            .onChange(of: geometry.size) { _, size in
+              model.resize(viewerSize(size, panel), displayScale: displayScale)
+            }
+            .onChange(of: model.showJulia) { _, _ in
+              model.resize(viewerSize(geometry.size, panel), displayScale: displayScale)
+            }
+            .onChange(of: displayScale) { _, scale in
+              model.resize(viewerSize(geometry.size, panel), displayScale: scale)
+            }
+          if model.showJulia && sideBySide {
+            Divider()
+            CompanionPanel(model: model).frame(width: panel.width)
           }
+        }
+        .overlay(alignment: .bottomTrailing) {
+          if model.showJulia && !sideBySide {
+            CompanionPanel(model: model)
+              .frame(width: panel.width, height: panel.height)
+              .clipShape(RoundedRectangle(cornerRadius: 12))
+              .overlay(RoundedRectangle(cornerRadius: 12).stroke(.white.opacity(0.25)))
+              .padding(12)
+          }
+        }
       }
       #if os(iOS)
         .ignoresSafeArea()
@@ -51,6 +85,7 @@ struct ContentView: View {
             viewerButton("Back", icon: "chevron.backward") { model.perform(.back) }
           }
           viewerButton("Places", icon: "bookmark") { model.showPlaces = true }
+          viewerButton("Julia", icon: "circle.lefthalf.filled") { model.toggleJulia() }
           viewerButton("Settings", icon: "slider.horizontal.3") { model.showSettings = true }
           viewerButton("Controls", icon: "questionmark.circle") { model.showHelp = true }
         }
@@ -96,6 +131,11 @@ struct ContentView: View {
         } label: {
           Label("Places", systemImage: "bookmark")
         }
+        Button {
+          model.toggleJulia()
+        } label: {
+          Label("Julia Companion", systemImage: "circle.lefthalf.filled")
+        }
         ShareLink(item: model.location.url) {
           Label("Share", systemImage: "square.and.arrow.up")
         }
@@ -119,6 +159,11 @@ struct ContentView: View {
     .sheet(isPresented: $model.showSettings) { AppearanceView(model: model) }
     .sheet(isPresented: $model.showHelp) { HelpView() }
     .focusedSceneValue(\.explorer, model)
+  }
+
+  private func viewerSize(_ total: CGSize, _ panel: CGSize) -> CGSize {
+    guard model.showJulia && sideBySide else { return total }
+    return CGSize(width: max(1, total.width - panel.width), height: total.height)
   }
 
   #if os(iOS)

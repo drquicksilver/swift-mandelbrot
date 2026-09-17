@@ -2,7 +2,8 @@ import SwiftUI
 
 enum ExplorerCommand: String, CaseIterable, Identifiable {
   case reset, zoomIn, zoomOut, left, right, up, down, increaseIterations, decreaseIterations,
-    rotateLeft, rotateRight, resetRotation, back, forward, places, bookmark, benchmark, help
+    rotateLeft, rotateRight, resetRotation, back, forward, places, bookmark, julia, swapJulia,
+    benchmark, help
   var id: String { rawValue }
   var title: String {
     switch self {
@@ -22,6 +23,8 @@ enum ExplorerCommand: String, CaseIterable, Identifiable {
     case .forward: return "Forward"
     case .places: return "Places"
     case .bookmark: return "Bookmark This View"
+    case .julia: return "Julia Companion"
+    case .swapJulia: return "Swap Main and Companion"
     case .benchmark: return "Benchmarks"
     case .help: return "Controls"
     }
@@ -44,6 +47,8 @@ enum ExplorerCommand: String, CaseIterable, Identifiable {
     case .forward: return .rightArrow
     case .places: return "l"
     case .bookmark: return "d"
+    case .julia: return "j"
+    case .swapJulia: return "j"
     case .benchmark: return "b"
     case .help: return "/"
     }
@@ -52,6 +57,7 @@ enum ExplorerCommand: String, CaseIterable, Identifiable {
     switch self {
     case .left, .right, .up, .down: return []
     case .back, .forward: return [.command, .shift]
+    case .swapJulia: return [.command, .shift]
     case .reset, .help: return [.shift]
     // Command-comma belongs to Settings, so twisting takes Shift as well.
     case .rotateLeft, .rotateRight: return [.command, .shift]
@@ -76,6 +82,8 @@ enum ExplorerCommand: String, CaseIterable, Identifiable {
     case .forward: return "⌘ ⇧ →"
     case .places: return "⌘ L"
     case .bookmark: return "⌘ D"
+    case .julia: return "⌘ J"
+    case .swapJulia: return "⌘ ⇧ J"
     case .benchmark: return "⌘ B"
     case .help: return "?"
     }

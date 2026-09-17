@@ -25,6 +25,16 @@ import SwiftUI
       super.init(frame: .zero)
     }
     required init?(coder: NSCoder) { fatalError("init(coder:) is not supported") }
+    override func updateTrackingAreas() {
+      super.updateTrackingAreas()
+      for area in trackingAreas { removeTrackingArea(area) }
+      addTrackingArea(
+        NSTrackingArea(
+          rect: .zero, options: [.mouseMoved, .activeInKeyWindow, .inVisibleRect], owner: self))
+    }
+    override func mouseMoved(with event: NSEvent) {
+      model.trackJulia(at: convert(event.locationInWindow, from: nil))
+    }
     override func viewDidMoveToWindow() {
       if window == nil {
         model.stopMotion()
@@ -71,6 +81,7 @@ import SwiftUI
         let dy = point.y - last.y
         velocity = CGPoint(x: dx / dt, y: dy / dt)
         model.pan(CGSize(width: dx, height: dy))
+        model.trackJulia(at: point)
       }
       last = point
       previousTime = event.timestamp
@@ -235,6 +246,7 @@ import SwiftUI
     }
     override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {
       beginTracking(touches)
+      if let point = previous.first { model.trackJulia(at: point) }
     }
     override func touchesMoved(_ touches: Set<UITouch>, with event: UIEvent?) {
       guard !tracked.isEmpty else { return }
@@ -249,6 +261,7 @@ import SwiftUI
         let delta = CGSize(
           width: current[0].x - previous[0].x, height: current[0].y - previous[0].y)
         model.pan(delta)
+        model.trackJulia(at: current[0])
         anchor = current[0]
         panVelocity = CGPoint(x: delta.width / dt, y: delta.height / dt)
         zoomVelocity = 0

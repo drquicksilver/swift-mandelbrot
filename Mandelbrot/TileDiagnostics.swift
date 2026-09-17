@@ -952,6 +952,7 @@
         try await checkNavigationRoundTrip()
         try await checkRotationAndBounds()
         try await checkLocations()
+        try await checkJuliaCompanion(gpu)
         try await checkRotatedComposition(gpu)
         try await checkStreamedReferences(gpu)
         try await checkResumption(gpu)

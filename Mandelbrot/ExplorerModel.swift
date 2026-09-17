@@ -121,6 +121,30 @@ import SwiftUI
   @Published var showTileOverlay = false
   @Published var selection: CGRect?
   @Published var showPlaces = false
+  /// The Julia companion: the point it follows, its own shallow view, and which
+  /// of the two fills the main area.
+  @Published var showJulia = false
+  @Published var juliaSwapped = false
+  @Published var juliaC = CGPoint(x: -0.8, y: 0.156)
+  @Published var juliaViewport = Viewport(center: .zero, scale: 1)
+  @Published var juliaFollows = true
+  let julia = JuliaRenderer()
+  /// The panel follows the cursor or finger while it is the companion.
+  func trackJulia(at point: CGPoint) {
+    guard showJulia, juliaFollows, !juliaSwapped else { return }
+    let c = viewport.complex(at: point, in: size)
+    guard c.x.isFinite, c.y.isFinite, abs(c.x) <= 4, abs(c.y) <= 4 else { return }
+    juliaC = c
+  }
+  func toggleJulia() {
+    showJulia.toggle()
+    if !showJulia { juliaSwapped = false }
+  }
+  func swapJulia() {
+    guard showJulia else { return }
+    stopMotion()
+    juliaSwapped.toggle()
+  }
   @Published var locationError: String?
   /// Back and forward history of settled views.  A view is recorded when it
   /// settles and differs from the last record by more than half a zoom level, a
@@ -317,6 +341,17 @@ import SwiftUI
     lastMotionTime = now
     zoomDirection = motion.zoomVelocity > 0 ? 1 : (motion.zoomVelocity < 0 ? -1 : 0)
     let delta = motion.step(seconds: dt)
+    if juliaSwapped {
+      // Flings in the companion pan and zoom its own shallow view.
+      juliaViewport.pan(by: delta.pan, in: size)
+      let wanted = juliaViewport.logScale + log2(max(1e-9, delta.zoom))
+      if wanted < 26 {
+        juliaViewport.zoom(
+          by: delta.zoom, at: motionAnchor ?? centreOfView, in: size, pixelWidth: pixelWidth)
+      }
+      if motionActive != isAnimating { motionActive = isAnimating }
+      return
+    }
     var next = viewport
     next.pan(by: delta.pan, in: size)
     let anchor = motionAnchor ?? centreOfView
@@ -376,10 +411,23 @@ import SwiftUI
   }
   func pan(_ delta: CGSize) {
     zoomDirection = 0
+    // While the companion holds the main area, gestures drive its view.
+    if juliaSwapped {
+      juliaViewport.pan(by: delta, in: size)
+      return
+    }
     viewport.pan(by: delta, in: size)
   }
   func zoom(_ factor: Double, at point: CGPoint? = nil) {
     zoomDirection = factor > 1 ? 1 : (factor < 1 ? -1 : 0)
+    if juliaSwapped {
+      // The companion stays shallow: float and double-float only.
+      let wanted = juliaViewport.logScale + log2(max(1e-9, factor))
+      guard wanted < 26 else { return }
+      juliaViewport.zoom(
+        by: factor, at: point ?? centreOfView, in: size, pixelWidth: pixelWidth)
+      return
+    }
     atPrecisionLimit = viewport.zoom(
       by: factor, at: point ?? CGPoint(x: size.width / 2, y: size.height / 2),
       in: size, pixelWidth: pixelWidth)
@@ -405,6 +453,8 @@ import SwiftUI
     case .forward: goForward()
     case .places: showPlaces.toggle()
     case .bookmark: bookmarkCurrentView()
+    case .julia: toggleJulia()
+    case .swapJulia: swapJulia()
     case .benchmark: showBenchmark.toggle()
     case .help: showHelp.toggle()
     }
