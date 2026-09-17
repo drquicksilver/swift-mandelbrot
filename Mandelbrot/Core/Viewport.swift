@@ -6,6 +6,10 @@ import Foundation
 struct Viewport: Equatable, Sendable {
   var center = CGPoint(x: -0.5, y: 0)
   var scale = 1.0
+  /// Rotation of the complex plane relative to the screen, in radians.  Applied
+  /// to Double offsets from the screen centre, so precision is unaffected at any
+  /// depth, and tiles stay axis-aligned in the plane.
+  var angle = 0.0
   // Deep storage becomes authoritative before Double camera arithmetic loses a pixel.
   var deepCenter: DeepPoint?
   var deepLogScale: Double?
@@ -54,40 +58,81 @@ struct Viewport: Equatable, Sendable {
       deepLogScale = depth
     }
   }
+  /// Screen offsets in units of the view's width, measured from the centre with
+  /// y upwards, and the same offsets rotated into the complex plane.
+  func viewOffset(of point: CGPoint, in size: CGSize) -> (x: Double, y: Double) {
+    let width = max(1, size.width)
+    return (point.x / width - 0.5, (size.height / 2 - point.y) / width)
+  }
+  func planeOffset(of point: CGPoint, in size: CGSize) -> (x: Double, y: Double) {
+    let view = viewOffset(of: point, in: size)
+    return (
+      cos(angle) * view.x - sin(angle) * view.y, sin(angle) * view.x + cos(angle) * view.y
+    )
+  }
+  private func screenPoint(fromPlane x: Double, _ y: Double, in size: CGSize) -> CGPoint {
+    let view = (x: cos(angle) * x + sin(angle) * y, y: -sin(angle) * x + cos(angle) * y)
+    return CGPoint(
+      x: (view.x + 0.5) * size.width, y: size.height / 2 - view.y * size.width)
+  }
   func preciseComplex(at point: CGPoint, in size: CGSize) -> DeepPoint {
-    preciseCenter.offset(
-      x: wideSpan * (point.x / max(1, size.width) - 0.5),
-      y: wideSpan * ((size.height / 2 - point.y) / max(1, size.width)), bits: precisionBits)
+    let offset = planeOffset(of: point, in: size)
+    return preciseCenter.offset(
+      x: wideSpan * offset.x, y: wideSpan * offset.y, bits: precisionBits)
   }
   func screen(for point: DeepPoint, in size: CGSize) -> CGPoint {
     let c = preciseCenter
-    return CGPoint(
-      x: ((point.x - c.x).wide / wideSpan + 0.5) * size.width,
-      y: size.height / 2 - (point.y - c.y).wide / wideSpan * size.width)
+    return screenPoint(
+      fromPlane: (point.x - c.x).wide / wideSpan, (point.y - c.y).wide / wideSpan, in: size)
   }
   var span: Double { 3 / scale }
 
   func complex(at point: CGPoint, in size: CGSize) -> CGPoint {
-    let width = max(1, size.width)
-    return CGPoint(
-      x: center.x + (point.x / width - 0.5) * span,
-      y: center.y + (size.height / 2 - point.y) / width * span)
+    let offset = planeOffset(of: point, in: size)
+    return CGPoint(x: center.x + offset.x * span, y: center.y + offset.y * span)
   }
   func screen(for point: CGPoint, in size: CGSize) -> CGPoint {
-    CGPoint(
-      x: ((point.x - center.x) / span + 0.5) * size.width,
-      y: size.height / 2 - (point.y - center.y) / span * size.width)
+    screenPoint(
+      fromPlane: (point.x - center.x) / span, (point.y - center.y) / span, in: size)
   }
   mutating func pan(by delta: CGSize, in size: CGSize) {
+    let width = max(1, size.width)
+    let view = (x: -delta.width / width, y: delta.height / width)
+    let offset = (
+      x: cos(angle) * view.x - sin(angle) * view.y, y: sin(angle) * view.x + cos(angle) * view.y
+    )
     if deepCenter != nil {
       deepCenter = preciseCenter.offset(
-        x: wideSpan * (-delta.width / max(1, size.width)),
-        y: wideSpan * (delta.height / max(1, size.width)), bits: precisionBits)
+        x: wideSpan * offset.x, y: wideSpan * offset.y, bits: precisionBits)
       center = deepCenter!.point
       return
     }
-    center.x -= delta.width / max(1, size.width) * span
-    center.y += delta.height / max(1, size.width) * span
+    center.x += offset.x * span
+    center.y += offset.y * span
+  }
+  /// Rotates about a screen point, keeping the plane point under it fixed.
+  mutating func rotate(by delta: Double, at anchor: CGPoint, in size: CGSize) {
+    guard delta.isFinite, delta != 0 else { return }
+    let fixed = preciseComplex(at: anchor, in: size)
+    angle = Self.normalised(angle + delta)
+    let offset = planeOffset(of: anchor, in: size)
+    let moved = fixed.offset(
+      x: wideSpan * -offset.x, y: wideSpan * -offset.y, bits: precisionBits)
+    if deepCenter != nil { deepCenter = moved }
+    center = moved.point
+  }
+  /// Keeps the angle in (-pi, pi], so sharing and comparison are canonical.
+  static func normalised(_ angle: Double) -> Double {
+    let turn = 2 * Double.pi
+    let wrapped = angle.truncatingRemainder(dividingBy: turn)
+    return wrapped > Double.pi ? wrapped - turn : (wrapped <= -Double.pi ? wrapped + turn : wrapped)
+  }
+  /// Half-extents of the rotated view's bounding box, in units of view width.
+  /// Covering the box needs about 2.2x the tiles of an unrotated 16:9 screen at 45.
+  func coverage(size: CGSize) -> (x: Double, y: Double) {
+    let aspect = max(1, size.height) / max(1, size.width)
+    let c = abs(cos(angle)), s = abs(sin(angle))
+    return ((c + s * aspect) / 2, (s + c * aspect) / 2)
   }
   func maximumScale(pixelWidth: Double) -> Double {
     // Eight FloatFloat ulps per pixel, including headroom for navigation math.
@@ -123,6 +168,8 @@ struct Viewport: Equatable, Sendable {
     center.y += fixedPoint.y - movedPoint.y
     return wanted >= limit
   }
+  /// Zooms to a screen rectangle; the rectangle is axis-aligned on screen, so a
+  /// rotated view keeps its angle and re-centres on the rectangle's middle.
   mutating func fit(_ rect: CGRect, in size: CGSize, pixelWidth: Double) {
     let fixedPoint = preciseComplex(at: CGPoint(x: rect.midX, y: rect.midY), in: size)
     let factor = min(size.width / max(1, rect.width), size.height / max(1, rect.height))

@@ -13,6 +13,9 @@ struct TileDrawUniforms {
   var border: UInt32 = 0
   var level: Int32 = 0
   var fineFade: Float = 1
+  /// (cos, sin) of the view's rotation, then the view size in points: the quad's
+  /// corners turn about its centre in point space, where the angle is a rotation.
+  var spin = SIMD4<Float>(1, 0, 1, 1)
   var padding0: Float = 0, padding1: Float = 0, padding2: Float = 0
 }
 
@@ -90,6 +93,9 @@ struct TileDrawUniforms {
           : (previousFine === fine && store.records[fine.key] === fine
             ? TilePresentation.fineWeight(lod: store.lod, readyAt: fine.readyAt, now: now)
             : Float(store.lod - floor(store.lod)))
+      params.spin = SIMD4(
+        Float(cos(viewport.angle)), Float(sin(viewport.angle)), Float(size.width),
+        Float(size.height))
       params.border = overlay ? 1 : 0
       params.level = Int32(base.key.level)
       plans.append(

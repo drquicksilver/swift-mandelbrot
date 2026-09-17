@@ -70,12 +70,18 @@ def reference(fixture):
     cx, cy = fixture['center']
     limit = fixture['iterations']
     span = 3/scale
+    # Rotation turns screen offsets into the plane; tiles stay axis-aligned, so a
+    # rotated view needs the tiles of its bounding box.
+    theta = math.radians(fixture.get('rotation', 0))
+    cos_t, sin_t = math.cos(theta), math.sin(theta)
+    box_x = (abs(cos_t) + abs(sin_t)*height/width)*span/2
+    box_y = (abs(sin_t) + abs(cos_t)*height/width)*span/2
     lod = max(-2, math.log2(scale*width/256))
     fine, base = math.ceil(lod), math.floor(lod)
     # Define the requested tile set geometrically, not via the app's grid code.
     tile_span = 3 / 2**fine
-    x0, x1 = math.floor((cx-span/2+0.5)/tile_span), math.ceil((cx+span/2+0.5)/tile_span)
-    y0, y1 = math.floor((-cy-span*height/width/2)/tile_span), math.ceil((-cy+span*height/width/2)/tile_span)
+    x0, x1 = math.floor((cx-box_x+0.5)/tile_span), math.ceil((cx+box_x+0.5)/tile_span)
+    y0, y1 = math.floor((-cy-box_y)/tile_span), math.ceil((-cy+box_y)/tile_span)
     needed = set()
     for y in range(y0, y1):
         for x in range(x0, x1):
@@ -127,9 +133,11 @@ def reference(fixture):
 
     pixels = bytearray()
     for y in range(height):
-        ci = cy+(height/2-y-0.5)*span/width
+        view_y = (height/2-y-0.5)*span/width
         for x in range(width):
-            cr = cx+(x+0.5-width/2)*span/width
+            view_x = (x+0.5-width/2)*span/width
+            cr = cx+cos_t*view_x-sin_t*view_y
+            ci = cy+sin_t*view_x+cos_t*view_y
             a, b = filtered(base, cr, ci), filtered(fine, cr, ci)
             pixels.extend(round(v*(1-(lod-base))+w*(lod-base)) for v,w in zip(a,b))
             pixels.append(255)

@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "mapping": "pixel centres, world span 3/scale, anchor (-0.5, 0)",
+  "mapping": "pixel centres, world span 3/scale, anchor (-0.5, 0), rotation in degrees",
   "palette": "ink",
   "density": 64,
   "fixtures": [
@@ -55,6 +55,20 @@
       "iterations": 200,
       "maxMismatch": 0.005,
       "maxMeanError": 0.5
+    },
+    {
+      "name": "rotated-centres",
+      "center": [
+        -0.7435,
+        0.1314
+      ],
+      "scale": 128,
+      "rotation": 30,
+      "width": 256,
+      "height": 192,
+      "iterations": 800,
+      "maxMismatch": 0.02,
+      "maxMeanError": 1.0
     }
   ]
 }

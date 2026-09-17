@@ -62,7 +62,10 @@ struct TileBounds: Sendable {
   }
   func intersects(viewport: Viewport, size: CGSize) -> Bool {
     let p = viewport.screen(for: preciseCenter, in: size)
-    let radius = wideSpan / viewport.wideSpan * size.width / 2
+    // A rotated square's screen bounding box grows by |cos|+|sin|.
+    let radius =
+      wideSpan / viewport.wideSpan * size.width / 2
+      * (abs(cos(viewport.angle)) + abs(sin(viewport.angle)))
     return p.x - radius < size.width && p.x + radius > 0 && p.y - radius < size.height
       && p.y + radius > 0
   }
@@ -114,8 +117,10 @@ struct TileGrid: Sendable {
       // here is a handful of cells at any depth.
       let span = viewport.wideSpan
       let projected = WideReal(span.mantissa, exponent: span.exponent + max(0, zoomOut))
-      let half = projected / wide / 2
-      let tall = half * size.height / max(1, size.width)
+      // A rotated view is covered by its bounding box; tiles stay axis-aligned.
+      let coverage = viewport.coverage(size: size)
+      let half = projected / wide * coverage.x
+      let tall = projected / wide * coverage.y
       minX = x - half
       maxX = x + half
       minY = y - tall
@@ -125,12 +130,13 @@ struct TileGrid: Sendable {
       // detail level bounds the projection well inside Double's range.
       let projection = pow(2, Double(max(0, zoomOut)))
       let span = span(at: level)
-      let width = viewport.span * projection
-      let height = width * size.height / max(1, size.width)
-      minX = (viewport.center.x - width / 2 - anchor.x) / span
-      maxX = (viewport.center.x + width / 2 - anchor.x) / span
-      minY = (anchor.y - (viewport.center.y + height / 2)) / span
-      maxY = (anchor.y - (viewport.center.y - height / 2)) / span
+      let coverage = viewport.coverage(size: size)
+      let width = viewport.span * projection * coverage.x
+      let height = viewport.span * projection * coverage.y
+      minX = (viewport.center.x - width - anchor.x) / span
+      maxX = (viewport.center.x + width - anchor.x) / span
+      minY = (anchor.y - (viewport.center.y + height)) / span
+      maxY = (anchor.y - (viewport.center.y - height)) / span
     }
     guard [minX, maxX, minY, maxY].allSatisfy({ $0.isFinite && abs($0) < Double(Int64.max) / 4 })
     else { return [] }

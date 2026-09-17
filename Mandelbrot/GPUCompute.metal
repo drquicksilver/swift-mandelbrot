@@ -100,12 +100,20 @@ struct TileDrawUniforms {
     float baseMix, fineMix;
     uint border;
     int level;
-    float fineFade, padding0, padding1, padding2;
+    float fineFade;
+    float4 spin;
+    float padding0, padding1, padding2;
 };
 vertex QuadOutput tileVertex(uint index [[vertex_id]],constant TileDrawUniforms &p [[buffer(0)]]) {
     constexpr float2 corners[] = {float2(0,0),float2(1,0),float2(0,1),float2(1,0),float2(1,1),float2(0,1)};
     float2 c=corners[index];
-    return {float4(mix(p.rect.x,p.rect.z,c.x),mix(p.rect.y,p.rect.w,c.y),0,1),c};
+    float2 position=float2(mix(p.rect.x,p.rect.z,c.x),mix(p.rect.y,p.rect.w,c.y));
+    // Tiles are axis-aligned in the plane, so a rotated view draws rotated quads.
+    float2 middle=float2((p.rect.x+p.rect.z)*0.5,(p.rect.y+p.rect.w)*0.5);
+    float2 points=float2((position.x-middle.x)*p.spin.z*0.5,-(position.y-middle.y)*p.spin.w*0.5);
+    float2 turned=float2(points.x*p.spin.x-points.y*p.spin.y,points.x*p.spin.y+points.y*p.spin.x);
+    position=middle+float2(turned.x*2/p.spin.z,-turned.y*2/p.spin.w);
+    return {float4(position,0,1),c};
 }
 bool digitPixel(float2 point,uint digit) {
     constexpr uint masks[]={63,6,91,79,102,109,125,7,127,111};

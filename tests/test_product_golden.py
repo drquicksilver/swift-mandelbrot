@@ -21,11 +21,13 @@ else:
     with tempfile.TemporaryDirectory() as directory:
         for f in fixtures:
             output = Path(directory)/'actual.png'
-            subprocess.run([app, '--render', '--pipeline', 'tiles', '--renderer', 'metal-double',
-                            '--size', f'{f["width"]}x{f["height"]}', '--scale', str(f['scale']),
-                            '--center-real', str(f['center'][0]), '--center-imag', str(f['center'][1]),
-                            '--iterations', str(f['iterations']), '--palette', 'ink', '--output', str(output)],
-                           check=True, capture_output=True)
+            command = [app, '--render', '--pipeline', 'tiles', '--renderer', 'metal-double',
+                       '--size', f'{f["width"]}x{f["height"]}', '--scale', str(f['scale']),
+                       '--center-real', str(f['center'][0]), '--center-imag', str(f['center'][1]),
+                       '--iterations', str(f['iterations']), '--palette', 'ink', '--output', str(output)]
+            if f.get('rotation'):
+                command += ['--rotation', str(f['rotation'])]
+            subprocess.run(command, check=True, capture_output=True)
             w,h,expected = read_png(root/(f['name']+'.png'))
             aw,ah,actual = read_png(output)
             assert (aw,ah) == (w,h)

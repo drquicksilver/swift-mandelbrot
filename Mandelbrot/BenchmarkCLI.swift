@@ -40,6 +40,7 @@
         --sample-records PATH  Raw little-endian UInt32 count + Float32 correction;
                           count 0xffffffff means capped; eight bytes per pixel
         --pipeline NAME    legacy, gpu or tiles (default: legacy); tiles exports PNGs
+        --rotation DEG     View rotation in degrees; tile pipeline only
         --rebasing on|off  Critical-point rebasing; off is a recovery diagnostic
         --bla-radius MODE compound (default) or fixed (experimental error margin)
         --bla on|off|fixed Perturbation hierarchy, no skipping, or 32-step blocks
@@ -76,6 +77,7 @@
       var centerImag = 0.0
       var scale = 1.0
       var realText = "-0.5", imagText = "0", scaleText = "1"
+      var rotationDegrees = 0.0
       var viewport = Viewport()
       var center: CGPoint { CGPoint(x: centerReal, y: centerImag) }
 
@@ -94,6 +96,7 @@
           guard
             (renderFlags + benchmarkFlags + [
               "--iterations", "--center-real", "--center-imag", "--scale", "--pipeline", "--timing",
+              "--rotation",
               "--colouring", "--palette", "--density", "--offset", "--samples", "--sample-records",
               "--bla",
               "--rebasing", "--bla-radius",
@@ -144,6 +147,11 @@
               throw CLIError("Pipeline must be legacy, gpu or tiles")
             }
             pipeline = value
+          case "--rotation":
+            guard let degrees = Double(value), degrees.isFinite, abs(degrees) <= 360 else {
+              throw CLIError("Rotation must be degrees within [-360, 360]")
+            }
+            rotationDegrees = degrees
           case "--timing":
             guard ["end-to-end", "kernel"].contains(value) else {
               throw CLIError("Timing must be end-to-end or kernel")
@@ -209,6 +217,14 @@
           }
         }
         viewport = try Viewport(real: realText, imag: imagText, zoom: scaleText)
+        // Tiles stay axis-aligned in the plane, so only the compositor rotates.
+        // The lab renderers sample axis-aligned rows and take no angle (2.14).
+        if rotationDegrees != 0 {
+          guard pipeline == "tiles" else {
+            throw CLIError("--rotation requires --pipeline tiles")
+          }
+          viewport.angle = Viewport.normalised(rotationDegrees * .pi / 180)
+        }
         centerReal = viewport.center.x
         centerImag = viewport.center.y
         scale = viewport.scale
