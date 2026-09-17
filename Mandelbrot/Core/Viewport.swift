@@ -10,6 +10,8 @@ struct Viewport: Equatable, Sendable {
   var deepCenter: DeepPoint?
   var deepLogScale: Double?
   static let maximumLogScale = 13_000.0
+  /// The furthest zoom-out: the whole set with room around it.
+  static let minimumLogScale = -1.0
   var logScale: Double { deepLogScale ?? log2(scale) }
   var wideSpan: WideReal { WideReal(log2: log2(3) - logScale) }
   var precisionBits: Int { max(192, Int(ceil(logScale)) + 128) }
@@ -100,7 +102,7 @@ struct Viewport: Equatable, Sendable {
     let wantedLog = logScale + log2(factor)
     if deepCenter != nil || wantedLog > 30 {
       let fixed = preciseComplex(at: anchor, in: size)
-      deepLogScale = min(Self.maximumLogScale, max(-1, wantedLog))
+      deepLogScale = min(Self.maximumLogScale, max(Self.minimumLogScale, wantedLog))
       deepCenter = fixed.offset(
         x: wideSpan * (0.5 - anchor.x / max(1, size.width)),
         y: wideSpan * ((anchor.y - size.height / 2) / max(1, size.width)), bits: precisionBits)
@@ -115,7 +117,7 @@ struct Viewport: Equatable, Sendable {
     let fixedPoint = complex(at: anchor, in: size)
     let limit = maximumScale(pixelWidth: pixelWidth)
     let wanted = scale * factor
-    scale = min(limit, max(0.5, wanted))
+    scale = min(limit, max(pow(2, Self.minimumLogScale), wanted))
     let movedPoint = complex(at: anchor, in: size)
     center.x += fixedPoint.x - movedPoint.x
     center.y += fixedPoint.y - movedPoint.y

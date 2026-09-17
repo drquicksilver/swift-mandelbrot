@@ -4,6 +4,29 @@
   import CoreGraphics
   import Metal
 
+  /// Fails the process when a headless check stalls.  A main-actor worker spin
+  /// would also starve any main-actor timeout, so the watchdog runs elsewhere.
+  final class TileWatchdog: @unchecked Sendable {
+    private let lock = NSLock()
+    private var finished = false
+    init(seconds: Double, _ name: String) {
+      DispatchQueue.global().asyncAfter(deadline: .now() + seconds) { [self] in
+        lock.lock()
+        let done = finished
+        lock.unlock()
+        if !done {
+          FileHandle.standardError.write(Data("Tile test stalled: \(name)\n".utf8))
+          exit(1)
+        }
+      }
+    }
+    func finish() {
+      lock.lock()
+      finished = true
+      lock.unlock()
+    }
+  }
+
   /// Headless integration checks run the same tile store and compositor as MTKView.
   @MainActor enum TileDiagnostics {
     static func require(_ condition: @autoclosure () -> Bool, _ message: String) throws {
@@ -274,7 +297,7 @@
       try require(
         deep.needed.allSatisfy { deep.records[$0] != nil }, "Deep ancestors are incomplete")
       try require(
-        deep.coverage.count <= 40
+        deep.coverage.count <= 64
           && deep.coverage.contains(where: { $0.level == deep.minimumLevel })
           && deep.coverage.filter { deep.records[$0] != nil }.count == deep.coverage.count,
         "Deep coverage pyramid was not bounded and ready")
@@ -675,6 +698,193 @@
         "perturbationResidentMiB": Double(store.residentBytes) / 1_048_576,
       ]
     }
+    static func percentile95(_ values: [Double]) -> Double {
+      let sorted = values.sorted()
+      return sorted.isEmpty ? 0 : sorted[min(sorted.count - 1, Int(Double(sorted.count) * 0.95))]
+    }
+    /// Phone- and Mac-shaped drawables at their real budgets, swept through
+    /// several levels shallow and at 1e1000.  The worker must settle, memory must
+    /// stay within both limits throughout, and the whole near ladder must fit.
+    static func checkRealisticCoverage() async throws -> [String: Double] {
+      var metrics: [String: Double] = [:]
+      // A phone at 150 MiB spends nearly all of its resident limit on a
+      // full-resolution view; the detail band only guarantees the root and the
+      // 2-4x zoom-out.  A Mac at 500 MiB must hold the whole near ladder.
+      let devices: [(String, CGSize, Int, Int)] = [
+        ("phone", CGSize(width: 1_206, height: 2_622), 150, 2),
+        ("mac", CGSize(width: 3_456, height: 2_234), 500, 8),
+      ]
+      for (device, size, budget, guaranteed) in devices {
+        let scenes: [(String, Viewport, Int)] = [
+          (
+            "shallow",
+            try Viewport(real: "-0.743643887037151", imag: "0.13182590420533", zoom: "64"), 1000
+          ),
+          ("deep", try Viewport(real: "0", imag: "1", zoom: "1e1000"), 5000),
+        ]
+        for (scene, start, iterations) in scenes {
+          let name = "\(device) \(scene)"
+          let watchdog = TileWatchdog(seconds: 240, "realistic coverage, \(name)")
+          defer { watchdog.finish() }
+          let store = TileStore(budgetBytes: budget * 1024 * 1024)
+          let begin = ProcessInfo.processInfo.systemUptime
+          var view = start
+          let centre = CGPoint(x: size.width / 2, y: size.height / 2)
+          for _ in 0..<48 {
+            view.zoom(by: 1.12, at: centre, in: size, pixelWidth: size.width)
+            store.update(
+              viewport: view, size: size, pixelWidth: size.width, iterations: iterations,
+              override: nil, colouring: ColourSettings(), zoomDirection: 1)
+            try require(
+              store.residentBytes <= store.tileResidentLimit
+                && store.coverageBytes <= store.coverageBudgetBytes,
+              "\(name): memory exceeded its budget while zooming")
+            try await Task.sleep(for: .milliseconds(8))
+          }
+          try await store.waitUntilReady()
+          try await store.waitUntilRootCoverageReady()
+          let groups = store.coverageGroups
+          print(
+            "Coverage \(name): capacity \(store.coverageBudgetBytes / 1_048_576) MiB, "
+              + groups.map {
+                "\($0.offset)→L\(store.lod.rounded(.up) - Double($0.level)):\($0.tiles)\($0.selected ? "" : "✗")"
+              }
+              .joined(separator: " "))
+          let ladder = groups.filter { $0.offset <= guaranteed }
+          try require(
+            ladder.count == guaranteed && ladder.allSatisfy(\.selected)
+              && store.plannedRootCount > 0,
+            "\(name): the guaranteed zoom-out ladder did not fit")
+          try require(
+            store.residentBytes <= store.tileResidentLimit
+              && store.coverageBytes <= store.coverageBudgetBytes
+              && store.deferredCoverageCount == 0
+              && store.coverage.allSatisfy { store.records[$0] != nil },
+            "\(name): settled coverage was incomplete or over budget")
+          metrics["coverage_\(device)_\(scene)_settleMS"] =
+            (ProcessInfo.processInfo.systemUptime - begin) * 1000
+          metrics["coverage_\(device)_\(scene)_tiles"] = Double(store.coverage.count)
+          metrics["coverage_\(device)_\(scene)_nearGroups"] = Double(
+            groups.filter { $0.offset <= 8 && $0.selected }.count)
+          metrics["coverage_\(device)_\(scene)_sparseGroups"] = Double(
+            groups.filter { $0.offset > 8 && $0.selected }.count)
+          store.cancel()
+        }
+      }
+      return metrics
+    }
+    /// After the pyramid is ready, moderate zoom-outs are served from each
+    /// offset's planned coverage level or finer, with no uncovered cell.
+    static func checkZoomOutCoverageQuality() async throws {
+      let size = CGSize(width: 1_206, height: 2_622)
+      let store = TileStore(budgetBytes: 150 * 1024 * 1024)
+      let view = Viewport(center: CGPoint(x: -0.743643887037151, y: 0.13182590420533), scale: 65536)
+      func update(_ viewport: Viewport) {
+        store.update(
+          viewport: viewport, size: size, pixelWidth: size.width, iterations: 1000, override: nil,
+          colouring: ColourSettings())
+      }
+      update(view)
+      try await store.waitUntilReady()
+      try await store.waitUntilRootCoverageReady()
+      let groups = store.coverageGroups
+      for offset in [1, 2, 4] {
+        guard let group = groups.first(where: { $0.offset == offset }), group.selected else {
+          throw GPUFailure("Zoom-out offset \(offset) had no coverage")
+        }
+        var out = view
+        out.zoom(
+          by: pow(2, -Double(offset)), at: CGPoint(x: size.width / 2, y: size.height / 2),
+          in: size, pixelWidth: size.width)
+        update(out)
+        store.cancel()  // Inspect the frame before any refinement arrives.
+        let cells = TileCompositor.plan(store: store, viewport: out, size: size)
+        try require(
+          cells.count == store.visible.count, "A \(1 << offset)× zoom-out left an uncovered cell")
+        let coarsest = cells.map(\.base.key.level).min() ?? .min
+        try require(
+          coarsest >= group.level,
+          "A \(1 << offset)× zoom-out fell back to level \(coarsest), below its planned \(group.level)"
+        )
+        update(view)
+        try await store.waitUntilReady()
+      }
+      store.cancel()
+    }
+    /// Coverage must not delay the visible view after a cold jump.  Both modes
+    /// run alternately in this process, so machine speed cancels out.
+    static func checkColdJumpLatency() async throws -> [String: Double] {
+      let size = CGSize(width: 1_024, height: 768)
+      var metrics: [String: Double] = [:]
+      for (label, zoom) in [("1e100", "1e100"), ("1e1000", "1e1000")] {
+        let view = try Viewport(real: "0", imag: "1", zoom: zoom)
+        var best: [Bool: Double] = [:]
+        for round in 0..<4 {
+          let enabled = round % 2 == 1
+          let store = TileStore(budgetBytes: 500 * 1024 * 1024)
+          store.coverageEnabled = enabled
+          let start = ProcessInfo.processInfo.systemUptime
+          store.update(
+            viewport: view, size: size, pixelWidth: size.width, iterations: 5000, override: nil,
+            colouring: ColourSettings())
+          while !store.allVisibleReady {
+            if let error = store.error { throw GPUFailure(error) }
+            try await Task.sleep(for: .milliseconds(1))
+          }
+          let ms = (ProcessInfo.processInfo.systemUptime - start) * 1000
+          best[enabled] = min(best[enabled] ?? .infinity, ms)
+          store.cancel()
+        }
+        let off = best[false]!
+        let on = best[true]!
+        print("Cold jump \(label): visible ready \(on) ms with coverage, \(off) ms without")
+        metrics["coldVisible\(label)CoverageMS"] = on
+        metrics["coldVisible\(label)NoCoverageMS"] = off
+        try require(
+          on <= off * 1.25 + 30, "Coverage delayed the visible view after a cold jump to \(label)")
+      }
+      return metrics
+    }
+    /// Main-thread cost while moving at 1e1000: demand updates and frame plans
+    /// interleaved with a running worker, as the display drives them.
+    static func checkMovingPreparation() async throws -> [String: Double] {
+      let size = CGSize(width: 1_024, height: 768)
+      let store = TileStore(budgetBytes: 500 * 1024 * 1024)
+      var view = try Viewport(real: "0", imag: "1", zoom: "1e1000")
+      func update(_ direction: Int) {
+        store.update(
+          viewport: view, size: size, pixelWidth: size.width, iterations: 5000, override: nil,
+          colouring: ColourSettings(), zoomDirection: direction)
+      }
+      update(0)
+      try await store.waitUntilReady()
+      var updates: [Double] = []
+      var plans: [Double] = []
+      for frame in 0..<120 {
+        let zooming = frame % 60 < 30
+        if zooming {
+          view.zoom(
+            by: frame % 120 < 60 ? 1.04 : 1 / 1.04, at: CGPoint(x: 400, y: 300), in: size,
+            pixelWidth: size.width)
+        } else {
+          view.pan(by: CGSize(width: 6, height: 3), in: size)
+        }
+        var start = ProcessInfo.processInfo.systemUptime
+        update(zooming ? 1 : 0)
+        updates.append((ProcessInfo.processInfo.systemUptime - start) * 1000)
+        start = ProcessInfo.processInfo.systemUptime
+        _ = TileCompositor.plan(store: store, viewport: view, size: size)
+        plans.append((ProcessInfo.processInfo.systemUptime - start) * 1000)
+        try await Task.sleep(for: .milliseconds(8))
+      }
+      store.cancel()
+      let updateP95 = percentile95(updates)
+      let planP95 = percentile95(plans)
+      print("Moving at 1e1000: update p95 \(updateP95) ms, frame plan p95 \(planP95) ms")
+      try require(updateP95 < 4, "Demand updates exceeded 4 ms p95 while moving at 1e1000")
+      try require(planP95 < 2, "Frame plans exceeded 2 ms p95 while moving at 1e1000")
+      return ["movingUpdateP95MS": updateP95, "movingPlanP95MS": planP95]
+    }
     static func run() async -> Int32 {
       do {
         guard let gpu = GPUContext.shared else { throw GPUFailure("GPU unavailable") }
@@ -700,7 +910,14 @@
         try await checkRootCoverageBounded()
         try await checkCoverageDeferralRecovers()
         try await checkZoomOutPresentation()
-        let deepMetrics = try await checkDeepTiles(gpu)
+        var deepMetrics = try await checkDeepTiles(gpu)
+        try await checkZoomOutCoverageQuality()
+        for source in [
+          try await checkRealisticCoverage(), try await checkColdJumpLatency(),
+          try await checkMovingPreparation(),
+        ] {
+          deepMetrics.merge(source) { _, new in new }
+        }
         let store = TileStore()
         let size = CGSize(width: 512, height: 320)
         var view = Viewport()

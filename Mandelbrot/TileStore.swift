@@ -63,6 +63,12 @@ struct TileStatistics: Equatable, Codable {
   private var rootPlan: Set<TileKey> = []
   private var retainedRoot: Set<TileKey> = []
   static let retainedRootLimit = 9
+  struct CoverageGroup: Equatable {
+    let offset: Int, level: Int, tiles: Int
+    let selected: Bool
+  }
+  /// The last coverage plan, one entry per zoom-out offset considered.
+  private(set) var coverageGroups: [CoverageGroup] = []
   private var coverageIndex: [TileRecord] = []
   private var rootIndex: [TileRecord] = []
   private(set) var viewport = Viewport()
@@ -85,7 +91,7 @@ struct TileStatistics: Equatable, Codable {
   let minimumLevel = -2
   /// Levels of upsampling worth accepting to avoid presenting a stand-in.
   static let placeholderBlurTolerance = 2
-  private let coverageTileLimit = 40
+  private let coverageTileLimit = 64
   var useBLA = true
   var hierarchicalBLA = true
   var fixedBLARadius = false
@@ -96,6 +102,8 @@ struct TileStatistics: Equatable, Codable {
   private var boundsCache: [TileKey: TileBounds] = [:]
   // Reserve a third for transactional recolouring, one orbit-state buffer,
   // mip replacements and the two in-flight display frames.
+  /// Diagnostics only: measures the visible view with and without a pyramid.
+  var coverageEnabled = true
   /// Diagnostics only: stands in for deep reference storage squeezing memory.
   var diagnosticResidentLimit: Int?
   private var residentLimit: Int {
@@ -109,12 +117,22 @@ struct TileStatistics: Equatable, Codable {
     return max(2 * 1024 * 1024, (budgetBytes - reserve) * 2 / 3)
   }
   private var tileCost = 1024 * 1024
-  private var rootReservation: Int { 4 * tileCost }
+  /// Root cells plus the first two zoom-out offsets, from the latest plan.
+  private var coverageFloorTiles = 4
+  /// The detail band yields to the root and the everyday 2-4x zoom-out, but
+  /// never to more than an eighth of the resident limit.
+  private var rootReservation: Int {
+    max(4 * tileCost, min(coverageFloorTiles * tileCost, residentLimit / 8))
+  }
   private var coverageReservation: Int {
     // Coverage uses bytes left after the visible band, but always keeps room
     // for the four root cells surrounding an anchor. Under extreme pressure
     // the sampling LOD yields before that root footprint disappears.
-    min(30 * 1024 * 1024, max(rootReservation, residentLimit - needed.count * tileCost))
+    // A tenth of the device budget, at least 30 MiB: a large Mac display
+    // needs about 35 tiles for the near ladder alone.
+    min(
+      max(30 * 1024 * 1024, budgetBytes / 10),
+      max(rootReservation, residentLimit - needed.count * tileCost))
   }
   private var coverageTileCapacity: Int {
     min(coverageTileLimit, coverageReservation / max(1, tileCost))
@@ -305,24 +323,60 @@ struct TileStatistics: Equatable, Codable {
     evict(reserving: 0)
     startWorker()
   }
+  private func replan() {
+    guard let demand = lastDemand else { return }
+    lastDemand = nil
+    update(
+      viewport: demand.viewport, size: demand.size, pixelWidth: demand.pixelWidth,
+      iterations: demand.iterations, override: demand.override, colouring: demand.colouring,
+      zoomDirection: demand.zoomDirection)
+  }
   private func configureCoverage(detailLevel: Int) {
+    guard coverageEnabled else {
+      coverage.removeAll()
+      nearCoverage.removeAll()
+      sparseCoverage.removeAll()
+      deferredCoverage.removeAll()
+      rootPlan.removeAll()
+      retainedRoot.removeAll()
+      coverageGroups.removeAll()
+      for record in records.values { record.isCoverage = false }
+      rebuildCoverageIndex()
+      return
+    }
     // Near offsets make the next eight zoom-out steps cheap.  The sparse tail
     // makes a long zoom-out drawable without eagerly walking an ancestor chain.
     let nearOffsets = Array(1...8)
-    let sparseOffsets = [12, 16, 24, 32, 48, 64, 96, 128, 192, 256, 384, 512]
-    func group(offset: Int) -> Set<TileKey> {
-      let target = max(minimumLevel, detailLevel - offset - 2)
-      return Set(grid.visible(viewport: viewport, size: size, level: target, zoomOut: offset))
+    let sparseOffsets = [16, 32, 64, 128, 256, 512]
+    // Quarter resolution (detail - offset - 2) is about a quarter of the screen
+    // in tiles per axis: 6-18 tiles on a phone, 20-35 on a large Mac display,
+    // so the whole ladder could never fit the reservation.  Each offset instead
+    // takes the finest level at or below quarter resolution whose projected
+    // view fits a few tiles.  The first two offsets, the everyday pinch-out,
+    // get a little more.
+    // Nothing zooms out past the minimum scale, so projecting further only
+    // buys cells no frame can show.
+    let furthest = max(1, Int(ceil(viewport.logScale - Viewport.minimumLogScale)))
+    func group(offset: Int) -> (level: Int, keys: Set<TileKey>) {
+      let maximumTiles = offset <= 2 ? 6 : 4
+      var target = max(minimumLevel, detailLevel - offset - 2)
+      while true {
+        let keys = grid.visible(viewport: viewport, size: size, level: target, zoomOut: offset)
+        if keys.count <= maximumTiles || target == minimumLevel { return (target, Set(keys)) }
+        target -= 1
+      }
     }
-    // Root is mandatory.  Then retain the useful 2–16× pinch-out levels before
-    // the distant sparse tail; each group is all-or-nothing to avoid holes.
+    // Root is mandatory.  Then the near ladder in order, then the sparse tail;
+    // each group is all-or-nothing to avoid holes.
     let root = Set(
       grid.visible(
         viewport: viewport, size: size, level: minimumLevel,
-        zoomOut: max(0, detailLevel - minimumLevel - 2)))
+        zoomOut: min(furthest, max(0, detailLevel - minimumLevel - 2))))
     var selected: Set<TileKey> = []
     func add(_ group: Set<TileKey>) -> Set<TileKey> {
-      guard selected.count + group.count <= coverageTileCapacity else { return [] }
+      guard selected.count + group.subtracting(selected).count <= coverageTileCapacity else {
+        return []
+      }
       selected.formUnion(group)
       return group
     }
@@ -348,14 +402,22 @@ struct TileStatistics: Equatable, Codable {
     selected.formUnion(retainedRoot)
     var near: Set<TileKey> = []
     var sparse: Set<TileKey> = []
-    // Alternate the bands.  Eight consecutive near levels exhaust the
-    // reservation on a real screen, which left a long zoom-out with nothing but
-    // the root; interleaving keeps a ladder out to the sparse tail as well.
-    for index in 0..<max(nearOffsets.count, sparseOffsets.count)
-    where selected.count < coverageTileCapacity {
-      if index < nearOffsets.count { near.formUnion(add(group(offset: nearOffsets[index]))) }
-      if index < sparseOffsets.count { sparse.formUnion(add(group(offset: sparseOffsets[index]))) }
+    var groups: [CoverageGroup] = []
+    planning: for (offsets, isNear) in [(nearOffsets, true), (sparseOffsets, false)] {
+      for requested in offsets {
+        let offset = min(requested, furthest)
+        let (level, keys) = group(offset: offset)
+        let added = add(keys)
+        groups.append(
+          CoverageGroup(offset: offset, level: level, tiles: keys.count, selected: !added.isEmpty))
+        if isNear { near.formUnion(added) } else { sparse.formUnion(added) }
+        // Past either point every further offset repeats this footprint.
+        if level == minimumLevel || offset == furthest { break planning }
+      }
     }
+    coverageGroups = groups
+    coverageFloorTiles = max(
+      4, plannedRoot.count + groups.filter { $0.offset <= 2 }.reduce(0) { $0 + $1.tiles })
     deferredCoverage = deferredCoverage.filter { near.contains($0.key) || sparse.contains($0.key) }
     for key in deferredCoverage.keys {
       deferredCoverage[key] = near.contains(key) ? .near : .sparse
@@ -553,12 +615,26 @@ struct TileStatistics: Equatable, Codable {
   private func evict(reserving bytes: Int) {
     retireFallback(now: ProcessInfo.processInfo.systemUptime)
     guard residentBytes + bytes > residentLimit else { return }
+    // Records the current frame still draws go last.  After a zoom-out the
+    // previous plan's coverage is no longer protected, yet it is the best
+    // picture of the newly exposed edges until their own tiles arrive.
+    let topLevel = visible.map(\.level).max() ?? minimumLevel
+    var drawnByLevel: [Int: Set<TileKey>] = [:]
+    func drawn(_ key: TileKey) -> Bool {
+      guard key.level <= topLevel else { return false }
+      if drawnByLevel[key.level] == nil {
+        drawnByLevel[key.level] = Set(
+          visible.filter { $0.level >= key.level }.map { $0.ancestor(at: key.level) })
+      }
+      return drawnByLevel[key.level]!.contains(key)
+    }
     for record in records.values.filter({
       !needed.contains($0.key) && !coverage.contains($0.key)
     })
+    .map({ (record: $0, drawn: drawn($0.key)) })
     .sorted(by: {
-      $0.lastUsed < $1.lastUsed
-    }) {
+      $0.drawn != $1.drawn ? !$0.drawn : $0.record.lastUsed < $1.record.lastUsed
+    }).map(\.record) {
       if residentBytes + bytes <= residentLimit { break }
       records.removeValue(forKey: record.key)
       counters.evictions += 1
@@ -849,7 +925,13 @@ struct TileStatistics: Equatable, Codable {
           self.evict(reserving: 0)
           self.failureAttempts.removeValue(forKey: key)
           self.error = nil
-          self.tileCost = max(samples.allocatedSize + colour.allocatedSize, self.tileCost)
+          let measuredCost = max(samples.allocatedSize + colour.allocatedSize, self.tileCost)
+          if measuredCost != self.tileCost {
+            self.tileCost = measuredCost
+            // The first plan guessed the tile size.  Replan with the real size,
+            // or an over-full plan stays deferred for as long as the view rests.
+            self.replan()
+          }
           self.counters.computed += 1
           if !self.needed.contains(key) && !self.coverage.contains(key) {
             self.counters.prefetched += 1

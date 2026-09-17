@@ -703,3 +703,41 @@ remain based on [the original derivation](https://mathr.co.uk/blog/2022-02-21_de
 Final `make test`, `make format-check`, `make ios` and `make ios-device` pass.
 Neither target phone was available: devicectl lists the iPhone 16 Pro as unavailable
 and no iPhone 11 Pro. Actual device validation remains outstanding.
+
+## 2.4 coverage: sized ladder and realistic budgets
+
+Measured headlessly on the Apple M1 Pro with `make tiles`, with each device's real
+budget. Drawables: phone 1206×2622 at 150 MiB, Mac 3456×2234 at 500 MiB. Each
+scene zooms in 1.12× per step for 48 steps, then settles.
+
+Each zoom-out offset now uses the finest level at or below quarter resolution
+whose projected view fits a few tiles: 6 for offsets 1–2, otherwise 4.
+Quarter resolution needed 6–18 tiles per offset on a phone and 20–35 on this
+Mac display. The sparse tail is 16…512 levels. Projections stop at the viewport's
+minimum scale. The coverage cap is a tenth of the budget (at least 30 MiB, and
+never more than the bytes left after the detail band). When choosing detail, the
+store reserves room for the root and offsets 1–2.
+
+| Settled scene | Coverage bytes available | Near offsets planned | Sparse offsets planned |
+| --- | ---: | ---: | ---: |
+| phone, shallow | 10 MiB | 2 of 8, plus root | — |
+| phone, 1e1000 | 30 MiB | 5 of 8 | 0 of 6 |
+| Mac, shallow | 50 MiB | 8 of 8, plus root | — |
+| Mac, 1e1000 | 50 MiB | 8 of 8 | 2 of 6 |
+
+On a phone, a full-resolution view uses almost all of the resident limit, so
+only the root and the 2–4× zoom-out are guaranteed. The test asserts exactly that;
+on the Mac it asserts the full near ladder. The chosen levels sit 3–4 levels below
+the detail level, so they are placeholders at 1/8–1/16 resolution.
+
+Cold jumps at 1024×768, 5,000 iterations, best of two runs per mode in the same
+process:
+
+| Cold jump | Visible view ready, with coverage | Without coverage |
+| --- | ---: | ---: |
+| c=i, 1e100 | 783.8 ms | 779.6 ms |
+| c=i, 1e1000 | 582.7 ms | 574.8 ms |
+
+The test allows 25% + 30 ms. Moving at 1e1000 (1024×768, 120 frames alternating
+zoom and pan, with the worker running): demand update p95 **0.49 ms** (limit 4 ms),
+frame plan p95 **0.37 ms** (limit 2 ms).
