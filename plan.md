@@ -157,58 +157,72 @@ Add debug overlays (tile borders and levels) to the Developer panel.
   renders go from minutes to seconds.
 - Golden tests at 1e50, 1e200 and 1e1000.
 
-**2.3 Automatic iteration depth.** Depth-based first estimate and manual detail
-multiplier implemented after the 2.2 review, with a one-million GPU cap and
-separate count/correction storage. Pixel-driven adaptation, periodicity checking
-and selective state continuation remain outstanding. Follow-up fixes retain
-escaped samples across limit changes and stream extendable reference orbits;
-capped tile pixels currently restart in bounded worker scratch. Two layers:
-- *Starting guess from depth:* `maxIter ≈ 200 + 80·log2(scale)`. That gives
-  200 at 1×, about 2,000 at 1e7 (which matches the FloatFloat evidence) and
-  about 27,000 at 1e100. Calibrate the constants against the golden locations.
-  This is only a first guess: near minibrots the needed depth grows with the
-  minibrot's period, not with zoom.
-- *Correction from data:* use the coarse pass (or the parent tile) to decide.
-  Without detecting interior points you can't tell a genuinely interior pixel
-  from one that needed more iterations, so this depends on periodicity checking
-  (2.10). Any pixels that hit the limit are then either known to be inside or
-  genuinely unresolved:
-  - raise the limit (to about 2× the current one) while more than about 0.1% of
-    pixels are unresolved;
-  - lower it (to about 2× the 99.9th percentile of escaped counts) when the
-    highest escaped count is below a quarter of the limit.
-  Use hysteresis, only raise during gestures, and only lower at idle, so
-  tiles don't flicker.
-- *Deep-zoom hint:* the perturbation reference orbit's escape iteration, or its
-  period, gives a strong estimate for free.
-- *Tile cache:* a tile stores which limit it was computed with. Raising the
-  limit only recomputes the pixels that hit the old limit; escaped counts stay
-  valid.
-- *Colouring:* palette mapping must depend on counts (for example relative to
-  the lowest escaped count in view), never on `maxIter`. Otherwise
-  auto-adjusting would shift the colours.
-- *UI:* the +/− controls become a "detail" multiplier on the automatic value.
-  Friends and family never need to touch it.
+**2.3 Automatic iteration depth.** ✅ Completed, except the parts that need
+periodicity checking, which move to 2.10. See the 2.3 sections in
+`Performance.md` and `Implementation.md`.
+- *Starting guess from depth:* `maxIter ≈ 200 + 80·log2(scale)`, rounded to 200.
+  Calibrated against the golden locations, no depth-only slope fits both: c = i
+  at 1e1000 escapes within about 2,700 iterations (the estimate gives 266,000),
+  while the period-312 minibrot at 1e100 needs up to 60,000 (the estimate gives
+  about 26,800). The slope stays generous, because the observed ceiling removes
+  overshoot once the view settles, while undershoot hides escaping detail.
+- *Lowering from data (done):* once every visible tile is complete, cap the
+  automatic limit at 2× the highest escaped count in view when that count is
+  below a quarter of the limit. Deviation: the maximum, not the 99.9th
+  percentile, which makes lowering exact (nothing escapes between the maximum
+  and the old limit, so the picture is unchanged). Counts 1.5× those the ceiling
+  came from release it; further zoom grows it at the estimate's slope. Decreases
+  still wait 300 ms after input and motion stop.
+- *Raising from data (→ 2.10):* raise while more than about 0.1% of pixels are
+  unresolved. Without interior detection a capped pixel may be inside the set,
+  so this needs periodicity checking.
+- *Deep-zoom hint (→ 2.10):* the reference orbit's period or escape iteration.
+- *Tile cache (done):* each tile stores its limit and highest escaped count.
+  A decrease recomputes nothing. A raise re-samples only capped pixels and
+  recolours only when a record holds a count the old limit coloured as capped.
+  A tile with no capped pixels is exact at any higher limit. Capped pixels
+  restart from iteration 0 instead of resuming (→ 2.10, re-measure): once
+  periodicity marks interior pixels, few genuinely unresolved pixels remain, and
+  retained orbit state would cost 1–3 MB per tile.
+- *Colouring (done):* palette phase depends on counts; the limit only marks
+  counts at or above it as capped.
+- *UI (done):* automatic by default, with a detail multiplier (Settings,
+  ⌘[ / ⌘]) and a manual mode.
 
-**2.4 Coverage pyramid.** Completed. Alongside the visible-detail cache, a
+**2.4 Coverage pyramid.** ✅ Completed. Alongside the visible-detail cache, a
 bounded pyramid of coarse tiles keeps zooming out drawable after cold jumps.
-- *Selection and storage.* The current implementation projects the axis-aligned
-  future viewport through offsets 1…8 and a sparse 12…512 tail, with a direct
-  root request. It reserves up to 30 MiB of bytes left after the required visible
-  band, always including the root's four-cell anchor footprint (and at most 40 separately marked, LRU-protected raw tiles), selecting
-  root then near offsets before sparse ones.
-  Pressure defers an unfit coverage request rather than spinning or exceeding
-  the resident budget. Coverage participates in palette recolouring, but uses
-  its own level estimate and is never extended by a detail-limit increase.
-- *Scheduling and composition.* The root is scheduled first, then the local
-  preview/visible band, near coverage, sparse coverage and zoom-in prefetch.
-  Bounds-based direct coverage lookup bypasses the 62-level ancestor limit.
-  Old-anchor coverage stays as fallback until a new root has completed.
-- *Tests.* Unit coverage projection tests and headless deep cold-jump/128×
-  zoom-out magenta-sentinel checks verify bounded, hole-free composition. A
-  constrained phone-shaped pressure trace verifies worker progress, the byte
-  reservation, and non-extension. The root remains grid-anchor-relative rather
-  than fixed-world-relative; 2.5 rotation must expand the projected footprint.
+- *Selection.* The root footprint plus near offsets 1…8 and a sparse tail
+  16…512, in that priority order, each group all-or-nothing. Projections stop
+  at the viewport's minimum scale. Deviation: quarter resolution (L − j − 2)
+  needs 6–18 tiles per offset on a phone and 20–35 on a large Mac display, so
+  each offset takes the finest level at or below it that fits 6 tiles (offsets
+  1–2) or 4. In practice that is 1/8–1/16 resolution.
+- *Storage.* Coverage records are marked separately, protected from LRU,
+  recoloured with the palette, sampled at their own level's estimate, and never
+  extended. The cap is a tenth of the budget (at least 30 MiB, at most 64 tiles),
+  never more than the bytes left after the detail band. Choosing detail reserves
+  the root and offsets 1–2. On a phone at 150 MiB a full-resolution view leaves
+  room for about that much; a Mac at 500 MiB holds the whole near ladder.
+- *Memory pressure.* A coverage tile makes room by discarding lower-priority
+  coverage (farthest first). The root is never deferred; deferred coverage
+  returns when a tile fits again. Only the planned root footprint, plus up to
+  nine cells of earlier footprints until it completes, is protected; other
+  root-level records are ordinary LRU entries. Eviction removes records the
+  current frame still draws last.
+- *Scheduling and composition.* Root first, then the local preview/visible
+  band, near coverage, sparse coverage and zoom-in prefetch. Bounds-based coverage
+  lookup bypasses the 62-level ancestor limit. Old-anchor coverage stays as
+  fallback until a new root has completed. Zoom-out prefetch is satisfied by the
+  protected band: levels L − 1 and L − 2 are computed with the view.
+- *Accepted deviation.* The root is relative to the current grid anchor, not a
+  fixed world anchor, and is recomputed after re-anchoring (one cheap tile).
+- *Tests.* Projection unit tests, including at 1e1000; sentinel-free long
+  zoom-outs after a cold deep jump; phone- and Mac-shaped sweeps at real budgets,
+  shallow and at 1e1000, under a watchdog; 2×, 4× and 16× zoom-outs served
+  from their planned levels; cold-jump latency with coverage on and off;
+  update and plan p95 while moving at 1e1000; a pan through empty space;
+  deferral under pressure and its recovery. 2.5 rotation must expand the
+  projected footprint.
 
 **2.5 Navigation feel: trackpad panning, rotation, gentle bounds.**
 - *Mac two-finger scrolling pans.* When `hasPreciseScrollingDeltas` is true
@@ -274,7 +288,15 @@ PNG with the location embedded in the metadata. Shares code with the CLI
 
 **2.10 Cheap performance wins.** Skip the main cardioid and the period-2 bulb,
 and use periodicity checking for points inside the set. Measure each as a
-benchmark variant.
+benchmark variant. Then finish 2.3, which needs interior detection:
+- *Raise from data:* raise the limit (to about 2× the current one) while more
+  than about 0.1% of pixels are unresolved, i.e. capped but not known interior.
+  Keep hysteresis alongside the observed ceiling from 2.3.
+- *Deep-zoom hint:* use the reference orbit's period, or its escape iteration,
+  as a depth estimate.
+- *Resuming capped pixels:* re-measure how much a raise re-samples once interior
+  pixels are resolved. Only add bounded state retention if it is still
+  significant.
 
 **2.11 Device validation and resilience.** Hands-on testing found problems the
 headless tests missed, so real devices get a dedicated pass. The iPhone 11 Pro

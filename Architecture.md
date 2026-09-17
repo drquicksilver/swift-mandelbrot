@@ -151,8 +151,10 @@ benchmark excludes those renderers when the requested count is larger.
 row-major, top to bottom. `--samples` remains the compatible, lossy Float32 export
 and requires a limit <=65,535. Output destinations must differ.
 
-This completes the depth-based first estimate from 2.3, not pixel-driven
-adaptation, periodicity checking, or selective extension of capped samples.
+Automatic depth is the depth estimate, capped by an observed ceiling: twice the
+highest escaped count once every visible tile is complete (`IterationPolicy.observe`).
+Raising from data, periodicity checking and selective extension of capped samples
+belong to 2.10.
 Extending capped tiles should preserve escaped samples, but retaining a full orbit
 buffer costs about 1 MiB per tile. Design bounded/selective state retention with
 2.3; storing coordinates alone only enables recomputation. Larger GPU batches and
@@ -218,8 +220,8 @@ fixed-point arithmetic. Returning shallow restores the canonical shallow grid;
 after the old worker stops, deep references and spare state buffers are released.
 HUD CPU preparation timing is separate from GPU timing.
 Full-image benchmarks create fresh streamed references, so end-to-end results
-include the reference prefix actually needed, without cache hits. Iteration state retention and pixel-driven
-adaptation remain 2.3.
+include the reference prefix actually needed, without cache hits. Iteration state retention and raising the limit
+from pixel data belong to 2.10.
 
 Settings → About → Acknowledgements displays the bundled BigInt MIT notice and
 algorithm credits. The existing licence resource is verified in built iOS apps.

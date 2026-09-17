@@ -256,3 +256,33 @@ skip removes the key from every coverage queue, preventing the main-actor retry
 spin found in review. Unit and headless tests cover projected selection, a
 phone-shaped constrained budget, non-extension, and a sentinel-free 128× deep
 zoom-out after a cold jump. `make test` and `make format-check` pass.
+
+### 2.3 and 2.4 completion
+
+A review on 2026-09-17 found 2.4's root missing past about 1e308 (fixed in
+`909d32d`) and three open follow-up findings, and 2.3 half done.
+
+**2.4.**
+- Root coverage is bounded: the planned footprint plus up to nine retained cells.
+- The root is never deferred, and deferred coverage returns when memory eases.
+- Each zoom-out offset is sized to fit a few tiles instead of quarter resolution.
+- Projections stop at the minimum scale.
+- The store replans when the measured tile size changes.
+- The coverage cap scales with the budget, and choosing detail reserves the root
+  and offsets 1–2.
+- Eviction keeps records the current frame still draws.
+
+New headless checks run phone- and Mac-shaped drawables at their real budgets
+(with a watchdog), zoom-out quality, cold-jump latency with coverage on and
+off, and moving preparation cost. See `Performance.md`.
+
+**2.3.**
+- The viewer lowers the automatic limit to twice the highest escaped count in a
+  settled view; this is exact, and higher counts release it.
+- A raise recolours only when it reveals counts coloured as capped.
+- Tiles with no capped pixels are no longer stand-ins after a raise.
+- The iteration reuse diagnostic now runs at a size where extension actually
+  happens.
+
+Raising from data, the reference-orbit hint and resuming capped pixels move to
+2.10. `make test`, strict formatting of the changed files and `make ios` pass.
