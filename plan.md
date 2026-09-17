@@ -224,43 +224,33 @@ bounded pyramid of coarse tiles keeps zooming out drawable after cold jumps.
   deferral under pressure and its recovery. 2.5 rotation must expand the
   projected footprint.
 
-**2.5 Navigation feel: trackpad panning, rotation, gentle bounds.**
-- *Mac two-finger scrolling pans.* When `hasPreciseScrollingDeltas` is true
-  (trackpad, Magic Mouse), `scrollWheel` pans by `scrollingDeltaX/Y` instead of
-  zooming; the deltas already follow the system's natural-scrolling setting.
-  Continue panning through AppKit's momentum events (`momentumPhase`) rather
-  than adding our own inertia, and treat the end of momentum, not finger lift,
-  as the end of the interaction for automatic iteration depth. Physical mouse
-  wheels (imprecise deltas) still zoom at the cursor. ⌘-scroll also zooms on a
-  trackpad.
-- *Twist to rotate, together with pinch.* On iOS, track the two touches directly
-  and solve for the pan, scale and rotation that keep the point under each finger
-  pinned. This replaces three separately updating recognisers with one gesture.
-  On the Mac, handle `rotate(with:)` alongside `magnify(with:)`, which arrive
-  interleaved, and rotate about the cursor. Ignore the first ~10° of twist during
-  a pinch so zooming doesn't leave the view tilted. Snap to 0° (and perhaps 90°)
-  within ±3°, with a haptic tick on iPhone. While rotated, show a compass button
-  that animates back to 0°. Rotation inertia uses the same frame-rate-independent
-  decay as pan and zoom.
-- *Rotation in the architecture.*
-  - `Viewport` gains an `angle`, applied in every conversion: `preciseComplex`,
-    `screen(for:)`, pan, zoom anchors and rectangle-zoom `fit`. Rotation applies
-    to Double offsets from the screen centre, so precision is unaffected at any
-    depth.
-  - Tiles stay axis-aligned in the complex plane, so rotation invalidates nothing.
-    The compositor draws rotated quads; perturbation, BLA, mipmaps and blending
-    don't change.
-  - `visible()` must cover the actual rotated rectangle. Covering its
-    axis-aligned bounding box needs about 2.2× the tiles on a 16:9 screen at 45°.
-  - The angle is stored wherever a view is: bookmarks and share links (2.6),
-    exports and the CLI (`--rotation`), zoom movies (2.8).
-  - Tests: a rotated-compositor golden, and a round trip of the conversions with
-    rotation.
-- *Gentle bounds.* Zooming out past the whole set, or panning far into empty
-  space, springs back so part of the set stays in view. Reaching the precision
-  limit bounces rather than stopping dead. The springs use the same analytic
-  motion model as inertia, so they're frame-rate independent and combine with a
-  fling.
+**2.5 Navigation feel: trackpad panning, rotation, gentle bounds.** ✅ Completed.
+- *Mac two-finger scrolling pans.* Precise deltas pan and follow the system's
+  natural-scrolling setting; AppKit momentum continues the pan and the
+  interaction ends with momentum, not with the fingers. Wheels and ⌘-scroll zoom
+  at the cursor. `rotate(with:)` rotates about the cursor, interleaved with
+  `magnify(with:)`.
+- *Twist to rotate.* iOS tracks the two touches itself and solves for the
+  transform pinning both fingers (rotate and scale about the previous midpoint,
+  then translate), replacing the pan and pinch recognisers. The first 10° of
+  twist are ignored, snapping is within ±3° of a right angle with a haptic tick
+  on iPhone, and a compass button animates back to upright. Rotation inertia
+  shares the pan/zoom decay.
+- *Rotation in the architecture.* `Viewport.angle` applies to Double offsets
+  from the screen centre, so precision is unaffected; tiles stay axis-aligned
+  and the compositor draws rotated quads; `visible()` covers the rotated
+  bounding box (`Viewport.coverage`). The angle is stored in the CLI
+  (`--rotation`, tile pipeline), bookmarks and share links (2.6) and zoom
+  movies (2.8).
+- *Gentle bounds.* Zooming out past the whole set springs back to it; panning
+  into empty space springs back until part of the set is in view; the precision
+  limit bounces. All use `Motion.approach`, the same analytic decay as inertia.
+- *Tests.* Rotated conversion round trips shallow and deep, rotated `visible()`
+  corner coverage, a 30° product golden against the independent oracle, a
+  rotated-compositor check, and a frame-by-frame model check of the twist
+  threshold, snap, compass, inertia, springs at two refresh rates and the bounce.
+- *Deviation.* The lab renderers (`--pipeline legacy`/`gpu`) sample axis-aligned
+  rows and reject `--rotation`; 2.14 removes that path from the viewer anyway.
 
 **2.6 Locations: bookmarks, history, sharing.** A `Location` type (center
 stored as an arbitrary-precision decimal string, scale, iterations, palette).
