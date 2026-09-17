@@ -3,6 +3,79 @@
   import CoreGraphics
 
   extension TileDiagnostics {
+    /// Locations, history and bookmarks, driven through the model the UI uses.
+    static func checkLocations() async throws {
+      let defaults = UserDefaults(suiteName: "MandelbrotDiagnostics")!
+      defaults.removeObject(forKey: "DiagnosticBookmarks")
+      let store = LocationStore(defaults: defaults, key: "DiagnosticBookmarks")
+      let model = ExplorerModel(bookmarks: store)
+      model.resize(CGSize(width: 800, height: 500), displayScale: 2)
+
+      // Opening a shared link moves the view, its rotation, palette and detail.
+      guard let deep = Location.gallery.first(where: { $0.scale == "1e100" }) else {
+        throw GPUFailure("The gallery lost its deep location")
+      }
+      model.open(deep.url)
+      try require(model.locationError == nil, "A gallery link failed to open")
+      let deepView = try deep.viewport()
+      try require(
+        abs(model.viewport.logScale - deepView.logScale) < 1e-9
+          && model.colouring == deep.colouring && !model.automaticIterations
+          && model.iterations == 60_000,
+        "A link did not restore the view it described")
+      // A bad link reports itself and leaves the view alone.
+      let before = model.viewport
+      model.open(URL(string: "mandelbrot://view?re=0&im=0")!)
+      try require(
+        model.locationError != nil && model.viewport == before,
+        "A malformed link was not reported, or moved the view")
+
+      // History records settled views and steps back and forward.
+      model.apply(Location.gallery[0])
+      try require(model.automaticIterations, "A gallery location did not restore automatic depth")
+      let whole = model.viewport
+      model.apply(Location.gallery[1])
+      let second = try Location.gallery[1].viewport()
+      try require(
+        model.canGoBack && !model.canGoForward, "Applying a location did not record history")
+      model.goBack()
+      try require(
+        model.viewport == whole && model.canGoForward,
+        "Back did not return to the previous settled view")
+      model.goForward()
+      try require(
+        abs(model.viewport.logScale - second.logScale) < 1e-9,
+        "Forward did not return to the newer view")
+      // Small moves do not fill the history; a big one does.
+      let depth = model.viewport.logScale
+      model.pan(CGSize(width: 4, height: 0))
+      model.recordHistory()
+      try require(
+        abs(model.viewport.logScale - depth) < 1e-9 && !model.canGoForward,
+        "A nudge cleared the forward history")
+      let steps = model.canGoBack
+      model.zoom(64, at: CGPoint(x: 400, y: 250))
+      model.recordHistory()
+      try require(model.canGoBack && steps, "A large zoom was not recorded")
+
+      // Bookmarks persist, rename and delete.
+      model.bookmarkCurrentView(named: "Test spot")
+      try require(store.bookmarks.first?.name == "Test spot", "Bookmarking did not store the view")
+      let reloaded = LocationStore(defaults: defaults, key: "DiagnosticBookmarks")
+      try require(
+        reloaded.bookmarks.count == 1 && reloaded.bookmarks[0].real == store.bookmarks[0].real,
+        "Bookmarks did not survive a reload")
+      store.rename(store.bookmarks[0], to: "Renamed")
+      try require(
+        LocationStore(defaults: defaults, key: "DiagnosticBookmarks").bookmarks[0].name
+          == "Renamed", "Renaming a bookmark did not persist")
+      store.remove(store.bookmarks[0])
+      try require(
+        LocationStore(defaults: defaults, key: "DiagnosticBookmarks").bookmarks.isEmpty,
+        "Removing a bookmark did not persist")
+      defaults.removeObject(forKey: "DiagnosticBookmarks")
+      model.setActive(false)
+    }
     /// Rotation, snapping, the compass and the gentle bounds all animate through
     /// `advanceMotion`, so they are driven here exactly as the display drives them.
     static func checkRotationAndBounds() async throws {

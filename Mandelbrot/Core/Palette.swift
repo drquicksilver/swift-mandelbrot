@@ -7,7 +7,7 @@ struct ColourSettings: Equatable, Sendable {
   var smooth = true
 }
 
-enum Palette: String, CaseIterable, Identifiable, Sendable {
+enum Palette: String, CaseIterable, Identifiable, Sendable, Codable {
   case blueGold = "blue-gold"
   case fire, ice, ink, twilight, forest, orbit
   var id: String { rawValue }

@@ -31,6 +31,13 @@ struct ContentView: View {
           )
           .padding(.top, 16)
       }
+      if let error = model.locationError {
+        Text(error).font(.caption).padding(10)
+          .background(.regularMaterial, in: Capsule())
+          .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+          .padding(.top, 56)
+          .onTapGesture { model.locationError = nil }
+      }
       if let error = model.error {
         Text(error).padding().background(.regularMaterial).frame(
           maxWidth: .infinity, maxHeight: .infinity)
@@ -40,6 +47,10 @@ struct ContentView: View {
       .overlay(alignment: .topTrailing) {
         HStack(spacing: 0) {
           viewerButton("Reset", icon: "house") { model.perform(.reset) }
+          if model.canGoBack {
+            viewerButton("Back", icon: "chevron.backward") { model.perform(.back) }
+          }
+          viewerButton("Places", icon: "bookmark") { model.showPlaces = true }
           viewerButton("Settings", icon: "slider.horizontal.3") { model.showSettings = true }
           viewerButton("Controls", icon: "questionmark.circle") { model.showHelp = true }
         }
@@ -48,6 +59,7 @@ struct ContentView: View {
         .padding(12)
       }
     #endif
+    .onOpenURL { url in model.open(url) }
     .onChange(of: scenePhase) { _, phase in model.setActive(phase == .active) }
     .onDisappear { model.setActive(false) }
     .onAppear { model.setActive(true) }
@@ -68,6 +80,26 @@ struct ContentView: View {
           }
         }
         Button {
+          model.perform(.back)
+        } label: {
+          Label("Back", systemImage: "chevron.backward")
+        }
+        .disabled(!model.canGoBack)
+        Button {
+          model.perform(.forward)
+        } label: {
+          Label("Forward", systemImage: "chevron.forward")
+        }
+        .disabled(!model.canGoForward)
+        Button {
+          model.showPlaces = true
+        } label: {
+          Label("Places", systemImage: "bookmark")
+        }
+        ShareLink(item: model.location.url) {
+          Label("Share", systemImage: "square.and.arrow.up")
+        }
+        Button {
           model.showSettings = true
         } label: {
           Label("Settings", systemImage: "slider.horizontal.3")
@@ -83,6 +115,7 @@ struct ContentView: View {
     .sheet(isPresented: $model.showBenchmark) {
       BenchmarkView(viewport: model.viewport, iterations: model.iterations)
     }
+    .sheet(isPresented: $model.showPlaces) { PlacesView(model: model) }
     .sheet(isPresented: $model.showSettings) { AppearanceView(model: model) }
     .sheet(isPresented: $model.showHelp) { HelpView() }
     .focusedSceneValue(\.explorer, model)

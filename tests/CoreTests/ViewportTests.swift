@@ -98,3 +98,55 @@ import Testing
     }
   }
 }
+
+@Test func locationsSurviveLinksAndViewports() throws {
+  // A deep, rotated, hand-tuned view survives the round trip to a link.
+  var deep = try Viewport(real: "0", imag: "1", zoom: "1e1000")
+  deep.angle = Viewport.normalised(37 * .pi / 180)
+  let original = Location(
+    viewport: deep, iterations: 5000,
+    colouring: ColourSettings(palette: .fire, density: 512, offset: 0.25), name: "Deep spiral")
+  let parsed = try Location(url: original.url)
+  #expect(parsed.real == original.real && parsed.imag == original.imag)
+  #expect(parsed.scale == original.scale && parsed.name == "Deep spiral")
+  #expect(parsed.iterations == 5000 && parsed.palette == .fire)
+  #expect(abs(parsed.rotationDegrees - 37) < 1e-9)
+  #expect(parsed.colouring == original.colouring)
+  // And the viewport it rebuilds is the same view, to well under a pixel.
+  let rebuilt = try parsed.viewport()
+  #expect(abs(rebuilt.logScale - deep.logScale) < 1e-9)
+  #expect(abs(Viewport.normalised(rebuilt.angle - deep.angle)) < 1e-9)
+  let size = CGSize(width: 800, height: 500)
+  let screen = rebuilt.screen(for: deep.preciseCenter, in: size)
+  #expect(abs(screen.x - 400) < 0.01 && abs(screen.y - 250) < 0.01)
+  // Automatic depth stays automatic, and the default palette stays out of the link.
+  let shallow = Location(viewport: Viewport(), iterations: nil)
+  #expect(shallow.url.absoluteString == "mandelbrot://view?re=-0.5&im=0.0&zoom=1.0")
+  #expect(try Location(url: shallow.url).iterations == nil)
+  // A universal-link form parses the same way.
+  let web = try Location(
+    url: URL(string: "https://example.com/mandelbrot/view?re=-0.5&im=0&zoom=1e6&rot=90")!)
+  #expect(web.rotationDegrees == 90 && web.scale == "1e6")
+  for bad in [
+    "mandelbrot://view?re=-0.5&im=0", "mandelbrot://other?re=0&im=0&zoom=1",
+    "https://example.com/nope?re=0&im=0&zoom=1", "mandelbrot://view?re=9&im=0&zoom=1",
+    "mandelbrot://view?re=0&im=0&zoom=1e9999", "mandelbrot://view?re=0&im=0&zoom=1&palette=none",
+    "mandelbrot://view?re=0&im=0&zoom=1&iter=0", "mandelbrot://view?re=0&im=0&zoom=1&rot=400",
+    "mandelbrot://view?re=x&im=0&zoom=1",
+  ] {
+    #expect(throws: (any Error).self) { try Location(url: URL(string: bad)!) }
+  }
+}
+
+@Test func galleryLocationsAreValidAndDistinct() throws {
+  #expect(Location.gallery.count >= 8)
+  var seen: Set<String> = []
+  for place in Location.gallery {
+    let view = try place.viewport()
+    #expect(!place.name.isEmpty)
+    #expect(abs(view.center.x) <= 4 && abs(view.center.y) <= 4)
+    #expect(view.logScale >= Viewport.minimumLogScale)
+    #expect(try Location(url: place.url).real == place.real)
+    #expect(seen.insert(place.name).inserted)
+  }
+}

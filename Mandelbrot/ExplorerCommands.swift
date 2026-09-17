@@ -2,7 +2,7 @@ import SwiftUI
 
 enum ExplorerCommand: String, CaseIterable, Identifiable {
   case reset, zoomIn, zoomOut, left, right, up, down, increaseIterations, decreaseIterations,
-    rotateLeft, rotateRight, resetRotation, benchmark, help
+    rotateLeft, rotateRight, resetRotation, back, forward, places, bookmark, benchmark, help
   var id: String { rawValue }
   var title: String {
     switch self {
@@ -18,6 +18,10 @@ enum ExplorerCommand: String, CaseIterable, Identifiable {
     case .rotateLeft: return "Rotate Left"
     case .rotateRight: return "Rotate Right"
     case .resetRotation: return "Upright"
+    case .back: return "Back"
+    case .forward: return "Forward"
+    case .places: return "Places"
+    case .bookmark: return "Bookmark This View"
     case .benchmark: return "Benchmarks"
     case .help: return "Controls"
     }
@@ -36,6 +40,10 @@ enum ExplorerCommand: String, CaseIterable, Identifiable {
     case .rotateLeft: return ","
     case .rotateRight: return "."
     case .resetRotation: return "u"
+    case .back: return .leftArrow
+    case .forward: return .rightArrow
+    case .places: return "l"
+    case .bookmark: return "d"
     case .benchmark: return "b"
     case .help: return "/"
     }
@@ -43,6 +51,7 @@ enum ExplorerCommand: String, CaseIterable, Identifiable {
   var modifiers: EventModifiers {
     switch self {
     case .left, .right, .up, .down: return []
+    case .back, .forward: return [.command, .shift]
     case .reset, .help: return [.shift]
     // Command-comma belongs to Settings, so twisting takes Shift as well.
     case .rotateLeft, .rotateRight: return [.command, .shift]
@@ -63,6 +72,10 @@ enum ExplorerCommand: String, CaseIterable, Identifiable {
     case .rotateLeft: return "⌘ ⇧ ,"
     case .rotateRight: return "⌘ ⇧ ."
     case .resetRotation: return "⌘ U"
+    case .back: return "⌘ ⇧ ←"
+    case .forward: return "⌘ ⇧ →"
+    case .places: return "⌘ L"
+    case .bookmark: return "⌘ D"
     case .benchmark: return "⌘ B"
     case .help: return "?"
     }
@@ -127,7 +140,9 @@ struct ExplorerCommands: Commands {
         var expected = NSEvent.ModifierFlags()
         if command.modifiers.contains(.command) { expected.insert(.command) }
         if command.modifiers.contains(.shift) { expected.insert(.shift) }
-        let arrow: [ExplorerCommand: UInt16] = [.left: 123, .right: 124, .down: 125, .up: 126]
+        let arrow: [ExplorerCommand: UInt16] = [
+          .left: 123, .right: 124, .down: 125, .up: 126, .back: 123, .forward: 124,
+        ]
         let matches =
           arrow[command] == event.keyCode
           || (command == .help

@@ -3,8 +3,10 @@ import SwiftUI
 
 @MainActor final class ExplorerModel: ObservableObject {
   let tiles = TileStore()
+  let bookmarks: LocationStore
   private var tileObservation: AnyCancellable?
-  init() {
+  init(bookmarks: LocationStore? = nil) {
+    self.bookmarks = bookmarks ?? LocationStore()
     // Settled views report their escaped counts; each report may lower the
     // automatic limit.  Delivered after the publishing call returns.
     tileObservation = tiles.$statistics.receive(on: DispatchQueue.main).sink { [weak self] _ in
@@ -51,7 +53,7 @@ import SwiftUI
         updateDepth()
         observeDepth()
         // Springs run after the interaction, never during it.
-        if isAnimating { motionActive = true }
+        if isAnimating { motionActive = true } else { recordHistory() }
       }
     }
   }
@@ -118,6 +120,95 @@ import SwiftUI
   @Published var showHUD = false
   @Published var showTileOverlay = false
   @Published var selection: CGRect?
+  @Published var showPlaces = false
+  @Published var locationError: String?
+  /// Back and forward history of settled views.  A view is recorded when it
+  /// settles and differs from the last record by more than half a zoom level, a
+  /// quarter of the screen, or two degrees.
+  @Published private(set) var canGoBack = false
+  @Published private(set) var canGoForward = false
+  private var history: [Location] = []
+  private var future: [Location] = []
+  private var recorded: Viewport?
+  var location: Location {
+    Location(
+      viewport: viewport, iterations: automaticIterations ? nil : iterations, colouring: colouring)
+  }
+  private func differsFromRecord(_ view: Viewport) -> Bool {
+    guard let recorded else { return true }
+    if abs(view.logScale - recorded.logScale) > 0.5 { return true }
+    if abs(Viewport.normalised(view.angle - recorded.angle)) > 2 * .pi / 180 { return true }
+    let moved = recorded.screen(for: view.preciseCenter, in: size)
+    return hypot(moved.x - size.width / 2, moved.y - size.height / 2) > size.width / 4
+  }
+  private func push(_ view: Viewport) {
+    history.append(
+      Location(
+        viewport: view, iterations: automaticIterations ? nil : iterations, colouring: colouring))
+    if history.count > 100 { history.removeFirst(history.count - 100) }
+    future.removeAll()
+  }
+  /// Records the view it is leaving, once the current one has come to rest and
+  /// moved far enough to be a different place.
+  func recordHistory() {
+    guard differsFromRecord(viewport) else { return }
+    if let recorded { push(recorded) }
+    recorded = viewport
+    canGoBack = !history.isEmpty
+    canGoForward = !future.isEmpty
+  }
+  func goBack() {
+    guard let previous = history.popLast() else { return }
+    let current = Location(
+      viewport: viewport, iterations: automaticIterations ? nil : iterations, colouring: colouring)
+    apply(previous, record: false)
+    future.append(current)
+    canGoForward = true
+  }
+  func goForward() {
+    guard let next = future.popLast() else { return }
+    let current = Location(
+      viewport: viewport, iterations: automaticIterations ? nil : iterations, colouring: colouring)
+    apply(next, record: false)
+    history.append(current)
+    canGoBack = true
+  }
+  /// Moves to a location: the view, its rotation, its palette and its detail.
+  func apply(_ location: Location, record: Bool = true) {
+    guard let view = try? location.viewport() else {
+      locationError = "That location could not be opened."
+      return
+    }
+    // Jumping somewhere always records where it came from, however near it is.
+    if record, let recorded, recorded != view { push(recorded) }
+    stopMotion()
+    colouring = location.colouring
+    if let limit = location.iterations {
+      automaticIterations = false
+      manualIterations = limit
+    } else {
+      automaticIterations = true
+    }
+    viewport = view
+    recorded = view
+    canGoBack = !history.isEmpty
+    canGoForward = !future.isEmpty
+    locationError = nil
+  }
+  func open(_ url: URL) {
+    do {
+      apply(try Location(url: url))
+    } catch {
+      locationError = String(describing: error)
+    }
+  }
+  func bookmarkCurrentView(named name: String? = nil) {
+    var place = location
+    place.name =
+      name?.isEmpty == false
+      ? name! : "\(viewport.scaleDescription.prefix(12))× view"
+    bookmarks.add(place)
+  }
   var motion = Motion()
   @Published private(set) var motionActive = false
   var motionAnchor: CGPoint?
@@ -250,7 +341,10 @@ import SwiftUI
     viewport = next
     if motionActive != isAnimating {
       motionActive = isAnimating
-      if !motionActive { observeDepth() }
+      if !motionActive {
+        observeDepth()
+        recordHistory()
+      }
     }
   }
   @Published var atPrecisionLimit = false
@@ -307,6 +401,10 @@ import SwiftUI
     case .rotateLeft: rotate(-.pi / 12)
     case .rotateRight: rotate(.pi / 12)
     case .resetRotation: resetRotation()
+    case .back: goBack()
+    case .forward: goForward()
+    case .places: showPlaces.toggle()
+    case .bookmark: bookmarkCurrentView()
     case .benchmark: showBenchmark.toggle()
     case .help: showHelp.toggle()
     }

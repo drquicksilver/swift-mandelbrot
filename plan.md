@@ -252,11 +252,29 @@ bounded pyramid of coarse tiles keeps zooming out drawable after cold jumps.
 - *Deviation.* The lab renderers (`--pipeline legacy`/`gpu`) sample axis-aligned
   rows and reject `--rotation`; 2.14 removes that path from the viewer anyway.
 
-**2.6 Locations: bookmarks, history, sharing.** A `Location` type (center
-stored as an arbitrary-precision decimal string, scale, iterations, palette).
-Back and forward history. A universal link or `mandelbrot://` URL scheme, and
-the share sheet. A starter gallery of famous spots, which doubles as onboarding
-for friends and family.
+**2.6 Locations: bookmarks, history, sharing.** ✅ Completed.
+- *`Location`.* Centre as arbitrary-precision decimal strings, scale as a
+  decimal string, rotation in degrees, iteration limit (nil means automatic),
+  palette, density and offset. Codable, so it serves bookmarks, links and
+  (later) a movie's keyframes.
+- *Links.* `mandelbrot://view?re=…&im=…&zoom=…&rot=…&iter=…&palette=…`, with the
+  scheme registered on both platforms, `.onOpenURL` applying it, and `ShareLink`
+  in the toolbar and next to every place. The parser also accepts the matching
+  universal-link path, so a shared link keeps working if the site serves one,
+  and it rejects anything the renderer cannot represent.
+- *History.* Back and forward over settled views, recorded when the view comes
+  to rest and has moved more than half a zoom level, a quarter of the screen or
+  two degrees; jumping to a place always records where it came from. ⌘⇧← / ⌘⇧→.
+- *Bookmarks.* Saved as JSON in user defaults, with rename and delete, capped at
+  200. ⌘D bookmarks the current view.
+- *Gallery.* Nine famous places (whole set, Seahorse and Elephant valleys,
+  Triple Spiral, Scepter Valley, a mini Mandelbrot, Feather, the point i, and
+  the period-312 minibrot at 1e100), shown in the Places sheet (⌘L) with the
+  bookmarks.
+- *Tests.* Round trips through links and viewports including a deep rotated view
+  and nine rejection cases; every gallery entry parses, is in range and is
+  distinct; a headless model check of opening links, history, and bookmark
+  persistence, renaming and deletion; the built app's URL scheme is verified.
 
 **2.7 Julia companion.** A picture-in-picture panel (iPad and Mac:
 side-by-side, iPhone: a corner inset) showing the Julia set for the point under
