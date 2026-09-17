@@ -13,7 +13,7 @@ struct TileStatistics: Equatable, Codable {
   var tiles = 0, bytes = 0, computed = 0, cancelled = 0, batches = 0, cacheHits = 0, evictions = 0
   var demandUpdates = 0
   var updateMS = 0.0, presentationFPS = 0.0
-  var mipmaps = 0, prefetched = 0, pending = 0, budgetBytes = 0
+  var mipmaps = 0, prefetched = 0, pending = 0, budgetBytes = 0, recolours = 0
   var longestBatchMS = 0.0, frameMS = 0.0, frameP95MS = 0.0, frameMaxMS = 0.0
 }
 @MainActor final class TileRecord {
@@ -24,6 +24,8 @@ struct TileStatistics: Equatable, Codable {
   let readyAt: Double
   let iterations: Int
   var cappedPixels = TileGrid.textureSize * TileGrid.textureSize
+  /// The highest escaped count in the samples, or zero when none escaped.
+  var maximumEscaped = 0
   var lastUsed: UInt64 = 0
   var isMip = false
   /// Coverage tiles are deliberately retained across ordinary LRU pressure.
@@ -246,7 +248,8 @@ struct TileStatistics: Equatable, Codable {
     tick &+= 1
     self.viewport = viewport
     self.size = size
-    let limitChanged = self.iterations != iterations
+    let previousLimit = self.iterations
+    let limitChanged = previousLimit != iterations
     if self.override != override {
       invalidate()
     } else if limitChanged {
@@ -314,7 +317,14 @@ struct TileStatistics: Equatable, Codable {
         record.lastUsed = tick
       }
     }
-    if self.colouring != colouring || limitChanged {
+    // Colours depend on counts, and on the limit only to mark counts at or above
+    // it as capped.  A raise changes no colour unless a record holds an escaped
+    // count that a lower limit had been colouring as capped.
+    let raiseRevealsCounts =
+      iterations > previousLimit
+      && (records.values.contains { $0.maximumEscaped >= previousLimit }
+        || fallback.contains { $0.maximumEscaped >= previousLimit })
+    if self.colouring != colouring || iterations < previousLimit || raiseRevealsCounts {
       self.colouring = colouring
       needsRecolour = true
       generation &+= 1
@@ -698,7 +708,16 @@ struct TileStatistics: Equatable, Codable {
   /// than the current view demands.  Coverage tiles are adequate to fill a hole,
   /// but they are never a reason to hide detail the store already holds.  At
   /// shallow depths a coverage tile matches the view's limit and is not one.
-  func isPlaceholder(_ record: TileRecord) -> Bool { record.iterations < iterations }
+  /// A record with no capped pixels is exact at any higher limit.
+  func isPlaceholder(_ record: TileRecord) -> Bool {
+    record.iterations < iterations && record.cappedPixels > 0
+  }
+  /// The highest escaped count across the visible view, once every visible tile
+  /// is complete at the current limit; nil while any is still refining.
+  var visibleMaximumEscaped: Int? {
+    guard allVisibleReady else { return nil }
+    return visible.compactMap { records[$0]?.maximumEscaped }.max()
+  }
   private struct BaseTransition {
     var record: TileRecord
     var previous: TileRecord?
@@ -750,6 +769,7 @@ struct TileStatistics: Equatable, Codable {
       record.isMip = false
     }
     needsRecolour = false
+    counters.recolours += 1
     onContentChange?()
     // Rebuild bottom-up from the new palette, never reuse old colour mipmaps.
     for key in Set(records.keys.map(\.parent)).sorted(by: { $0.level > $1.level }) {
@@ -910,6 +930,7 @@ struct TileStatistics: Equatable, Codable {
           try Task.checkCancellation()
           guard self.generation == generation else { throw CancellationError() }
           record.cappedPixels = summary.capped
+          record.maximumEscaped = summary.maximumEscaped
           record.isCoverage = isCoverage
           self.counters.sampledPixels += previous?.cappedPixels ?? (resolution * resolution)
           if isCoverage {

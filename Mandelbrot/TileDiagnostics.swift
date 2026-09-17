@@ -901,6 +901,7 @@
         try await checkHighIterationColour(gpu)
         try await checkDepthControls()
         try await checkIterationReuse(gpu)
+        try await checkObservedCeiling(gpu)
         try await checkNavigationRoundTrip()
         try await checkStreamedReferences(gpu)
         try await checkResumption(gpu)

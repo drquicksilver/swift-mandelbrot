@@ -3,6 +3,14 @@ import SwiftUI
 
 @MainActor final class ExplorerModel: ObservableObject {
   let tiles = TileStore()
+  private var tileObservation: AnyCancellable?
+  init() {
+    // Settled views report their escaped counts; each report may lower the
+    // automatic limit.  Delivered after the publishing call returns.
+    tileObservation = tiles.$statistics.receive(on: DispatchQueue.main).sink { [weak self] _ in
+      MainActor.assumeIsolated { self?.observeDepth() }
+    }
+  }
   @Published var colouring = ColourSettings()
   @Published var isActive = true
   func setActive(_ active: Bool) {
@@ -27,20 +35,43 @@ import SwiftUI
     }
   }
   @Published private(set) var iterations = 200 { didSet { requestRender() } }
-  @Published var automaticIterations = true { didSet { updateDepth(force: true) } }
+  @Published var automaticIterations = true {
+    didSet {
+      ceiling = nil
+      updateDepth(force: true)
+    }
+  }
   @Published var manualIterations = 200 { didSet { updateDepth(force: true) } }
   @Published var detailMultiplier = 1.0 { didSet { updateDepth(force: true) } }
   var interactionActive = false {
     didSet {
-      if interactionActive { depthTask?.cancel() } else { updateDepth() }
+      if interactionActive {
+        depthTask?.cancel()
+      } else {
+        updateDepth()
+        observeDepth()
+      }
     }
   }
   private var depthTask: Task<Void, Never>?
+  /// The observed ceiling on the automatic limit; see `IterationPolicy.observe`.
+  private(set) var ceiling: IterationPolicy.Ceiling?
+  func observeDepth() {
+    guard automaticIterations, isActive, renderer.isGPU, !interactionActive, !motionActive,
+      tiles.iterations == iterations, let maximum = tiles.visibleMaximumEscaped
+    else { return }
+    let next = IterationPolicy.observe(
+      maximumEscaped: maximum, limit: iterations, logScale: viewport.logScale, ceiling: ceiling)
+    guard next != ceiling else { return }
+    ceiling = next
+    updateDepth()
+  }
   private func updateDepth(force: Bool = false) {
     depthTask?.cancel()
     let requested =
       automaticIterations
-      ? IterationPolicy.estimate(logScale: viewport.logScale, multiplier: detailMultiplier)
+      ? IterationPolicy.target(
+        logScale: viewport.logScale, multiplier: detailMultiplier, ceiling: ceiling)
       : max(1, min(IterationPolicy.maximum, manualIterations))
     let target = renderer.isGPU ? requested : min(65535, requested)
     if force || !automaticIterations {
@@ -119,7 +150,10 @@ import SwiftUI
       pixelWidth: pixelWidth)
     if atPrecisionLimit { motion.zoomVelocity = 0 }
     viewport = next
-    if motionActive != motion.active { motionActive = motion.active }
+    if motionActive != motion.active {
+      motionActive = motion.active
+      if !motionActive { observeDepth() }
+    }
   }
   @Published var atPrecisionLimit = false
   var size = CGSize(width: 900, height: 600)

@@ -741,3 +741,38 @@ process:
 The test allows 25% + 30 ms. Moving at 1e1000 (1024×768, 120 frames alternating
 zoom and pan, with the worker running): demand update p95 **0.49 ms** (limit 4 ms),
 frame plan p95 **0.37 ms** (limit 2 ms).
+
+## 2.3: observed ceiling and cheaper raises
+
+Measured headlessly on the Apple M1 Pro with `make tiles`.
+
+**Lowering from data.** Once every visible tile is complete, the viewer lowers
+the automatic limit to twice the highest escaped count in view, if that count is
+below a quarter of the limit. No escaped count lies between the highest observed
+count and the limit, so this changes nothing on screen: the lowered store and a
+fresh render at the lowered limit match to the byte. Counts reaching 1.5× those
+the ceiling came from release it. Further zooming grows the ceiling at the
+estimate's slope.
+
+| View (256×192) | Depth estimate | Highest escaped | Settled limit | Picture difference |
+| --- | ---: | ---: | ---: | ---: |
+| c=i, 1e1000 | 266,000 | 2,707 | 5,600 | 0/255 |
+| empty space, 1024× | 1,000 | < 100 | 200 | — |
+
+The depth-only slope is unchanged at 80 per level. At c=i, 1e1000 it overshoots
+about 100× (266,000 against about 2,700 needed). At the period-312 minibrot at
+1e100 it undershoots (about 26,800 against up to 60,000). Raising from pixel data
+needs periodicity checking (2.10).
+
+**Raises no longer recolour.** Colour depends on counts, and on the limit only to
+mark counts at or above it as capped. A raise now recolours only when some record
+holds an escaped count at or above the old limit, which happens after a decrease.
+The iteration diagnostic verifies both cases, and that a raise without a
+recolour matches a fresh render once fades settle. Previously every automatic
+raise recoloured every resident tile and rebuilt its mipmaps first. That is
+about every 3 levels between 1e3 and 1e30, and up to 500 MiB of tiles on the Mac.
+
+The extension check previously ran at 64×48, where every needed tile was also
+coverage and nothing was extended ("increase sampled 0 capped pixels"). At
+256×192 it extends 14,536 capped pixels and verifies escaped samples are
+unchanged.

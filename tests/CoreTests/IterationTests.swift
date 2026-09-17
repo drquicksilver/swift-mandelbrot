@@ -49,3 +49,31 @@ import Testing
   #expect(IterationPolicy.shouldLower(current: 10000, target: 8800))
   #expect(IterationPolicy.shouldLower(current: 400, target: 200))
 }
+
+@Test func observedCeilingLowersExactlyAndReleases() {
+  // Highest escaped count below a quarter of the limit: lower to twice it.
+  let ceiling = IterationPolicy.observe(
+    maximumEscaped: 1_300, limit: 266_000, logScale: 3322, ceiling: nil)
+  #expect(ceiling == IterationPolicy.Ceiling(base: 2_600, logScale: 3322))
+  #expect(IterationPolicy.target(logScale: 3322, ceiling: ceiling) == 2_600)
+  // Settled at the lowered limit, the same counts neither lower nor release.
+  #expect(
+    IterationPolicy.observe(maximumEscaped: 1_300, limit: 2_600, logScale: 3322, ceiling: ceiling)
+      == ceiling)
+  // Counts 1.5x those observed release it, back to the depth estimate.
+  #expect(
+    IterationPolicy.observe(maximumEscaped: 1_950, limit: 2_600, logScale: 3322, ceiling: ceiling)
+      == nil)
+  // Zooming further grows the ceiling at the estimate's slope, never past it.
+  #expect(IterationPolicy.target(logScale: 3332, ceiling: ceiling) == 3_400)
+  #expect(
+    IterationPolicy.target(logScale: 1, ceiling: ceiling)
+      == IterationPolicy.estimate(logScale: 1))
+  // The multiplier widens a ceiling but a reduced detail setting cannot shrink it.
+  #expect(IterationPolicy.target(logScale: 3322, multiplier: 2, ceiling: ceiling) == 5_200)
+  #expect(IterationPolicy.target(logScale: 3322, multiplier: 0.25, ceiling: ceiling) == 2_600)
+  // Nothing escaped: the minimum.
+  #expect(
+    IterationPolicy.observe(maximumEscaped: 0, limit: 1_000, logScale: 10, ceiling: nil)?.base
+      == IterationPolicy.minimum)
+}
