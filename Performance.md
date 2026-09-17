@@ -786,7 +786,7 @@ tile cache, compositor and encoder. Automatic depth per keyframe; HEVC.
 | --- | ---: | ---: | ---: | ---: |
 | 1280×720, 8 s, 30 fps, to 4e3 | 13 | 240 | 6.6 s | 0.7 MiB |
 | 1920×1080, 8 s, 30 fps, to 1e12 | 41 | 240 | 242.4 s | 6.9 MiB |
-| 640×360, 4 s, 30 fps, to 1e30 | 101 | 120 | 439.3 s | 1.5 MiB |
+| 640×360, 4 s, 30 fps, to 1e30 | 101 | 120 | 439.3 s | 0.2 MiB |
 
 Frame composition is negligible: two textured quads and one encode per frame.
 Essentially all of the time is keyframe rendering, and at 1080p a keyframe needs
