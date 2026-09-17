@@ -96,7 +96,6 @@ struct TileGrid: Sendable {
   /// Tiles for the current view, optionally projected through a future zoom-out.
   /// Keeping the projection here makes deep and ordinary coordinate paths agree.
   func visible(viewport: Viewport, size: CGSize, level: Int, zoomOut: Int = 0) -> [TileKey] {
-    let projection = pow(2, Double(max(0, zoomOut)))
     let minX: Double
     let maxX: Double
     let minY: Double
@@ -107,13 +106,24 @@ struct TileGrid: Sendable {
       let c = viewport.preciseCenter
       let x = (c.x - anchor.x).wide / wide
       let y = (anchor.y - c.y).wide / wide
-      let half = viewport.wideSpan / wide * projection / 2
+      // Project in the wide exponent, never through a Double factor.  A root
+      // request from 1e1000 asks for 2^3322 with a span ratio of 2^-3324: the
+      // factor overflows to infinity and the ratio underflows to zero, so the
+      // projection came out 0 x inf and the whole pyramid lost its root.  The
+      // caller coarsens the level in step with the zoom, so the honest answer
+      // here is a handful of cells at any depth.
+      let span = viewport.wideSpan
+      let projected = WideReal(span.mantissa, exponent: span.exponent + max(0, zoomOut))
+      let half = projected / wide / 2
       let tall = half * size.height / max(1, size.width)
       minX = x - half
       maxX = x + half
       minY = y - tall
       maxY = y + tall
     } else {
+      // A shallow viewport cannot reach the exponents that overflow: its own
+      // detail level bounds the projection well inside Double's range.
+      let projection = pow(2, Double(max(0, zoomOut)))
       let span = span(at: level)
       let width = viewport.span * projection
       let height = width * size.height / max(1, size.width)

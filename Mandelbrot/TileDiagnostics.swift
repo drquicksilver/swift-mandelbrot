@@ -576,8 +576,16 @@
           "Coverage pyramid left a long-zoom-out hole")
       }
       try await store.waitUntilReady()
+      // The 20 MiB bar here predated the coverage pyramid: a deep store then held
+      // only the local detail band.  It now legitimately holds a root and a
+      // zoom-out ladder inside their own reservation, so assert the contract the
+      // store actually makes rather than a number from before that reservation.
       try require(
-        store.residentBytes < 20 * 1024 * 1024, "Deep tile memory exceeded local-band budget")
+        store.residentBytes <= store.tileResidentLimit,
+        "Deep tile memory exceeded the store's resident limit")
+      try require(
+        store.coverageBytes <= store.coverageBudgetBytes,
+        "Coverage exceeded its reservation at depth")
       // Cancel a long CPU reference/GPU workload and recover the same store.
       store.update(
         viewport: view, size: size, pixelWidth: 256, iterations: 65535, override: nil,

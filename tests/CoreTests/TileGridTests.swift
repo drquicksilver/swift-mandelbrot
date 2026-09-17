@@ -37,6 +37,18 @@ import Testing
   #expect(near.allSatisfy { $0.level == detail - 6 })
 }
 
+@Test func deepRootCoverageProjectsWithoutUnderflow() throws {
+  var grid = TileGrid(anchor: CGPoint(x: -0.5, y: 0))
+  let view = try Viewport(real: "0", imag: "1", zoom: "1e1000")
+  grid.rebase(to: view.preciseCenter)
+  let size = CGSize(width: 256, height: 192)
+  let detail = Int(ceil(grid.idealLevel(viewport: view, pixelWidth: 256)))
+  let root = grid.visible(
+    viewport: view, size: size, level: -2, zoomOut: max(0, detail - -2 - 2))
+  #expect(!root.isEmpty && root.count <= 16)
+  #expect(root.allSatisfy { $0.level == -2 })
+}
+
 @Test func oversizedProjectedCoverageIsRejectedWithoutOverflow() {
   let grid = TileGrid(anchor: CGPoint(x: -0.5, y: 0))
   let keys = grid.visible(

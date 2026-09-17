@@ -317,12 +317,14 @@ struct TileStatistics: Equatable, Codable {
     // the previous half before its replacement exists would reopen a hole.
     selected.formUnion(records.values.lazy.filter { $0.key.level == self.minimumLevel }.map(\.key))
     var near: Set<TileKey> = []
-    for offset in nearOffsets where selected.count < coverageTileCapacity {
-      near.formUnion(add(group(offset: offset)))
-    }
     var sparse: Set<TileKey> = []
-    for offset in sparseOffsets where selected.count < coverageTileCapacity {
-      sparse.formUnion(add(group(offset: offset)))
+    // Alternate the bands.  Eight consecutive near levels exhaust the
+    // reservation on a real screen, which left a long zoom-out with nothing but
+    // the root; interleaving keeps a ladder out to the sparse tail as well.
+    for index in 0..<max(nearOffsets.count, sparseOffsets.count)
+    where selected.count < coverageTileCapacity {
+      if index < nearOffsets.count { near.formUnion(add(group(offset: nearOffsets[index]))) }
+      if index < sparseOffsets.count { sparse.formUnion(add(group(offset: sparseOffsets[index]))) }
     }
     deferredCoverage = deferredCoverage.intersection(selected)
     coverage = selected.subtracting(deferredCoverage)
@@ -817,6 +819,9 @@ struct TileStatistics: Equatable, Codable {
   }
   func waitUntilRootCoverageReady() async throws {
     let roots = coverage.filter { $0.level == minimumLevel }
+    // An empty set satisfies `allSatisfy`, so a pyramid that planned no root at
+    // all used to report itself ready.  That is the failure worth catching.
+    guard !roots.isEmpty else { throw GPUFailure("Coverage pyramid planned no root cell") }
     while !roots.allSatisfy({ records[$0] != nil }) && (!isIdle || retryBlocked) {
       try await Task.sleep(for: .milliseconds(2))
     }
