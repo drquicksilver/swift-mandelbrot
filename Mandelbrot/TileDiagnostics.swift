@@ -323,6 +323,76 @@
         store.residentBytes <= store.tileResidentLimit, "Iteration update exceeded budget")
       store.cancel()
     }
+    /// Panning through empty space must not accumulate root-level records: only
+    /// the planned root footprint and a few retained cells stay protected.
+    static func checkRootCoverageBounded() async throws {
+      let store = TileStore(budgetBytes: 24 * 1024 * 1024)
+      let size = CGSize(width: 512, height: 320)
+      var view = Viewport()
+      for _ in 0..<32 {
+        store.update(
+          viewport: view, size: size, pixelWidth: 512, iterations: 200, override: nil,
+          colouring: ColourSettings())
+        try await store.waitUntilReady()
+        try await store.waitUntilRootCoverageReady()
+        let protectedRoots = store.records.values.filter {
+          $0.key.level == store.minimumLevel && $0.isCoverage
+        }.count
+        try require(
+          protectedRoots <= store.plannedRootCount + TileStore.retainedRootLimit,
+          "Root coverage accumulated \(protectedRoots) protected cells while panning")
+        try require(
+          store.residentBytes <= store.tileResidentLimit
+            && store.coverageBytes <= store.coverageBudgetBytes,
+          "Panning root coverage exceeded its budget")
+        // Two view widths: a new root cell roughly every other step.
+        view.pan(by: CGSize(width: -2 * size.width, height: 0), in: size)
+      }
+      try require(store.statistics.evictions > 0, "Root-level records were never evicted")
+      try require(store.nearCoverageCount > 0, "Root cells crowded out near coverage")
+      store.cancel()
+    }
+    /// Coverage deferred under momentary pressure must come back once memory
+    /// eases, and the root must never be the coverage that yields.
+    static func checkCoverageDeferralRecovers() async throws {
+      var squeeze: ((TileKey) -> Void)?
+      let store = TileStore(budgetBytes: 256 * 1024 * 1024) { key in squeeze?(key) }
+      let size = CGSize(width: 512, height: 320)
+      func update(_ center: CGPoint) {
+        store.update(
+          viewport: Viewport(center: center, scale: 4096), size: size, pixelWidth: 512,
+          iterations: 200, override: nil, colouring: ColourSettings())
+      }
+      // Deep reference storage can shrink the resident limit after coverage was
+      // planned.  Simulate that just as the first non-root coverage tile starts.
+      squeeze = { key in
+        guard store.coverage.contains(key), key.level > store.minimumLevel else { return }
+        let tile = store.records.values.first?.bytes ?? 1024 * 1024
+        store.diagnosticResidentLimit = store.residentBytes + tile
+        squeeze = nil
+      }
+      update(CGPoint(x: -0.743643887037151, y: 0.13182590420533))
+      try await store.waitUntilReady()
+      try await store.waitUntilRootCoverageReady()
+      try require(store.deferredCoverageCount > 0, "Pressure trace did not defer coverage")
+      try require(
+        store.residentBytes <= store.tileResidentLimit, "Deferred coverage exceeded the limit")
+      // Relieve the pressure without changing demand: deferral must not outlive it.
+      store.diagnosticResidentLimit = nil
+      store.retryFailedWork()
+      try await store.waitUntilReady()
+      try require(
+        store.deferredCoverageCount == 0
+          && store.coverage.allSatisfy { store.records[$0] != nil },
+        "Deferred coverage was not retried after memory eased")
+      // Squeeze again and move to a different root cell: the root must not yield.
+      store.diagnosticResidentLimit =
+        store.residentBytes - 4 * (store.records.values.first?.bytes ?? 1024 * 1024)
+      update(CGPoint(x: -12.9, y: 0.1))
+      try await store.waitUntilReady()
+      try await store.waitUntilRootCoverageReady()
+      store.cancel()
+    }
     static func checkFailureRecovery() async throws {
       var allocations = 0
       var fail = true
@@ -627,6 +697,8 @@
         try await checkMipmaps(gpu)
         let cacheMetrics = try await checkCache()
         try await checkCoveragePressure()
+        try await checkRootCoverageBounded()
+        try await checkCoverageDeferralRecovers()
         try await checkZoomOutPresentation()
         let deepMetrics = try await checkDeepTiles(gpu)
         let store = TileStore()
