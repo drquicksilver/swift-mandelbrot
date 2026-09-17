@@ -417,6 +417,74 @@
       try await store.waitUntilReady()
       try require(store.allVisibleReady, "Resuming unchanged demand lost readiness")
     }
+    /// Zooming out exposes coarser ancestors that have not been computed yet.
+    /// The frame may fall back to the coverage pyramid, but a stand-in must not
+    /// be presented at full strength while finer detail for the same cell is
+    /// resident, and replacing a cell's base must fade rather than cut.
+    static func checkZoomOutPresentation() async throws {
+      let store = TileStore()
+      let size = CGSize(width: 256, height: 192)
+      let iterations = 4000
+      let anchor = CGPoint(x: 128, y: 96)
+      var view = Viewport()
+      for _ in 0..<6 {
+        view.zoom(by: 4, at: anchor, in: size, pixelWidth: 256)
+        store.update(
+          viewport: view, size: size, pixelWidth: 256, iterations: iterations, override: nil,
+          colouring: ColourSettings(), zoomDirection: 1)
+        try await store.waitUntilReady()
+      }
+      try require(
+        store.records.values.contains { store.isPlaceholder($0) },
+        "Coverage tiles were not stand-ins at a depth the view out-iterates")
+      func settle() async throws {
+        store.update(
+          viewport: view, size: size, pixelWidth: 256, iterations: iterations, override: nil,
+          colouring: ColourSettings(), zoomDirection: -1)
+        try await store.waitUntilReady()
+      }
+      var standIns = 0
+      var presented: [TileKey: TileRecord] = [:]
+      var switched = 0
+      for step in 0..<24 {
+        view.zoom(by: 1 / 1.7, at: anchor, in: size, pixelWidth: 256)
+        store.update(
+          viewport: view, size: size, pixelWidth: 256, iterations: iterations, override: nil,
+          colouring: ColourSettings(), zoomDirection: -1)
+        // Freeze refinement so the frame under test is the one the display shows
+        // in the window between the zoom and the replacement tile arriving.
+        store.cancel()
+        let now = ProcessInfo.processInfo.systemUptime
+        let frozen = TileCompositor.plan(store: store, viewport: view, size: size, now: now)
+        for cell in frozen where cell.baseIsPlaceholder {
+          standIns += 1
+          try require(
+            !cell.fineIsGenuine || cell.uniforms.fineMix >= 1,
+            "A stand-in outvoted resident detail while zooming out")
+        }
+        guard step % 8 == 7 else { continue }
+        // Let the frozen frame's stand-ins be replaced in place, without moving
+        // the view: the cells keep their keys, so their bases genuinely switch.
+        for cell in frozen { presented[cell.key] = cell.base }
+        try await settle()
+        let after = ProcessInfo.processInfo.systemUptime
+        let refined = TileCompositor.plan(store: store, viewport: view, size: size, now: after)
+        for cell in refined where presented[cell.key] !== nil && presented[cell.key] !== cell.base {
+          switched += 1
+          try require(cell.uniforms.baseMix < 1, "A change of base cut in with no fade")
+        }
+        for cell in TileCompositor.plan(
+          store: store, viewport: view, size: size, now: after + TilePresentation.fadeDuration)
+        {
+          try require(
+            cell.uniforms.baseMix >= 1 || cell.coarse === cell.base,
+            "A base fade did not settle")
+        }
+        presented.removeAll()
+      }
+      try require(standIns > 0, "Zoom-out never fell back to a stand-in; check is vacuous")
+      try require(switched > 0, "No cell replaced its base; the fade check is vacuous")
+    }
     static func checkNativeCommands() throws {
       func event(_ characters: String, code: UInt16, flags: NSEvent.ModifierFlags = []) -> NSEvent {
         NSEvent.keyEvent(
@@ -551,6 +619,7 @@
         try await checkMipmaps(gpu)
         let cacheMetrics = try await checkCache()
         try await checkCoveragePressure()
+        try await checkZoomOutPresentation()
         let deepMetrics = try await checkDeepTiles(gpu)
         let store = TileStore()
         let size = CGSize(width: 512, height: 320)

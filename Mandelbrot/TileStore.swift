@@ -75,6 +75,8 @@ struct TileStatistics: Equatable, Codable {
   private(set) var lod = 0.0
   private(set) var fallback: [TileRecord] = []
   let minimumLevel = -2
+  /// Levels of upsampling worth accepting to avoid presenting a stand-in.
+  static let placeholderBlurTolerance = 2
   private let coverageTileLimit = 40
   var useBLA = true
   var hierarchicalBLA = true
@@ -262,6 +264,8 @@ struct TileStatistics: Equatable, Codable {
       visible = grid.visible(viewport: viewport, size: size, level: level)
       needed = ancestors()
     }
+    let live = Set(visible)
+    baseTransitions = baseTransitions.filter { live.contains($0.key) }
     configureCoverage(detailLevel: level)
     prefetch =
       zoomDirection > 0 && level < Int(Viewport.maximumLogScale)
@@ -518,8 +522,40 @@ struct TileStatistics: Equatable, Codable {
       counters.presentationFPS = Double(presentationTimes.count - 1) / (time - first)
     }
   }
+  /// A record is a stand-in when it was computed with a lower iteration limit
+  /// than the current view demands.  Coverage tiles are adequate to fill a hole,
+  /// but they are never a reason to hide detail the store already holds.  At
+  /// shallow depths a coverage tile matches the view's limit and is not one.
+  func isPlaceholder(_ record: TileRecord) -> Bool { record.iterations < iterations }
+  private struct BaseTransition {
+    var record: TileRecord
+    var previous: TileRecord?
+    var since: Double
+  }
+  private var baseTransitions: [TileKey: BaseTransition] = [:]
+  /// Notes which record is presented as a cell's base and fades from the one it
+  /// replaced.  Fades key on the moment of the switch, not on when a record was
+  /// computed: a retained old-anchor or coverage tile has an ancient `readyAt`
+  /// and would otherwise cut in at full strength on the frame it is selected.
+  func presentBase(_ record: TileRecord, for key: TileKey, now: Double) -> (
+    previous: TileRecord?, fade: Float
+  ) {
+    if let existing = baseTransitions[key], existing.record === record {
+      return (existing.previous, TilePresentation.fade(readyAt: existing.since, now: now))
+    }
+    let previous = baseTransitions[key]?.record
+    // A cell presented for the first time has nothing to fade from, so it keeps
+    // the old behaviour and fades in on its own readiness.  Only a switch from
+    // one presented record to another fades from the moment of the switch.
+    let since = previous == nil ? record.readyAt : now
+    baseTransitions[key] = BaseTransition(record: record, previous: previous, since: since)
+    return (previous, TilePresentation.fade(readyAt: since, now: now))
+  }
   func hasActiveFades(now: Double) -> Bool {
-    needed.contains { key in
+    if baseTransitions.values.contains(where: { now - $0.since < TilePresentation.fadeDuration }) {
+      return true
+    }
+    return needed.contains { key in
       guard let record = records[key] else { return false }
       return now - record.readyAt < TilePresentation.fadeDuration
     }
@@ -765,9 +801,14 @@ struct TileStatistics: Equatable, Codable {
         && r.y + r.extent <= 1 + 1e-12
     }
     let old = fallbackAvailable(for: key)
-    return [current, directCoverage, directRoot, old].compactMap { $0 }.max {
-      $0.key.level < $1.key.level
-    }
+    let ranked = [current, directCoverage, directRoot, old].compactMap { $0 }
+    guard let best = ranked.max(by: { $0.key.level < $1.key.level }) else { return nil }
+    guard isPlaceholder(best) else { return best }
+    // Prefer real detail over a stand-in, but never blur by more than a factor
+    // of four: past that the stand-in is the better picture of the two.
+    return ranked.filter {
+      !isPlaceholder($0) && $0.key.level >= best.key.level - Self.placeholderBlurTolerance
+    }.max { $0.key.level < $1.key.level } ?? best
   }
   func waitUntilReady() async throws {
     while !isIdle || retryBlocked { try await Task.sleep(for: .milliseconds(2)) }

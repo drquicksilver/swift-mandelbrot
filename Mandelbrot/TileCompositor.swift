@@ -26,25 +26,36 @@ struct TileDrawUniforms {
       Float((1 + (u + extent) * interior) / resolution),
       Float((1 + (v + extent) * interior) / resolution))
   }
-  static func encode(
-    store: TileStore, viewport: Viewport, size: CGSize, gpu: GPUContext,
-    encoder: MTLRenderCommandEncoder,
+  struct CellPlan {
+    let key: TileKey
+    let coarse: TileRecord
+    let base: TileRecord
+    let fine: TileRecord
+    let previousFine: TileRecord
+    let baseIsPlaceholder: Bool
+    let fineIsGenuine: Bool
+    var uniforms: TileDrawUniforms
+  }
+  /// Composition is decided here and only encoded below, so headless checks can
+  /// inspect the same choices the display makes.
+  static func plan(
+    store: TileStore, viewport: Viewport, size: CGSize,
     now: Double = ProcessInfo.processInfo.systemUptime, overlay: Bool = false
-  ) {
-    let start = ProcessInfo.processInfo.systemUptime
-    defer { store.recordPreparation(seconds: ProcessInfo.processInfo.systemUptime - start) }
-    guard let first = store.visible.first else { return }
+  ) -> [CellPlan] {
+    guard let first = store.visible.first else { return [] }
     let projection = TileProjection(origin: store.bounds(first), viewport: viewport, size: size)
-    encoder.setRenderPipelineState(gpu.tilePipeline)
     let floorLevel = Int(floor(store.lod))
+    var plans: [CellPlan] = []
     for key in store.visible {
       let baseKey = key.ancestor(at: min(key.level, floorLevel))
       guard let base = store.bestAvailable(for: baseKey) ?? store.bestAvailable(for: key) else {
         continue
       }
+      let transition = store.presentBase(base, for: key, now: now)
       let oldBase = store.fallbackAvailable(for: key, maximumLevel: base.key.level)
       let coarse =
-        (oldBase !== base ? oldBase : nil)
+        transition.previous
+        ?? (oldBase !== base ? oldBase : nil)
         ?? (base.key.anchorID == store.grid.anchorID && base.key.level > store.minimumLevel
           ? store.bestAvailable(for: base.key.parent) : nil) ?? base
       let fine = store.bestAvailable(for: key) ?? base
@@ -63,25 +74,49 @@ struct TileDrawUniforms {
       params.baseUV = uv(cell: cell, source: base.bounds)
       params.fineUV = uv(cell: cell, source: fine.bounds)
       params.previousFineUV = uv(cell: cell, source: previousFine.bounds)
-      params.baseMix =
-        coarse === base || store.records[base.key] !== base
-        ? 1 : TilePresentation.fade(readyAt: base.readyAt, now: now)
+      params.baseMix = coarse === base ? 1 : transition.fade
       params.fineFade =
         previousFine === fine ? 1 : TilePresentation.fade(readyAt: fine.readyAt, now: now)
+      let baseIsPlaceholder = store.isPlaceholder(base)
+      let fineIsGenuine = fine !== base && !store.isPlaceholder(fine)
+      // The cross-fade weight only means anything when the base really is this
+      // cell's floor-level tile.  A stand-in must never outvote detail the store
+      // already holds for the exact cell.
       params.fineMix =
         fine === base
         ? 0
-        : (previousFine === fine && store.records[fine.key] === fine
-          ? TilePresentation.fineWeight(lod: store.lod, readyAt: fine.readyAt, now: now)
-          : Float(store.lod - floor(store.lod)))
+        : baseIsPlaceholder && fineIsGenuine
+          ? 1
+          : (previousFine === fine && store.records[fine.key] === fine
+            ? TilePresentation.fineWeight(lod: store.lod, readyAt: fine.readyAt, now: now)
+            : Float(store.lod - floor(store.lod)))
       params.border = overlay ? 1 : 0
       params.level = Int32(base.key.level)
+      plans.append(
+        CellPlan(
+          key: key, coarse: coarse, base: base, fine: fine, previousFine: previousFine,
+          baseIsPlaceholder: baseIsPlaceholder, fineIsGenuine: fineIsGenuine, uniforms: params))
+    }
+    return plans
+  }
+  static func encode(
+    store: TileStore, viewport: Viewport, size: CGSize, gpu: GPUContext,
+    encoder: MTLRenderCommandEncoder,
+    now: Double = ProcessInfo.processInfo.systemUptime, overlay: Bool = false
+  ) {
+    let start = ProcessInfo.processInfo.systemUptime
+    defer { store.recordPreparation(seconds: ProcessInfo.processInfo.systemUptime - start) }
+    let cells = plan(store: store, viewport: viewport, size: size, now: now, overlay: overlay)
+    guard !cells.isEmpty else { return }
+    encoder.setRenderPipelineState(gpu.tilePipeline)
+    for cell in cells {
+      var params = cell.uniforms
       encoder.setVertexBytes(&params, length: MemoryLayout<TileDrawUniforms>.stride, index: 0)
       encoder.setFragmentBytes(&params, length: MemoryLayout<TileDrawUniforms>.stride, index: 0)
-      encoder.setFragmentTexture(coarse.colour, index: 0)
-      encoder.setFragmentTexture(base.colour, index: 1)
-      encoder.setFragmentTexture(fine.colour, index: 2)
-      encoder.setFragmentTexture(previousFine.colour, index: 3)
+      encoder.setFragmentTexture(cell.coarse.colour, index: 0)
+      encoder.setFragmentTexture(cell.base.colour, index: 1)
+      encoder.setFragmentTexture(cell.fine.colour, index: 2)
+      encoder.setFragmentTexture(cell.previousFine.colour, index: 3)
       encoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 6)
     }
   }
