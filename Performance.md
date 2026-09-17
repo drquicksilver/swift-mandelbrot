@@ -786,12 +786,19 @@ tile cache, compositor and encoder. Automatic depth per keyframe; HEVC.
 | --- | ---: | ---: | ---: | ---: |
 | 1280×720, 8 s, 30 fps, to 4e3 | 13 | 240 | 6.6 s | 0.7 MiB |
 | 1920×1080, 8 s, 30 fps, to 1e12 | 41 | 240 | 242.4 s | 6.9 MiB |
+| 640×360, 4 s, 30 fps, to 1e30 | 101 | 120 | 439.3 s | 1.5 MiB |
 
 Frame composition is negligible: two textured quads and one encode per frame.
 Essentially all of the time is keyframe rendering, and at 1080p a keyframe needs
 about 60 tiles whose interior pixels each run to the iteration limit — about
-6 s per keyframe at 1e12. Periodicity checking (2.10) is the lever on that, not
-the movie path. A shallow 720p movie is already quick.
+6 s per keyframe at 1e12, and about 4.3 s per keyframe even at 640×360 once the
+descent passes into perturbation depth. Periodicity checking (2.10) is the lever
+on that, not the movie path. A shallow 720p movie is already quick.
+
+Two follow-ups the numbers point at, both listed under 2.13: each keyframe
+re-derives its reference orbit because the centre drifts between levels, so a
+descent recomputes hundreds of orbits that differ slightly; and keyframes are
+rendered strictly in order, so nothing overlaps the encode.
 
 The headless check renders 320×180 at 15 fps, reads the file back with
 AVAssetReader and compares the first and last frames against direct renders of

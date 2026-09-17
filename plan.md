@@ -382,6 +382,10 @@ cold deep views are too slow on the phones.
   over the viewport centre.
 - *BLA tuning.* Set ε and the per-jump margin from the isolated BLA-on vs
   BLA-off error measurements, not from comparisons against the oracle.
+- *Zoom movie keyframes (from 2.8's measurements).* A descent re-derives a
+  reference orbit per keyframe because the centre drifts between levels; and
+  keyframes render strictly in order, so nothing overlaps the encode. A 101-
+  keyframe descent to 1e30 took 439 s at 640×360.
 
 **2.14 Tidy up before shipping.** Employers will read this repository.
 - One pixel-mapping convention everywhere: the full-frame CLI and GPU paths
