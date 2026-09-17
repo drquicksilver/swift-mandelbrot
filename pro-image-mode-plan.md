@@ -30,10 +30,10 @@ interactive renderer and do not inherit them:
 
 | Interactive heuristic | Why Pro Image Mode does not use it |
 |---|---|
-| Capped pixels painted `float3(0.005, 0.008, 0.014)` in `colourSamples` | An unresolved pixel is disguised as background. Pro resolves it (period detection, §3 M6) instead of hiding it. This is the motivating example for the whole mode. |
+| Capped pixels painted `float3(0.005, 0.008, 0.014)` in `colourSamples` | An unresolved pixel is disguised as background — and not even as the interior colour, so the image quietly lies about its own completeness. Pro follows an explicit convergence/fallback policy (§2.3), gives surviving unresolved samples a principled treatment, and always reports them. This is the motivating example for the whole mode. |
 | BLA approximation | An approximation whose error budget was fitted to an interactive image. See §1.8. |
-| Bounded glitch retry (16 reference attempts, then a marked failure) | A presentation image must contain zero glitched pixels. Re-reference until clean, however long it takes. |
-| `IterationPolicy.estimate` | Explicitly "a first guess". Pro iterates until the image is resolved. |
+| Bounded glitch retry (16 reference attempts, then a marked failure) | A presentation image must contain zero known glitched pixels. Pro uses a correctness fallback ladder (§2.3) ending in direct high-precision evaluation; a sample that still cannot be rendered correctly is reported, and fails the render under a strict policy. |
+| `IterationPolicy.estimate` | Explicitly "a first guess". Pro uses an explicit convergence policy (§2.3) and never silently paints an exhausted sample as resolved. |
 | The 1,000,000 GPU iteration cap | May genuinely bind near a high-period minibrot. Pro raises or removes it. |
 | ~1 ms adaptive iteration batches | Built to protect a frame deadline Pro does not have. Use long batches and fewer submissions. |
 | LOD blending, 125 ms fades, coverage pyramid | Irrelevant offline. |
@@ -46,8 +46,8 @@ types (`DeepPoint`, `WideReal`), `TileGrid`'s bounds and coordinate arithmetic,
 palette definitions (decoded to linear, §1.3). We do **not** share `TileStore`
 or `TileCompositor`; their design serves interactivity.
 
-Pro Image Mode is GPU-only. The CPU laboratory renderers stay in the CLI and
-benchmarks.
+Pro Image Mode is GPU-only, except for the exact CPU fallback rung in §2.3. The
+CPU laboratory renderers stay in the CLI and benchmarks.
 
 **Open question to settle before Milestone 0:** is this Mac-only? A 4K render
 with 4×4 supersampling is unlikely to be sensible on an iPhone 11 Pro, but iPad
@@ -56,15 +56,34 @@ discovering it on device.
 
 ### 1.2 Compute once, reshade many
 
-The fractal pass writes a cached set of per-pixel buffers. Shading, lighting,
-post-processing and tone mapping all run over those buffers and never re-iterate.
+At preview resolution, the fractal pass writes a cached set of per-pixel buffers.
+Shading, lighting, post-processing and tone mapping run over those buffers without
+re-iterating. Final-resolution rendering uses the same logical buffers tile by tile,
+but does not require them all to remain resident.
 
 - While editing, the shading passes run in real time over a preview-resolution
   buffer set, on Pro's own preview surface — not through the interactive
   compositor.
-- Changing any look parameter triggers a reshade only.
-- The fractal pass reruns only when the view, iteration limit or resolution
-  changes.
+- Changing any look parameter triggers a reshade only on the persistent preview
+  buffer set.
+- The preview fractal pass reruns only when the view, iteration limit or
+  resolution changes.
+- A final supersampled render streams tiled per-sample buffers through shading and
+  resolve, then discards them; changing the look after that final render therefore
+  requires another final render.
+
+**A future optional disk-backed final G-buffer cache** would let an expensive deep
+render be reshaded repeatedly without re-iteration. Two tiers are possible, and the
+distinction matters:
+
+- Storing the **per-sample** buffers (the multi-gigabyte case) permits a faithful
+  reshade that is identical to a fresh render.
+- Storing the **resolved per-pixel** buffers is far cheaper — of the order of
+  200 MB at 4K — but supports only an *approximate* reshade, because §1.4 forbids
+  resolving normals, angles and masks before shading.
+
+If this is built, the sensible shape is both: the cheap tier for instant iteration,
+and an explicit "make it exact" re-render before export.
 
 This is what makes the "choose a preset, then tweak a few hero controls"
 workflow feel responsive, and that workflow is the core UX bet.
@@ -115,10 +134,13 @@ The resolved HDR image is 66 MB at RGBA16F — trivially resident. So:
 - Each tile is shaded and resolved independently, then written into the
   resolved full-resolution image.
 - **Neighbourhood passes (bloom, local contrast, glare) run on the resolved
-  full-resolution image**, which is small enough to hold whole. We do not use
-  tile overlap margins: the interactive tile gutter is one sample, and a bloom
-  radius of a few percent of image width is tens to hundreds of pixels. Dropping
-  the overlap option removes a whole class of complexity.
+  full-resolution image**, which is small enough to hold whole. We therefore do
+  not use large effect gutters: the interactive tile gutter is one sample, while a
+  bloom radius of a few percent of image width is tens to hundreds of pixels.
+- Tiny fixed guard bands (typically 1–2 samples) are permitted for local
+  pre-resolve neighbourhood operations such as curvature derived from neighbouring
+  normals or DE. These are deliberately distinct from effect overlap margins and
+  do not complicate bloom/glare tiling.
 - Tile size is ours to choose and need not be 256².
 - The preview path uses the same code at preview resolution.
 
@@ -130,22 +152,46 @@ A look tuned on the preview must match the final render.
   thresholds, normal strength) are specified relative to image width or pixel
   spacing, never in raw pixels.
 - Image-dependent statistics (the histogram remap) are computed from a global
-  low-resolution pass, not per tile, and stored in the render recipe.
+  low-resolution pass, not per tile, and recorded in the render manifest.
 
-### 1.7 Determinism and recipes
+### 1.7 Determinism, recipes and manifests
 
-A render recipe fully describes a render:
+A **render recipe** contains only deterministic user-controlled inputs:
 
 - view (centre, scale, **rotation**) at full precision
 - precision mode and iteration settings, including whether the limit was
   automatic or manual and the detail multiplier — these change the image
 - output size, supersampling, jitter seed
+- the correctness policy in force (§2.3)
 - the complete look (all shading/post parameters)
-- cached global statistics (histogram CDF)
 
-The same recipe always produces the same image. Recipes extend the `Location`
-type from `plan.md` 2.6 rather than defining a parallel format, and are
-loadable from the CLI (§3 M0).
+A separate **render manifest** records derived and provenance data:
+
+- cached global statistics such as the histogram CDF
+- actual iteration ceiling reached and any convergence/fallback events
+- counts and coordinates of unresolved samples (§2.3)
+- renderer version / git SHA and relevant kernel configuration
+- elapsed time, throughput and quality statistics
+- a stable hash of the recipe
+
+The same recipe on the same renderer version produces the same image. Recipes
+extend the `Location` type from `plan.md` 2.6 rather than defining a parallel
+format, and are loadable from the CLI (§3 M0). The exported image embeds the
+recipe hash and essential provenance metadata where the format permits, so a
+render can be traced back to the exact recipe and manifest that produced it.
+
+**Reproducing from a recipe.** The global low-resolution statistics pass is
+deterministic, so a recipe alone reproduces its image by recomputing the CDF.
+That pass is therefore part of the deterministic path and needs the same care as
+the fractal kernels. A recipe may additionally *pin* a CDF, or cite the manifest
+that produced one, when an image must be reproduced exactly across renderer
+versions.
+
+**Version stamping does not exist today** and is small but real work: the app
+carries only `CFBundleShortVersionString`, and no git SHA reaches the binary. It
+needs an injected Info.plist key or a generated Swift constant at build time.
+Since the determinism claim above is stated per renderer version, this is
+load-bearing rather than cosmetic.
 
 ### 1.8 Precision modes
 
@@ -212,6 +258,19 @@ the Decimal oracle at 1e50 / 1e200 / 1e1000, and the `measureBLA` rig. The
 cross-mode consistency check in §1.8 becomes its own `make` target alongside
 `deep` and `bla`.
 
+This plan also introduces claims that are not covered by any existing test, and
+each needs one:
+
+- **The fallback ladder terminates.** Inject a glitch and verify the §2.3 ladder
+  climbs rung by rung and finishes, rather than looping or silently giving up.
+- **A recipe is reproducible.** Render the same recipe twice and compare
+  bit-for-bit, including that the recomputed histogram CDF is stable.
+- **Recipes and manifests round-trip.** Save, load and re-save without drift, and
+  check the recipe hash embedded in the image matches the manifest.
+- **Unresolved samples are reported.** A scene with known undetermined samples
+  produces a non-zero, accurate count in the manifest rather than a clean-looking
+  image.
+
 ---
 
 ## 2. Per-pixel data
@@ -232,6 +291,14 @@ Most buffers come from a single iteration loop that tracks z and dz/dc together.
 The analytic normal from `u` is preferred over finite-differencing the DE
 buffer, which aliases badly on sub-pixel filaments.
 
+The table above describes the **logical** data available to shading, not a mandate
+to persist every intermediate as an independent float32 channel. The canonical
+G-buffer is chosen by recomputation cost versus bandwidth/storage cost. Cheap
+derived quantities may be reconstructed during shading. In particular, derivative
+magnitude is likely stored as `log|dz/dc|` (or reconstructed from the values needed
+for DE) rather than raw `|dz/dc|`, because its dynamic range is enormous and the
+artistic mappings are logarithmic anyway.
+
 Note that z at escape is **not** stored today: the existing record keeps an
 exact `UInt32` count plus a `Float32` smooth correction, and `escapeSample`
 clamps that correction (`max(correction, -float(n))`). arg z and |z| are new
@@ -249,20 +316,44 @@ The interactive path uses reserved counts for capped, unfinished and glitched
 samples. Every new buffer needs the same discipline, decided once rather than
 per effect:
 
-- **Glitched:** must not exist in a finished Pro image. Re-reference until clean
-  (§1.1); a glitched pixel that survives to shading is a bug, not a colour.
-- **Capped / undetermined:** has no meaningful DE or normal. Carry the mask
-  through shading, and exclude these samples from every neighbourhood pass so
-  they cannot bleed into bloom or local contrast.
-- **Interior:** DE and normal come from the interior estimators (M6), not the
-  exterior ones.
+- **Glitched:** must not exist in a finished Pro image. Use a bounded correctness
+  fallback ladder: ordinary perturbation/BLA → re-reference → re-reference with
+  BLA disabled (which also diagnoses whether BLA was the cause) → smaller/local
+  reference region → **direct high-precision evaluation of that pixel's orbit on
+  the CPU**. That last rung is exact rather than perturbative — it is the same
+  BigInt fixed-point machinery that computes reference orbits and backs the
+  Decimal oracle — and at seconds per pixel it is affordable for the handful of
+  samples that reach it. A glitched pixel that survives to shading is a bug, not
+  a colour.
+
+- **Capped / undetermined:** Mandelbrot membership is not generally decidable from
+  a finite iteration budget, so Pro does not promise that every sample can always
+  be resolved cheaply. Use an explicit convergence policy: escape test → period
+  detection where applicable → extend the iteration budget according to policy →
+  precision/fallback path.
+
+  A sample that survives all of that is *probably* interior — non-escape is the
+  evidence — so it takes the **interior material**, not a separate marker colour,
+  and its count and coordinates are recorded in the manifest. What Pro refuses is
+  the interactive path's behaviour: a hardcoded colour that is not even the
+  interior colour, with no record that anything was left unresolved.
+
+  **Default policy: render, report and record.** A strict policy that requires
+  zero undetermined samples is available and fails the render instead, but it is
+  opt-in — failing a multi-hour deep render over a few pixels is rarely what the
+  user wants. The policy in force is part of the recipe (§1.7), and debug views
+  show the undetermined mask explicitly.
+
+- **Interior:** before M6A, confirmed interior samples may use deliberately simple
+  material treatment. After M6A, period/convergence data can drive richer interior
+  shading. Interior DE and geometry, if implemented, arrive in M6B.
 
 ### 2.4 Later buffers
 
 | Buffer | Milestone | Uses |
 |---|---|---|
-| Attracting cycle period | 6 | interior colouring, faster interior bailout |
-| Interior distance estimate | 6 | real interior geometry for shading |
+| Attracting cycle period / convergence data | 6A | interior colouring, faster interior bailout |
+| Interior distance estimate | 6B | real interior geometry for shading |
 | Orbit trap statistics (min distance, trap ID) | 7 | material masks, emissive accents |
 | Sample variance | 8 | adaptive supersampling, quality view |
 
@@ -288,6 +379,21 @@ will not be compelling after Milestones 0–4 either.
 Keep the shading maths float and linear from the start, so only the output stage
 is thrown away.
 
+Evaluate the spike on at least three deliberately different target scenes:
+
+- a large-scale boundary composition,
+- a fine filament / deep-detail scene,
+- a minibrot or spiral scene with strong local geometry.
+
+For each, compare the ordinary smooth palette against at least Black Glass and
+Bas Relief prototypes. The criterion is not merely "looks attractive", but whether
+the new representation reveals structure and produces a materially different visual
+language from conventional escape-time colouring.
+
+Agree which scenes must pass **before** looking at the output, so the decision is
+not rationalised after the fact, and commit the resulting images under `evidence/`
+so the judgement can be revisited.
+
 **Decision point:** proceed to Milestone 0, or stop.
 
 ### Milestone 0 — Pipeline skeleton
@@ -302,6 +408,8 @@ Renderer:
 - linear-light pipeline with a trivial tone mapper
 - smooth escape value and interior/exterior/undetermined mask
 - render recipes: save, load, deterministic seed
+- render manifests: derived statistics, provenance, recipe hash
+- renderer version stamping at build time (§1.7)
 - debug-view framework
 
 16-bit export, as three concrete pieces:
@@ -314,13 +422,16 @@ Renderer:
 
 CLI: `--recipe PATH` renders a recipe headlessly. This is the primary interface
 for a slow offline renderer, not an afterthought — it is also how evidence gets
-captured and how the image tests run.
+captured and how the image tests run. Each completed render writes a manifest next
+to the image and embeds the recipe hash plus essential provenance metadata in the
+image where the export format supports it.
 
 Unlocks: clean, high-quality smooth-coloured 4K stills.
 
 UI: Export panel (size preset — 1920×1080, 2560×1440, 3840×2160, custom;
-supersampling 1×/2×/4×; max iterations; render button; progress, cancel and time
-estimate) and a basic Colour panel (palette picker).
+supersampling 1×/2×/4×; max iterations; render button; progress, cancel, elapsed
+time and throughput) and a basic Colour panel (palette picker). Add ETA only once
+there is an estimator that is stable across highly non-uniform deep renders.
 
 ### Milestone 1 — Full iteration data and global colour mapping
 
@@ -334,7 +445,8 @@ Renderer:
   technical risk, and is done before anything depends on DE
 - DE, normal direction, arg z, |z|, arg(dz/dc), |dz/dc| buffers
 - cross-mode consistency check, as a `make` target
-- histogram CDF from a global low-resolution pass, stored in the recipe
+- histogram CDF from a global low-resolution pass, recorded in the render
+  manifest and optionally pinned in the recipe (§1.7)
 
 Unlocks: premium-looking classic renders with far less crushed detail.
 
@@ -392,8 +504,10 @@ bundle all parameters into Look presets.
 UI (Look):
 - preset gallery with thumbnails
 - save, duplicate, favourite, A/B compare
-- five surfaced hero controls per preset: **Exposure, Glow, Relief, Colour
-  shift, Darkness**, mapped onto the deeper parameters
+- at most five surfaced hero controls per preset, mapped onto the deeper
+  parameters. The initial common set is **Exposure, Glow, Relief, Colour shift,
+  Darkness**, but a Look may substitute controls where that better matches its
+  artistic intent
 
 Initial presets: Black Glass, Incandescent, Bas Relief, Deep Ocean.
 
@@ -412,29 +526,52 @@ UI (Colour, advanced):
 
 Presets: Iridescent Titanium, Beetle Shell, Polarised Glass, Aurora Metal.
 
-### Milestone 6 — Interior
+### Milestone 6A — Interior classification and materials
 
-**Goal:** a deliberately beautiful interior, grounded in real geometry.
+**Goal:** a deliberately beautiful interior without making robust interior
+geometry a prerequisite.
 
 Renderer:
-- period detection in all three precision modes (also speeds up interior
-  bailout, and retires the capped-pixel fudge from §1.1)
-- interior distance estimate
-- interior material shading using interior DE and normals
+- period detection in all three precision modes (also speeds up interior bailout,
+  and retires the capped-pixel fudge from §1.1 where a period is detected)
+- convergence / attracting-cycle statistics suitable for material modulation
+- interior material shading driven by classification, period and convergence data
 - optional colouring by period
 
 Unlocks: polished stone interiors, per-component materials, subtle hidden
-structure.
+structure, plus a major performance win from early interior termination.
 
 UI (Interior, within Colour or Light): black / shaded / coloured, brightness,
 roughness, specular, tint, glow, colour by period, period contrast.
 
 Presets: Black Lacquer, Polished Onyx, Dark Ceramic, Hidden Period Glow.
 
-Debug: period field, interior DE.
+Debug: period field, convergence field, confirmed-interior / undetermined mask.
 
-Period detection can be pulled earlier if interior render times become a
-problem. If `plan.md` 2.10 has landed, much of this is already done (§7).
+Period detection can be pulled earlier if interior render times become a problem.
+If `plan.md` 2.10 has landed, much of this is already done (§7).
+
+### Milestone 6B — Interior geometry (optional)
+
+**Goal:** investigate genuinely geometric interior shading without blocking the
+rest of the interior feature.
+
+Renderer:
+- robust interior distance estimate
+- interior analytic or derived normals
+- material shading using interior geometry
+
+Unlocks: true interior bas-relief / sculpted material effects rather than
+classification-driven shading alone.
+
+UI: interior relief strength and geometry source, exposed only when the estimator
+is available and numerically trustworthy.
+
+Debug: interior DE, interior normals.
+
+This milestone is explicitly optional. If a robust interior distance estimator
+proves mathematically or numerically awkward across Float, FloatFloat and
+Perturbation, Milestone 6A still ships a complete and useful interior feature.
 
 ### Milestone 7 — Orbit-trap modulators (optional)
 
@@ -475,8 +612,8 @@ Kept deliberately small for v1:
 | **Light** | direction gizmo, lighting terms, relief, edge glow |
 | **Colour** | palette, histogram remap, sources (advanced), interior |
 | **Effects** | bloom, tone mapping, vignette, optics (advanced) |
-| **Export** | size, supersampling, iterations, precision info, render, progress, cancel |
-| **Debug** | toggle; buffer and pass views, cross-mode diff |
+| **Export** | size, supersampling, iterations, precision info, correctness policy, render, progress, cancel, elapsed time and throughput; each render writes a manifest |
+| **Debug** | toggle; buffer and pass views, undetermined mask, cross-mode diff |
 
 Composition aids (aspect ratio, crop, desktop icon / menu bar safe-area overlay,
 framing guides) sit as an overlay toggle on the preview.
@@ -484,7 +621,7 @@ framing guides) sit as an overlay toggle on the preview.
 Intended workflow:
 
 1. Choose a look preset.
-2. Adjust the five hero controls.
+2. Adjust the hero controls.
 3. Optionally open advanced controls.
 4. Export.
 
@@ -498,13 +635,14 @@ renderer's worker. Pro owns its own worker and its own generation/cancellation.
 | Milestone | New data / capability | New style unlocked |
 |---|---|---|
 | Spike | DE and normals, Float only | proof the look is worth building |
-| 0 | tiled float pipeline, 16-bit export, recipes | clean 4K stills |
+| 0 | tiled float pipeline, 16-bit export, recipes and manifests | clean 4K stills |
 | 1 | derivative buffers (incl. through BLA), histogram remap | better classic colouring |
 | 2 | DE effects, analytic normals, lighting | edge glow, bas-relief, metallic |
 | 3 | bloom, tone mapping | white-hot highlights, real glow |
 | 4 | pass graph, presets | practical artistic workflow |
 | 5 | angular / derivative colour | iridescent, geometry-following colour |
-| 6 | period, interior DE | structured interiors |
+| 6A | period / convergence data | structured interiors |
+| 6B | interior DE / normals | geometric interior shading |
 | 7 | orbit traps | mineral / material variation |
 | 8 | variance, optics | photographic finish |
 
@@ -515,9 +653,12 @@ renderer's worker. Pro owns its own worker and its own generation/cancellation.
 Spike, then Milestones 0–4:
 
 - tiled, supersampled, linear-light float pipeline with cached reshading
-- 4K, 16-bit export and deterministic recipes, drivable from the CLI
+- 4K, 16-bit export, deterministic recipes and render manifests, drivable from
+  the CLI
 - smooth escape, DE and analytic normals in all three precision modes, correct
   through BLA jumps
+- the §2.3 default correctness policy — render, report and record unresolved
+  samples — with strict zero-undetermined available as an opt-in
 - DE edge glow and one directional light
 - bloom and filmic tone mapping
 - four presets with hero controls: Black Glass, Incandescent, Bas Relief,
@@ -533,9 +674,9 @@ visual impact.
 This plan assumes the roadmap is mostly finished first, so several milestones
 start further along than they look:
 
-- **2.10 (periodicity checking)** is the same mathematics as Milestone 6's
+- **2.10 (periodicity checking)** is the same mathematics as Milestone 6A's
   period detection, and `plan.md` 2.3 is already blocked on it. If 2.10 has
-  landed, Milestone 6 gets substantially cheaper.
+  landed, Milestone 6A gets substantially cheaper.
 - **2.12 (automatic colour)** builds histogram and in-view statistics machinery
   that Milestone 1's remap can borrow.
 - **2.5 (navigation feel)** adds `Viewport.angle`, which is what makes the
@@ -547,7 +688,10 @@ start further along than they look:
 **One decision to make consciously: `plan.md` 2.9, high-resolution still
 export.** Milestone 0 supersedes it. Either build 2.9 as the quick everyday
 export and let Pro Image Mode be the deliberate one, or skip 2.9 when the time
-comes and let Pro cover both cases. Choose, rather than building it twice.
+comes and let Pro cover both cases. Choose, rather than building it twice. Note
+that the two also share a mechanism: 2.9 already wants the location embedded in
+PNG metadata, which is the same provenance-embedding work as §1.7, so if Pro
+covers both cases that happens once.
 
 `vision.md` currently lists a palette editor as a non-goal, on the grounds that
 a curated set is enough. Pro Image Mode does not change that for the interactive
