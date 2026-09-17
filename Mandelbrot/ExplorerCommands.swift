@@ -2,7 +2,7 @@ import SwiftUI
 
 enum ExplorerCommand: String, CaseIterable, Identifiable {
   case reset, zoomIn, zoomOut, left, right, up, down, increaseIterations, decreaseIterations,
-    benchmark, help
+    rotateLeft, rotateRight, resetRotation, benchmark, help
   var id: String { rawValue }
   var title: String {
     switch self {
@@ -15,6 +15,9 @@ enum ExplorerCommand: String, CaseIterable, Identifiable {
     case .down: return "Move Down"
     case .increaseIterations: return "Increase Detail"
     case .decreaseIterations: return "Decrease Detail"
+    case .rotateLeft: return "Rotate Left"
+    case .rotateRight: return "Rotate Right"
+    case .resetRotation: return "Upright"
     case .benchmark: return "Benchmarks"
     case .help: return "Controls"
     }
@@ -30,6 +33,9 @@ enum ExplorerCommand: String, CaseIterable, Identifiable {
     case .down: return .downArrow
     case .increaseIterations: return "]"
     case .decreaseIterations: return "["
+    case .rotateLeft: return ","
+    case .rotateRight: return "."
+    case .resetRotation: return "u"
     case .benchmark: return "b"
     case .help: return "/"
     }
@@ -38,6 +44,8 @@ enum ExplorerCommand: String, CaseIterable, Identifiable {
     switch self {
     case .left, .right, .up, .down: return []
     case .reset, .help: return [.shift]
+    // Command-comma belongs to Settings, so twisting takes Shift as well.
+    case .rotateLeft, .rotateRight: return [.command, .shift]
     default: return [.command]
     }
   }
@@ -52,6 +60,9 @@ enum ExplorerCommand: String, CaseIterable, Identifiable {
     case .down: return "↓"
     case .increaseIterations: return "⌘ ]"
     case .decreaseIterations: return "⌘ ["
+    case .rotateLeft: return "⌘ ⇧ ,"
+    case .rotateRight: return "⌘ ⇧ ."
+    case .resetRotation: return "⌘ U"
     case .benchmark: return "⌘ B"
     case .help: return "?"
     }

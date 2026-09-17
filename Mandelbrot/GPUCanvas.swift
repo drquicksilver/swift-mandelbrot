@@ -100,7 +100,7 @@ import SwiftUI
     #endif
     command.commit()
     model.tiles.retireFallback(now: now)
-    view.isPaused = !model.motion.active && !model.tiles.hasActiveFades(now: now)
+    view.isPaused = !model.isAnimating && !model.tiles.hasActiveFades(now: now)
   }
 }
 

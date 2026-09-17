@@ -50,6 +50,8 @@ import SwiftUI
       } else {
         updateDepth()
         observeDepth()
+        // Springs run after the interaction, never during it.
+        if isAnimating { motionActive = true }
       }
     }
   }
@@ -123,19 +125,100 @@ import SwiftUI
   var zoomDirection = 0
   func stopMotion() {
     motion.stop()
+    rotationTarget = nil
     motionActive = false
     lastMotionTime = nil
     zoomDirection = 0
   }
-  func fling(pan: CGPoint = .zero, zoom: Double = 0, anchor: CGPoint? = nil) {
+  func fling(
+    pan: CGPoint = .zero, zoom: Double = 0, rotation: Double = 0, anchor: CGPoint? = nil
+  ) {
     motion.velocity = SIMD2(max(-4000, min(4000, pan.x)), max(-4000, min(4000, pan.y)))
     motion.zoomVelocity = max(-4, min(4, zoom))
+    motion.rotationVelocity = max(-12, min(12, rotation))
     motionAnchor = anchor
     lastMotionTime = ProcessInfo.processInfo.systemUptime
     motionActive = motion.active
   }
+  /// Rotation, gentle bounds and the compass all animate here, so the display
+  /// keeps drawing while any of them is still moving.
+  var isAnimating: Bool {
+    motion.active || rotationTarget != nil || (!interactionActive && boundsNeeded)
+  }
+  private(set) var rotationTarget: Double?
+  private var twist = 0.0
+  var centreOfView: CGPoint { CGPoint(x: size.width / 2, y: size.height / 2) }
+  func rotate(_ delta: Double, at point: CGPoint? = nil) {
+    guard delta.isFinite, delta != 0 else { return }
+    rotationTarget = nil
+    var next = viewport
+    next.rotate(by: delta, at: point ?? centreOfView, in: size)
+    viewport = next
+  }
+  /// A pinch ignores its first ten degrees of twist, so zooming does not leave
+  /// the view tilted; past that the gesture rotates one to one.
+  func applyTwist(_ delta: Double, at point: CGPoint) {
+    guard delta.isFinite, delta != 0 else { return }
+    let threshold = 10 * Double.pi / 180
+    twist += delta
+    guard abs(twist) > threshold else { return }
+    let effective = twist > 0 ? twist - threshold : twist + threshold
+    twist = twist > 0 ? threshold : -threshold
+    rotate(effective, at: point)
+  }
+  /// Ends a twist and snaps to a right angle when within three degrees.
+  func endTwist(velocity: Double = 0, at point: CGPoint? = nil) {
+    twist = 0
+    let quarter = Double.pi / 2
+    let nearest = (viewport.angle / quarter).rounded() * quarter
+    guard abs(Viewport.normalised(viewport.angle - nearest)) <= 3 * Double.pi / 180 else { return }
+    guard viewport.angle != Viewport.normalised(nearest) else { return }
+    rotationTarget = Viewport.normalised(nearest)
+    motion.rotationVelocity = 0
+    hapticTick()
+  }
+  /// Animates back to upright, for the compass button.
+  func resetRotation() {
+    guard viewport.angle != 0 else { return }
+    motion.rotationVelocity = 0
+    rotationTarget = 0
+    motionActive = true
+  }
+  private func hapticTick() {
+    #if os(iOS)
+      guard UIDevice.current.userInterfaceIdiom == .phone else { return }
+      UIImpactFeedbackGenerator(style: .light).impactOccurred(intensity: 0.6)
+    #endif
+  }
+  /// Gentle bounds: zooming out past the whole set, or panning far into empty
+  /// space, springs back until part of the set is in view.  Both springs use the
+  /// same analytic decay as inertia, so they are frame-rate independent.
+  private func applyBounds(_ view: inout Viewport, seconds: Double) -> Bool {
+    let rate = 9.0
+    var sprung = false
+    if view.logScale < Viewport.restingLogScale - 1e-9 {
+      let next = Motion.approach(
+        from: view.logScale, to: Viewport.restingLogScale, rate: rate, seconds: seconds)
+      view.zoom(by: pow(2, next - view.logScale), at: centreOfView, in: size, pixelWidth: pixelWidth)
+      motion.zoomVelocity = 0
+      sprung = true
+    }
+    let target = view.boundedCenter(size: size)
+    let offset = hypot(target.x - view.center.x, target.y - view.center.y)
+    if offset > view.span * 1e-6 {
+      let fraction = 1 - exp(-rate * min(seconds, 0.05))
+      let from = view.screen(for: target, in: size)
+      view.pan(
+        by: CGSize(
+          width: (centreOfView.x - from.x) * fraction, height: (centreOfView.y - from.y) * fraction),
+        in: size)
+      motion.velocity = .zero
+      sprung = true
+    }
+    return sprung
+  }
   func advanceMotion(now: Double) {
-    guard isActive, motion.active else {
+    guard isActive, isAnimating else {
       lastMotionTime = nil
       return
     }
@@ -145,17 +228,40 @@ import SwiftUI
     let delta = motion.step(seconds: dt)
     var next = viewport
     next.pan(by: delta.pan, in: size)
-    atPrecisionLimit = next.zoom(
-      by: delta.zoom, at: motionAnchor ?? CGPoint(x: size.width / 2, y: size.height / 2), in: size,
-      pixelWidth: pixelWidth)
-    if atPrecisionLimit { motion.zoomVelocity = 0 }
+    let anchor = motionAnchor ?? centreOfView
+    if delta.rotation != 0 { next.rotate(by: delta.rotation, at: anchor, in: size) }
+    atPrecisionLimit = next.zoom(by: delta.zoom, at: anchor, in: size, pixelWidth: pixelWidth)
+    if atPrecisionLimit && motion.zoomVelocity > 0 {
+      // Bounce off the precision limit rather than stopping dead.
+      motion.zoomVelocity = -min(1.5, motion.zoomVelocity / 3)
+    }
+    if let target = rotationTarget {
+      let remaining = Viewport.normalised(target - next.angle)
+      if abs(remaining) < 1e-4 {
+        next.rotate(by: remaining, at: centreOfView, in: size)
+        rotationTarget = nil
+      } else {
+        next.rotate(
+          by: Motion.approach(from: 0, to: remaining, rate: 12, seconds: dt), at: centreOfView,
+          in: size)
+      }
+    }
+    if !interactionActive { _ = applyBounds(&next, seconds: dt) }
     viewport = next
-    if motionActive != motion.active {
-      motionActive = motion.active
+    if motionActive != isAnimating {
+      motionActive = isAnimating
       if !motionActive { observeDepth() }
     }
   }
   @Published var atPrecisionLimit = false
+  /// Whether the resting view would spring: used to wake the display when an
+  /// interaction ends outside the gentle bounds.
+  var boundsNeeded: Bool {
+    if viewport.logScale < Viewport.restingLogScale - 1e-9 { return true }
+    let bounded = viewport.boundedCenter(size: size)
+    return hypot(bounded.x - viewport.center.x, bounded.y - viewport.center.y)
+      > viewport.span * 1e-6
+  }
   var size = CGSize(width: 900, height: 600)
   var displayScale = 1.0
   private var renderTask: Task<Void, Never>?
@@ -198,6 +304,9 @@ import SwiftUI
     case .down: pan(CGSize(width: 0, height: -80))
     case .increaseIterations: changeDetail(by: 2)
     case .decreaseIterations: changeDetail(by: 0.5)
+    case .rotateLeft: rotate(-.pi / 12)
+    case .rotateRight: rotate(.pi / 12)
+    case .resetRotation: resetRotation()
     case .benchmark: showBenchmark.toggle()
     case .help: showHelp.toggle()
     }

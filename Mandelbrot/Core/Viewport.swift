@@ -14,8 +14,14 @@ struct Viewport: Equatable, Sendable {
   var deepCenter: DeepPoint?
   var deepLogScale: Double?
   static let maximumLogScale = 13_000.0
-  /// The furthest zoom-out: the whole set with room around it.
+  /// The furthest zoom-out: the whole set with room around it.  Gentle bounds
+  /// spring back from there to `restingLogScale`, where the set spans the view.
   static let minimumLogScale = -1.0
+  static let restingLogScale = 0.0
+  /// The whole set, with a small margin.  Gentle bounds keep the view centre
+  /// within this box, expanded by most of the view's half-extents, so part of
+  /// the set always stays on screen.
+  static let setBounds = CGRect(x: -2.2, y: -1.2, width: 3.0, height: 2.4)
   var logScale: Double { deepLogScale ?? log2(scale) }
   var wideSpan: WideReal { WideReal(log2: log2(3) - logScale) }
   var precisionBits: Int { max(192, Int(ceil(logScale)) + 128) }
@@ -178,6 +184,15 @@ struct Viewport: Equatable, Sendable {
       pixelWidth: pixelWidth)
     center = fixedPoint.point
     if deepCenter != nil { deepCenter = fixedPoint }
+  }
+  /// The nearest centre that keeps part of the set on screen.
+  func boundedCenter(size: CGSize) -> CGPoint {
+    let coverage = coverage(size: size)
+    let margin = 0.9
+    let hx = span * coverage.x * margin, hy = span * coverage.y * margin
+    return CGPoint(
+      x: min(max(center.x, Self.setBounds.minX - hx), Self.setBounds.maxX + hx),
+      y: min(max(center.y, Self.setBounds.minY - hy), Self.setBounds.maxY + hy))
   }
   func recommendedRenderer(pixelWidth: Double) -> RendererID {
     PrecisionPolicy.renderer(logScale: logScale, pixelWidth: pixelWidth, center: center)

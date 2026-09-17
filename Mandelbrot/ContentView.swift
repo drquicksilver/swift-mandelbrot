@@ -23,6 +23,7 @@ struct ContentView: View {
       if model.showHUD {
         TileHUD(store: model.tiles, renderer: model.renderer, iterations: model.iterations)
       }
+      RotationCompass(model: model)
       if model.atPrecisionLimit {
         Text("Maximum detail reached").font(.caption).padding(10)
           .background(.regularMaterial, in: Capsule()).frame(
@@ -57,6 +58,14 @@ struct ContentView: View {
           model.perform(.reset)
         } label: {
           Label("Reset", systemImage: "house")
+        }
+        if abs(model.viewport.angle) > 0.001 {
+          Button {
+            model.resetRotation()
+          } label: {
+            Label("Upright", systemImage: "location.north.line")
+              .rotationEffect(.radians(-model.viewport.angle))
+          }
         }
         Button {
           model.showSettings = true
@@ -93,6 +102,33 @@ struct ContentView: View {
       .accessibilityIdentifier("viewer" + title)
     }
   #endif
+}
+
+/// While the view is rotated, a compass button animates it back to upright.
+struct RotationCompass: View {
+  @ObservedObject var model: ExplorerModel
+  var body: some View {
+    if abs(model.viewport.angle) > 0.001 {
+      let degrees = -model.viewport.angle * 180 / .pi
+      Button {
+        model.resetRotation()
+      } label: {
+        HStack(spacing: 6) {
+          Image(systemName: "location.north.line")
+            .rotationEffect(.radians(-model.viewport.angle))
+          Text("\(degrees, specifier: "%.0f")°").font(.caption.monospacedDigit())
+        }
+        .padding(.horizontal, 12).padding(.vertical, 8)
+        .contentShape(Capsule())
+      }
+      .buttonStyle(.plain)
+      .background(.regularMaterial, in: Capsule())
+      .accessibilityIdentifier("viewerUpright")
+      .accessibilityLabel("Rotate upright")
+      .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomLeading)
+      .padding(20)
+    }
+  }
 }
 
 struct TileHUD: View {

@@ -698,6 +698,53 @@
         "perturbationResidentMiB": Double(store.residentBytes) / 1_048_576,
       ]
     }
+    /// A rotated view draws rotated quads over the same axis-aligned tiles.
+    static func checkRotatedComposition(_ gpu: GPUContext) async throws {
+      let size = CGSize(width: 320, height: 240)
+      let store = TileStore()
+      var view = Viewport(center: CGPoint(x: -0.7435, y: 0.1314), scale: 128)
+      func update() {
+        store.update(
+          viewport: view, size: size, pixelWidth: 320, iterations: 800, override: nil,
+          colouring: ColourSettings())
+      }
+      update()
+      try await store.waitUntilReady()
+      let upright = try await gpu.readback(
+        TileCompositor.snapshot(
+          store: store, viewport: view, width: 320, height: 240,
+          now: ProcessInfo.processInfo.systemUptime + 1))
+      for degrees in [30.0, 45, -75] {
+        view.angle = Viewport.normalised(degrees * .pi / 180)
+        update()
+        try await store.waitUntilReady()
+        let cells = TileCompositor.plan(store: store, viewport: view, size: size)
+        try require(
+          cells.count == store.visible.count,
+          "A \(degrees) degree view left a cell without a tile")
+        let pixels = try await gpu.readback(
+          TileCompositor.snapshot(
+            store: store, viewport: view, width: 320, height: 240, sentinel: true,
+            now: ProcessInfo.processInfo.systemUptime + 1))
+        for i in stride(from: 0, to: pixels.count, by: 4) {
+          try require(
+            !(pixels[i] == 255 && pixels[i + 1] == 0 && pixels[i + 2] == 255),
+            "A \(degrees) degree view left a hole")
+        }
+        try require(Set(pixels).count > 100, "A rotated view is flat")
+        try require(pixels != upright, "Rotation did not change the picture")
+      }
+      // Turning full circle returns the original frame.
+      view.angle = 0
+      update()
+      try await store.waitUntilReady()
+      let returned = try await gpu.readback(
+        TileCompositor.snapshot(
+          store: store, viewport: view, width: 320, height: 240,
+          now: ProcessInfo.processInfo.systemUptime + 1))
+      try require(returned == upright, "Returning to upright changed the picture")
+      store.cancel()
+    }
     static func percentile95(_ values: [Double]) -> Double {
       let sorted = values.sorted()
       return sorted.isEmpty ? 0 : sorted[min(sorted.count - 1, Int(Double(sorted.count) * 0.95))]
@@ -903,6 +950,8 @@
         try await checkIterationReuse(gpu)
         try await checkObservedCeiling(gpu)
         try await checkNavigationRoundTrip()
+        try await checkRotationAndBounds()
+        try await checkRotatedComposition(gpu)
         try await checkStreamedReferences(gpu)
         try await checkResumption(gpu)
         try await checkMipmaps(gpu)

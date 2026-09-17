@@ -33,7 +33,7 @@ import SwiftUI
       updateMotionClock()
     }
     func updateMotionClock() {
-      guard window != nil, model.isActive, !model.renderer.isGPU, model.motionActive else {
+      guard window != nil, model.isActive, !model.renderer.isGPU, model.isAnimating else {
         timer?.invalidate()
         timer = nil
         return
@@ -87,14 +87,40 @@ import SwiftUI
     }
     override func scrollWheel(with event: NSEvent) {
       if event.phase.contains(.began) { model.interactionActive = true }
-      if event.phase.contains(.ended) || event.phase.contains(.cancelled) {
+      // Momentum events continue after the fingers lift.  The interaction ends
+      // when momentum ends, not when the fingers do, so automatic depth waits
+      // for the view to settle.
+      let momentumEnded =
+        event.momentumPhase.contains(.ended) || event.momentumPhase.contains(.cancelled)
+      let phaseEnded = event.phase.contains(.ended) || event.phase.contains(.cancelled)
+      if momentumEnded || (phaseEnded && event.momentumPhase.isEmpty) {
         model.interactionActive = false
       }
       model.stopMotion()
-      model.zoom(
-        exp(Double(event.scrollingDeltaY) * (event.hasPreciseScrollingDeltas ? 0.008 : 0.12)),
-        at: convert(event.locationInWindow, from: nil))
-      // AppKit supplies trackpad momentum events; do not add a second inertia curve.
+      let precise = event.hasPreciseScrollingDeltas
+      let zooming = !precise || event.modifierFlags.contains(.command)
+      if zooming {
+        // Physical wheels, and command-scroll on a trackpad, zoom at the cursor.
+        model.zoom(
+          exp(Double(event.scrollingDeltaY) * (precise ? 0.008 : 0.12)),
+          at: convert(event.locationInWindow, from: nil))
+      } else {
+        // Two-finger scrolling pans.  The deltas already follow the system's
+        // natural-scrolling setting, and AppKit supplies the momentum, so this
+        // must not add a second inertia curve.
+        model.pan(CGSize(width: event.scrollingDeltaX, height: event.scrollingDeltaY))
+      }
+    }
+    override func rotate(with event: NSEvent) {
+      if event.phase.contains(.began) { model.interactionActive = true }
+      model.stopMotion()
+      // AppKit reports counterclockwise degrees; the view follows the fingers.
+      model.applyTwist(
+        -Double(event.rotation) * .pi / 180, at: convert(event.locationInWindow, from: nil))
+      if event.phase.contains(.ended) || event.phase.contains(.cancelled) {
+        model.endTwist(at: convert(event.locationInWindow, from: nil))
+        model.interactionActive = false
+      }
     }
     override func magnify(with event: NSEvent) {
       if event.phase.contains(.began) { model.interactionActive = true }
@@ -104,6 +130,10 @@ import SwiftUI
       model.stopMotion()
       model.zoom(
         max(0.01, 1 + Double(event.magnification)), at: convert(event.locationInWindow, from: nil))
+      // Magnify and rotate arrive interleaved; ending either ends the twist.
+      if event.phase.contains(.ended) || event.phase.contains(.cancelled) {
+        model.endTwist(at: convert(event.locationInWindow, from: nil))
+      }
     }
     override func keyDown(with event: NSEvent) {
       if let command = ExplorerCommand.matching(event) {
@@ -123,33 +153,32 @@ import SwiftUI
       view.updateMotionClock()
     }
   }
+  /// One gesture solves pan, zoom and rotation together from the touches
+  /// themselves, so the point under each finger stays pinned.  Three separately
+  /// updating recognisers could not agree on a single transform.
   @MainActor final class TouchInputView: UIView, UIGestureRecognizerDelegate {
     var model: ExplorerModel
     private var displayLink: CADisplayLink?
-    private var panning = false, pinching = false
+    private var tracked: [UITouch] = []
+    private var previous: [CGPoint] = []
+    private var previousTime = 0.0
     private var panVelocity = CGPoint.zero
-    private var pinchVelocity = 0.0
+    private var zoomVelocity = 0.0
+    private var rotationVelocity = 0.0
     private var anchor = CGPoint.zero
-    private func finishGesture() {
-      model.interactionActive = panning || pinching
-      if !panning && !pinching {
-        model.fling(pan: panVelocity, zoom: pinchVelocity, anchor: anchor)
-      }
-    }
     init(model: ExplorerModel) {
       self.model = model
       super.init(frame: .zero)
       isMultipleTouchEnabled = true
       isAccessibilityElement = true
       accessibilityLabel = "Mandelbrot explorer"
-      let pan = UIPanGestureRecognizer(target: self, action: #selector(pan(_:)))
-      let pinch = UIPinchGestureRecognizer(target: self, action: #selector(pinch(_:)))
       let doubleTap = UITapGestureRecognizer(target: self, action: #selector(doubleTap(_:)))
       doubleTap.numberOfTapsRequired = 2
       let twoFingerTap = UITapGestureRecognizer(target: self, action: #selector(twoFingerTap(_:)))
       twoFingerTap.numberOfTouchesRequired = 2
-      for recognizer in [pan, pinch, doubleTap, twoFingerTap] {
+      for recognizer in [doubleTap, twoFingerTap] {
         recognizer.delegate = self
+        recognizer.cancelsTouchesInView = false
         addGestureRecognizer(recognizer)
       }
     }
@@ -166,14 +195,13 @@ import SwiftUI
         updateMotionClock()
       } else {
         model.interactionActive = false
-        panning = false
-        pinching = false
+        endTracking(cancelled: true)
         model.stopMotion()
       }
     }
     func updateMotionClock() {
       displayLink?.isPaused =
-        !(window != nil && model.isActive && !model.renderer.isGPU && model.motionActive)
+        !(window != nil && model.isActive && !model.renderer.isGPU && model.isAnimating)
     }
     @objc private func tick() {
       if !model.renderer.isGPU { model.advanceMotion(now: ProcessInfo.processInfo.systemUptime) }
@@ -181,58 +209,95 @@ import SwiftUI
     }
     func gestureRecognizer(
       _ a: UIGestureRecognizer, shouldRecognizeSimultaneouslyWith b: UIGestureRecognizer
-    ) -> Bool {
-      (a is UIPanGestureRecognizer && b is UIPinchGestureRecognizer)
-        || (a is UIPinchGestureRecognizer && b is UIPanGestureRecognizer)
+    ) -> Bool { true }
+    private func snapshot() -> [CGPoint] { tracked.map { $0.location(in: self) } }
+    private func beginTracking(_ touches: Set<UITouch>) {
+      for touch in touches where tracked.count < 2 { tracked.append(touch) }
+      previous = snapshot()
+      previousTime = ProcessInfo.processInfo.systemUptime
+      panVelocity = .zero
+      zoomVelocity = 0
+      rotationVelocity = 0
+      model.interactionActive = true
+      model.stopMotion()
     }
-    @objc private func pan(_ recognizer: UIPanGestureRecognizer) {
-      if recognizer.state == .began {
-        if !pinching {
-          panVelocity = .zero
-          pinchVelocity = 0
-        }
-        panning = true
-        model.interactionActive = true
+    private func endTracking(cancelled: Bool) {
+      tracked.removeAll()
+      previous.removeAll()
+      model.endTwist(at: anchor)
+      model.interactionActive = false
+      if cancelled {
         model.stopMotion()
-      }
-      let delta = recognizer.translation(in: self)
-      model.pan(CGSize(width: delta.x, height: delta.y))
-      recognizer.setTranslation(.zero, in: self)
-      if recognizer.state == .ended {
-        panning = false
-        panVelocity = recognizer.velocity(in: self)
-        finishGesture()
-      }
-      if recognizer.state == .cancelled {
-        panning = false
-        model.interactionActive = pinching
-        model.stopMotion()
+      } else {
+        model.fling(
+          pan: panVelocity, zoom: zoomVelocity, rotation: rotationVelocity, anchor: anchor)
       }
     }
-    @objc private func pinch(_ recognizer: UIPinchGestureRecognizer) {
-      if recognizer.state == .began {
-        if !panning {
+    override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {
+      beginTracking(touches)
+    }
+    override func touchesMoved(_ touches: Set<UITouch>, with event: UIEvent?) {
+      guard !tracked.isEmpty else { return }
+      let current = snapshot()
+      guard current.count == previous.count else {
+        previous = current
+        return
+      }
+      let now = ProcessInfo.processInfo.systemUptime
+      let dt = max(1.0 / 240, now - previousTime)
+      if current.count == 1 {
+        let delta = CGSize(
+          width: current[0].x - previous[0].x, height: current[0].y - previous[0].y)
+        model.pan(delta)
+        anchor = current[0]
+        panVelocity = CGPoint(x: delta.width / dt, y: delta.height / dt)
+        zoomVelocity = 0
+        rotationVelocity = 0
+      } else {
+        // Rotate and scale about the previous midpoint, then translate it: that
+        // is the unique transform pinning both fingers.
+        let before = CGPoint(
+          x: (previous[0].x + previous[1].x) / 2, y: (previous[0].y + previous[1].y) / 2)
+        let after = CGPoint(
+          x: (current[0].x + current[1].x) / 2, y: (current[0].y + current[1].y) / 2)
+        let spanBefore = hypot(
+          previous[1].x - previous[0].x, previous[1].y - previous[0].y)
+        let spanAfter = hypot(current[1].x - current[0].x, current[1].y - current[0].y)
+        let angleBefore = atan2(previous[1].y - previous[0].y, previous[1].x - previous[0].x)
+        let angleAfter = atan2(current[1].y - current[0].y, current[1].x - current[0].x)
+        let turn = Viewport.normalised(Double(angleAfter - angleBefore))
+        model.applyTwist(turn, at: before)
+        let scale = spanBefore > 1 ? Double(spanAfter / spanBefore) : 1
+        model.zoom(scale, at: before)
+        let delta = CGSize(width: after.x - before.x, height: after.y - before.y)
+        model.pan(delta)
+        anchor = after
+        panVelocity = CGPoint(x: delta.width / dt, y: delta.height / dt)
+        zoomVelocity = log2(max(0.001, scale)) / dt
+        rotationVelocity = turn / dt
+      }
+      previous = current
+      previousTime = now
+    }
+    override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent?) {
+      tracked.removeAll { touches.contains($0) }
+      if tracked.isEmpty {
+        // A quick lift keeps its fling; a held finish does not.
+        let resting = ProcessInfo.processInfo.systemUptime - previousTime > 0.08
+        if resting {
           panVelocity = .zero
-          pinchVelocity = 0
+          zoomVelocity = 0
+          rotationVelocity = 0
         }
-        pinching = true
-        model.interactionActive = true
-        model.stopMotion()
+        endTracking(cancelled: false)
+      } else {
+        previous = snapshot()
+        previousTime = ProcessInfo.processInfo.systemUptime
       }
-      let anchor = recognizer.location(in: self)
-      model.zoom(Double(recognizer.scale), at: anchor)
-      recognizer.scale = 1
-      if recognizer.state == .ended {
-        pinching = false
-        pinchVelocity = Double(recognizer.velocity)
-        self.anchor = anchor
-        finishGesture()
-      }
-      if recognizer.state == .cancelled {
-        pinching = false
-        model.interactionActive = panning
-        model.stopMotion()
-      }
+    }
+    override func touchesCancelled(_ touches: Set<UITouch>, with event: UIEvent?) {
+      tracked.removeAll { touches.contains($0) }
+      if tracked.isEmpty { endTracking(cancelled: true) } else { previous = snapshot() }
     }
     @objc private func doubleTap(_ recognizer: UITapGestureRecognizer) {
       model.stopMotion()
