@@ -227,3 +227,37 @@ Settings → About → Acknowledgements displays the bundled BigInt MIT notice a
 algorithm credits. The existing licence resource is verified in built iOS apps.
 Boost remains benchmark-only; `tests/precision/reproduce.py` fetches pinned
 revisions and rebuilds both arithmetic and saved-reference comparisons.
+
+## Navigation, locations, companion and movies (2.5–2.8)
+
+**Rotation.** `Viewport.angle` rotates the complex plane relative to the screen.
+Every conversion goes through two helpers: a screen offset in units of view
+width, then the same offset rotated into the plane. Rotation therefore applies
+to Double offsets from the screen centre, so precision is untouched at any
+depth, and tiles stay axis-aligned in the plane, so rotating invalidates
+nothing: `visible()` covers the rotated bounding box and the compositor turns
+each quad about its centre. The lab renderers stay axis-aligned and reject
+`--rotation`.
+
+**Motion.** `Motion` integrates exponential decay analytically for pan, zoom and
+rotation, and `Motion.approach` gives the same frame-rate independence to the
+gentle-bounds springs, the compass return and any future animation. The display
+keeps drawing while `ExplorerModel.isAnimating`, which covers inertia, the
+compass and a view outside its bounds.
+
+**Locations.** `Location` is the serialisable form of a view: centre as decimal
+strings, scale as a decimal string, rotation, iteration limit (nil for
+automatic) and palette. It is the single currency for links
+(`mandelbrot://view?…`), bookmarks in user defaults, the starter gallery,
+history entries and a movie's ends.
+
+**Julia companion.** A separate small render, not a second tile cache: one
+compute pass per change, float or double-float, sharing the sample format,
+palette kernel and draw pipeline. Gestures route to whichever view fills the
+main area.
+
+**Zoom movies.** `ZoomPath` (in Core) defines the keyframe chain and the view at
+any moment; keyframes come from the ordinary tile store and compositor, and each
+output frame samples the two bracketing keyframes through an affine map built
+from the two viewports. AVAssetWriter encodes straight out of Metal textures
+backed by the writer's pixel buffers.

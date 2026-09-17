@@ -286,3 +286,25 @@ off, and moving preparation cost. See `Performance.md`.
 
 Raising from data, the reference-orbit hint and resuming capped pixels move to
 2.10. `make test`, strict formatting of the changed files and `make ios` pass.
+
+### 2.5–2.8
+
+Rotation, navigation feel, locations, the Julia companion and zoom movies, in
+four commits with their own tests:
+
+- **2.5** `Viewport.angle` with rotated conversions, coverage and quads; trackpad
+  panning with AppKit momentum; a single two-touch gesture on iOS that pins both
+  fingers; a 10° twist threshold, ±3° snapping with a haptic tick, a compass
+  button; rotation inertia; gentle bounds springs and a precision-limit bounce.
+  A 30° product golden validates rotation against the independent oracle.
+- **2.6** `Location`, `mandelbrot://` links with the scheme registered on both
+  platforms, back/forward history over settled views, bookmarks in user
+  defaults, and a nine-place starter gallery.
+- **2.7** A live Julia companion (side by side, or inset on iPhone) with swap,
+  checked against the mathematics: for c = 0 the set is exactly the unit disc.
+- **2.8** `ZoomPath` plus keyframe rendering, affine frame composition and
+  AVAssetWriter encoding, with a `--movie` CLI and a headless render read back
+  through AVAssetReader.
+
+`make test`, `make ios` and strict formatting of the changed files pass. Phone
+hardware measurements remain outstanding (2.11).
