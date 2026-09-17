@@ -260,7 +260,11 @@ import SwiftUI
   /// Rotation, gentle bounds and the compass all animate here, so the display
   /// keeps drawing while any of them is still moving.
   var isAnimating: Bool {
-    motion.active || rotationTarget != nil || (!interactionActive && boundsNeeded)
+    // The bounds spring belongs to the Mandelbrot view.  While the companion
+    // holds the main area nothing pulls it back, so it must not keep the display
+    // awake either.
+    motion.active || rotationTarget != nil
+      || (!interactionActive && !juliaSwapped && boundsNeeded)
   }
   private(set) var rotationTarget: Double?
   private var twist = 0.0
@@ -316,7 +320,8 @@ import SwiftUI
     if view.logScale < Viewport.restingLogScale - 1e-9 {
       let next = Motion.approach(
         from: view.logScale, to: Viewport.restingLogScale, rate: rate, seconds: seconds)
-      view.zoom(by: pow(2, next - view.logScale), at: centreOfView, in: size, pixelWidth: pixelWidth)
+      view.zoom(
+        by: pow(2, next - view.logScale), at: centreOfView, in: size, pixelWidth: pixelWidth)
       motion.zoomVelocity = 0
       sprung = true
     }

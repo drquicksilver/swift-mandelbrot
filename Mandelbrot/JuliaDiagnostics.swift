@@ -13,7 +13,8 @@
       let view = Viewport(center: .zero, scale: 1)
       _ = try await gpu.julia(into: samples, viewport: view, c: .zero, iterations: 2000)
       let disc = try await gpu.readback(samples)
-      var inside = 0, outside = 0
+      var inside = 0
+      var outside = 0
       for y in 0..<size {
         for x in 0..<size {
           let offset = (y * size + x) * 8
@@ -40,13 +41,15 @@
         iterations: 2000)
       let rabbit = try await gpu.readback(samples)
       func sample(_ data: Data, _ x: Int, _ y: Int) -> UInt32 {
-        data.withUnsafeBytes { $0.loadUnaligned(fromByteOffset: (y * size + x) * 8, as: UInt32.self)
+        data.withUnsafeBytes {
+          $0.loadUnaligned(fromByteOffset: (y * size + x) * 8, as: UInt32.self)
         }
       }
       try require(
         sample(rabbit, size / 2, size / 2) == SampleRecord.capped,
         "c = -1: the critical point escaped")
-      try require(sample(rabbit, 1, 1) != SampleRecord.capped, "c = -1: a far corner did not escape")
+      try require(
+        sample(rabbit, 1, 1) != SampleRecord.capped, "c = -1: a far corner did not escape")
       try require(
         (0..<size * size).contains { index in
           rabbit.withUnsafeBytes { $0.loadUnaligned(fromByteOffset: index * 8, as: UInt32.self) }
@@ -87,7 +90,15 @@
       // It stays shallow: float and double-float only.
       for _ in 0..<60 { model.zoom(4, at: CGPoint(x: 400, y: 250)) }
       try require(model.juliaViewport.logScale < 26, "The companion zoomed past its precision")
+      // A swapped companion must not keep the display awake for a spring it
+      // cannot apply.
+      model.viewport = Viewport(center: CGPoint(x: 40, y: 25), scale: 8)
+      try require(
+        model.boundsNeeded && !model.isAnimating,
+        "A swapped view kept the display awake for a spring it cannot apply")
       model.swapJulia()
+      try require(model.isAnimating, "Unswapping did not resume the bounds spring")
+      model.stopMotion()
       model.setActive(false)
     }
   }
