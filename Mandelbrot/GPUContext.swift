@@ -175,7 +175,8 @@ final class GPUContext: @unchecked Sendable {
       var cosAngle: Float
       var sinAngle: Float
     }
-    let width = samples.width, height = samples.height
+    let width = samples.width
+    let height = samples.height
     // Pixel centres, as the tiles use; the kernel adds the half step.
     let span = viewport.span
     let imaginarySpan = span * Double(height) / Double(width)

@@ -247,7 +247,8 @@
       try require(model.rotationTarget == nil, "A 15 degree tilt was snapped away")
       model.rotate(-13 * .pi / 180)
       model.endTwist()
-      try require(model.rotationTarget == 0 && model.isAnimating, "A near-upright twist did not snap")
+      try require(
+        model.rotationTarget == 0 && model.isAnimating, "A near-upright twist did not snap")
       run(model, 1)
       try require(
         model.viewport.angle == 0 && model.rotationTarget == nil,
@@ -265,7 +266,8 @@
       model.fling(rotation: 3)
       try require(model.isAnimating, "A rotation fling did not animate")
       run(model, 3)
-      try require(!model.isAnimating && model.viewport.angle != 0, "Rotation inertia did not settle")
+      try require(
+        !model.isAnimating && model.viewport.angle != 0, "Rotation inertia did not settle")
       model.perform(.resetRotation)
       run(model, 2)
       // The whole touch sequence: a twist small enough to be ignored, then the

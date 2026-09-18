@@ -82,7 +82,8 @@
         TileCompositor.snapshot(
           store: raisedFresh, viewport: view, width: 256, height: 192,
           now: ProcessInfo.processInfo.systemUptime + 1))
-      try require(raised == raisedExpected, "Raising without a recolour differs from a fresh render")
+      try require(
+        raised == raisedExpected, "Raising without a recolour differs from a fresh render")
       try require(
         expected > 0 && store.statistics.sampledPixels - sampled == expected,
         "Increase recomputed already escaped pixels, or extended nothing")

@@ -165,7 +165,8 @@ struct MovieSettings: Equatable, Sendable {
       while index + 2 < path.keyframeLevels.count && path.keyframeLevels[index + 1] <= level {
         index += 1
       }
-      let lower = path.keyframeLevels[index], upper = path.keyframeLevels[index + 1]
+      let lower = path.keyframeLevels[index]
+      let upper = path.keyframeLevels[index + 1]
       let blend = upper > lower ? min(1, max(0, (level - lower) / (upper - lower))) : 0
       let first = try await keyframe(index)
       let second = try await keyframe(index + 1)

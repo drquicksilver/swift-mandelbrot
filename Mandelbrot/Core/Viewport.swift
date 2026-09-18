@@ -146,7 +146,8 @@ struct Viewport: Equatable, Sendable {
   /// Covering the box needs about 2.2x the tiles of an unrotated 16:9 screen at 45.
   func coverage(size: CGSize) -> (x: Double, y: Double) {
     let aspect = max(1, size.height) / max(1, size.width)
-    let c = abs(cos(angle)), s = abs(sin(angle))
+    let c = abs(cos(angle))
+    let s = abs(sin(angle))
     return ((c + s * aspect) / 2, (s + c * aspect) / 2)
   }
   func maximumScale(pixelWidth: Double) -> Double {
@@ -201,7 +202,8 @@ struct Viewport: Equatable, Sendable {
   func boundedCenter(size: CGSize) -> CGPoint {
     let coverage = coverage(size: size)
     let margin = 0.9
-    let hx = span * coverage.x * margin, hy = span * coverage.y * margin
+    let hx = span * coverage.x * margin
+    let hy = span * coverage.y * margin
     return CGPoint(
       x: min(max(center.x, Self.setBounds.minX - hx), Self.setBounds.maxX + hx),
       y: min(max(center.y, Self.setBounds.minY - hy), Self.setBounds.maxY + hy))

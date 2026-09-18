@@ -89,7 +89,8 @@ struct Location: Codable, Equatable, Sendable, Identifiable {
     }
     let scheme = components.scheme?.lowercased()
     let isApp = scheme == Self.scheme && (components.host ?? Self.host).lowercased() == Self.host
-    let isWeb = (scheme == "https" || scheme == "http") && components.path.hasSuffix("/" + Self.host)
+    let isWeb =
+      (scheme == "https" || scheme == "http") && components.path.hasSuffix("/" + Self.host)
     guard isApp || isWeb else { throw PrecisionError("Not a Mandelbrot location link") }
     let values = Dictionary(
       (components.queryItems ?? []).compactMap { item in item.value.map { (item.name, $0) } },

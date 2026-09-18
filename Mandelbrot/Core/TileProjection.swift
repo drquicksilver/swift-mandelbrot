@@ -18,7 +18,8 @@ struct TileProjection {
   }
   func center(of bounds: TileBounds) -> CGPoint {
     let r = bounds.relative(to: origin)
-    let dx = (r.x + r.extent / 2) * pixelSpan, dy = (r.y + r.extent / 2) * pixelSpan
+    let dx = (r.x + r.extent / 2) * pixelSpan
+    let dy = (r.y + r.extent / 2) * pixelSpan
     return CGPoint(
       x: screenOrigin.x + dx * cosAngle - dy * sinAngle,
       y: screenOrigin.y + dx * sinAngle + dy * cosAngle)

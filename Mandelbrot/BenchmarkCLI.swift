@@ -179,7 +179,9 @@
               throw CLIError("\(flag) needs a number")
             }
             if flag == "--duration" {
-              guard number > 0, number <= 600 else { throw CLIError("Duration must be in (0, 600]") }
+              guard number > 0, number <= 600 else {
+                throw CLIError("Duration must be in (0, 600]")
+              }
               movieSettings.duration = number
             } else {
               guard number <= 64 else { throw CLIError("Cycles must be at most 64") }
