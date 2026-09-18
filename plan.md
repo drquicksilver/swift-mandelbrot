@@ -253,11 +253,12 @@ bounded pyramid of coarse tiles keeps zooming out drawable after cold jumps.
   threshold, snap, compass, inertia, springs at two refresh rates and the bounce.
 - *Deviation.* The lab renderers (`--pipeline legacy`/`gpu`) sample axis-aligned
   rows and reject `--rotation`; 2.15 removes that path from the viewer anyway.
-- *Found in use (→ 2.9).* The gentle bounds are right in the model and wrong on
-  screen. The resting scale is a constant that assumes a window at least 0.8 as
-  tall as it is wide, so a typical Mac window cannot show the whole set; and the
-  springs only advance inside a frame the canvas is not reliably asked to draw,
-  so panning into empty space often never springs back at all.
+- *Found in use, fixed in 2.9(a) and 2.9(b).* The gentle bounds were right in
+  the model and wrong on screen. The resting scale was a constant that assumed a
+  window at least 0.8 as tall as it is wide, so a typical Mac window could not
+  show the whole set; and the springs only advanced inside a frame the canvas
+  was never reliably asked to draw, so panning into empty space often never
+  sprang back at all.
 
 **2.6 Locations: bookmarks, history, sharing.** ✅ Completed.
 - *`Location`.* Centre as arbitrary-precision decimal strings, scale as a
@@ -310,12 +311,13 @@ continues live in the panel.
   unit-disc rule, and for an asymmetric c a quarter turn must be the quarter-turn
   permutation of the upright render. Plus the render cache, pointer tracking, and
   gesture routing while swapped, including rotation and the compass.
-- *Found in use (→ 2.9).* In hands-on use the panel has never been seen to
-  update, which the tests above could not catch: they check the kernel, the
-  model and the cache, and nothing drives the panel's own view. The design is
-  also undiscoverable even when it works — c follows the pointer rather than the
-  view, no marker shows where it is, and the only way to zoom the companion is a
-  tap-to-swap that nothing explains. 2.9 both fixes the panel and reworks it.
+- *Found in use, fixed in 2.9(c).* The panel was never seen to update, and the
+  tests above could not catch it: they check the kernel, the model and the
+  cache, and nothing drove the panel's own view. The cause was in the view
+  layer — the surface SwiftUI mounted carried only a model reference and a
+  geometry size, so its value never changed and `updateNSView` was never
+  called. The design was also undiscoverable even when it worked, and 2.9(c)
+  reworked it around a crosshair.
 
 **2.8 Zoom movies.** ✅ Completed. Pick a start (the whole set by default, or
 any gallery place or bookmark) and an end (the current view), then render an
@@ -350,67 +352,81 @@ exponential zoom and share it. ⌘M, or the toolbar button.
   headless render read back with AVAssetReader for frame count, timing and
   size, with the first and last frames compared against direct renders of the
   start and end views (9.3/255 mean error through HEVC), and a cycled render.
-- *Found in use (→ 2.9).* The render works and the sheet does not show it: it
-  observes the model, while `MovieRenderer` is a separate observable object, so
-  progress, the stage, completion and the share link never republish. There is
-  also no way to watch the result before sharing it, and on macOS the share
-  sheet has no Save to File, so a finished movie stays in the temporary
-  directory.
+- *Found in use, fixed in 2.9(d).* The render worked and the sheet did not show
+  it: it observed the model, while `MovieRenderer` is a separate observable
+  object, so progress, the stage, completion and the share link never
+  republished. There was also no way to watch the result before sharing it, and
+  a finished movie stayed in the temporary directory.
 - *Deviation.* 2.10's automatic colour was meant to land first, and did not; see
   2.10.
 
-**2.9 Playtest fixes.** A session of hands-on use found ten things wrong, nearly
-all of them in the view layer rather than the renderer, and two of the reports
-share a single cause. Five commits, each with a check that fails before it.
-- *(a) Nothing asks the canvas for a frame.* `GPUCanvas` sets
+**2.9 Playtest fixes.** ✅ Completed. A session of hands-on use found ten things
+wrong, nearly all of them in the view layer rather than the renderer, and two of
+the reports shared a single cause. Five commits, each with a check that fails
+before it.
+- *(a) Nothing asked the canvas for a frame.* ✅ `GPUCanvas` sets
   `enableSetNeedsDisplay`, which takes an `MTKView` off its internal timer, but
-  `wake()` only clears `isPaused` and never marks the layer dirty. So tile
-  completion (`TileStore.onContentChange`) draws nothing: the work finishes,
-  `pending` falls to zero, and the screen keeps a stale mipmapped image until an
-  unrelated viewport change makes SwiftUI redraw it. Going back in history, or
-  jumping to a bookmark, is one viewport change followed by silence — which is
-  why those freeze, and why the smallest nudge repairs them. The same gap
-  starves the gentle bounds: `advanceMotion` runs only inside `draw`, so once a
-  trackpad pan stops there are no frames and the spring never runs. Route every
-  redraw request — tile completion, screen changes, waking — through one call
-  that both unpauses and invalidates, and give the springs a clock that does not
-  depend on some other view redrawing. `JuliaCanvas` already does this correctly
-  and is the model to follow.
-- *(b) The resting scale ignores the window.* `Viewport.restingLogScale` is a
+  `wake()` only cleared `isPaused` and never marked the layer dirty. So tile
+  completion drew nothing, going back in history or jumping to a bookmark froze
+  until an unrelated viewport change made SwiftUI redraw, and the gentle bounds
+  never ran at all: `advanceMotion` runs only inside `draw`. Every redraw
+  request — tile completion, a changed palette or overlay, every viewport
+  change, flings, snaps, the compass, waking — now goes through
+  `ExplorerModel.requestRedraw`, which the canvas answers by both unpausing and
+  invalidating; and `advanceMotion` asks for its own next frame, so a spring no
+  longer waits on some other view. While anything animates the canvas switches
+  to the internal timer, which is the clock the springs needed.
+- *(b) The resting scale ignored the window.* ✅ `Viewport.restingLogScale` was a
   constant 0 and the span is measured across the view's width, so the whole set
-  fits only a window at least 0.8 as tall as it is wide; anything wider crops it
-  top and bottom, and the zoom-out spring then refuses to go far enough to show
-  it. Derive the resting scale, and the minimum below it, from the view size so
-  that the set's bounds fit both dimensions.
-- *(c) The Julia companion.* First find out why the panel does not update at all,
-  then rework it, because the design is undiscoverable even once it draws. A
-  crosshair on the Mandelbrot shows where c is; it follows the pointer or finger
-  until it is pinned, and a pinned marker can be dragged and survives panning and
-  zooming. The panel gets its own pan, zoom and rotate gestures instead of
-  requiring a swap, and the swap becomes a button on the panel rather than an
-  unexplained tap. Whether it follows by default is a setting. This changes
-  `trackJulia`'s guard from "not swapped" to "not pinned", and needs an input
-  view of the panel's own.
-- *(d) The movie sheet.* Observe `MovieRenderer` directly, so progress, the
-  stage, completion and the share link appear. Play the finished movie in the
-  sheet before offering to share it. On macOS write every movie to a folder the
-  user chooses once, defaulting to `~/Movies`, shown in the sheet with a Reveal
-  in Finder button, alongside the existing `ShareLink`; iOS keeps the share
-  sheet, where Save to Files always exists. Renders currently land in
-  `temporaryDirectory`, so anything made before this is one purge from gone.
-- *(e) Tooltips and the help.* Every toolbar button gets `.help`. The help
-  dialogue is rebuilt around the toolbar's own icons, one row each, with the
-  gestures as the main content and the keyboard shortcuts last — and on iOS
-  shown only when a hardware keyboard is attached (`GCKeyboard`, watching
-  connection and disconnection). Splitting the run-on Explore paragraph also
-  fixes a real misreading: shift-drag frames a region and plain drag pans, but
-  the sentence reads as though dragging should frame one.
-- *Tests.* A counting stub on the single redraw call, driven by a settled model
-  whose tiles complete, and a spring that must finish with nothing else
-  redrawing; the resting scale at portrait, square and landscape sizes, which
-  moves `NavigationDiagnostics`' existing bounds check off the old constant; the
-  companion's pin, drag and in-panel gestures, alongside 2.7's swap routing; and
-  the movie sheet's published progress and completion.
+  fitted only a window at least 0.8 as tall as it is wide; anything wider
+  cropped it and the zoom-out spring sprang back to the same cropped scale. It
+  is now `restingLogScale(size:)`, derived from the aspect ratio against
+  `setBounds`, with `minimumLogScale(size:)` an octave beyond it.
+- *(c) The Julia companion.* ✅ The panel never updated because its SwiftUI
+  surface carried nothing that changed, so SwiftUI never called `updateNSView`
+  and the view was never marked dirty. It now carries the scene it draws
+  (`JuliaScene`), and the model has a redraw route of its own so a frame does
+  not depend on SwiftUI noticing. The rework: a crosshair on the Mandelbrot
+  shows where c is, follows the pointer or finger until it is pinned, and a
+  pinned marker can be dragged and survives panning and zooming — grabbed by
+  the input views themselves rather than by a SwiftUI overlay competing for the
+  pointer. The panel has pan, zoom and rotate of its own on both platforms
+  (without inertia: it is small and never deep), the swap is a button on the
+  panel beside a pin and a reset, and whether c follows by default is a setting.
+  `trackJulia`'s guard became "not pinned" and kept "not swapped", because
+  tracking reads Mandelbrot screen coordinates that the main area no longer
+  holds while swapped.
+- *(d) The movie sheet.* ✅ It observed the model, which does not republish what
+  `MovieRenderer` says, so no progress, stage, completion or share link ever
+  reached the screen; it observes the renderer directly now. The finished movie
+  plays in the sheet before it is offered anywhere. On macOS renders go to a
+  folder chosen once and kept as a security-scoped bookmark — which survives the
+  sandbox 2.16 will want as well as a relaunch — defaulting to `~/Movies`, with
+  Reveal in Finder beside the `ShareLink`; iOS keeps the share sheet. Renders
+  used to land in `temporaryDirectory`, one purge from gone.
+- *(e) Tooltips and the help.* ✅ `ToolbarAction` defines each button once —
+  icon, title, and the sentence that is both its tooltip and its row in the
+  help — so a button cannot reach the toolbar unexplained and the two cannot
+  drift. Both toolbars are built from it, and the macOS one gained Bookmark,
+  which had only ever had a shortcut. The help is rebuilt around those icons,
+  one row each, gestures first and one idea per line, shortcuts last and on iOS
+  only with a hardware keyboard attached (`GCKeyboard`, watching connection and
+  disconnection). Splitting the run-on Explore paragraph also fixed a real
+  misreading: shift-drag frames a region and plain drag pans, but the sentence
+  read as though dragging should frame one.
+- *Tests.* `checkRedrawRouting` counts requests through a stub — tile
+  completion, a palette change and a jump must each ask for a frame, and the
+  bounds spring must settle on nothing but the frames it asks for itself.
+  `checkRestingScale` settles a far-out view at portrait, square, landscape and
+  very wide sizes. `checkCompanionPanel` drives the panel's own view through its
+  coordinator and covers the pin, the drag, the grab radius, the setting and the
+  panel's gestures. `checkMovieSheet` covers the folder, the bookmark surviving
+  a relaunch, and a real render's published progress, stages and completion.
+  `checkHelpCoverage` holds the help's shape. Each was checked to fail against
+  the behaviour it replaced.
+- *Deviation.* The panel's own gestures have no inertia and no gentle bounds,
+  unlike the main view's: the panel is small and deliberately shallow, and a
+  fling there is not worth a second motion model.
 
 **2.10 Automatic colour.** Palette density is fixed at 64 iterations per cycle,
 which suits shallow views. At 1e100, counts in view run from about 22,000 to
@@ -553,6 +569,6 @@ cold deep views are too slow on the phones.
 6. **Validate:** 2.13 on both phones, then 2.14 only if the measurements call
    for it.
 7. **Share:** 2.6 → 2.8 → 2.7, which is where playtesting came in: 2.9 (the
-   fixes it found) → 2.10 (automatic colour, which should have preceded the
-   movies and now follows them) → 2.11.
+   fixes it found, now done) → 2.10 (automatic colour, which should have
+   preceded the movies and now follows them) → 2.11.
 8. **Ship:** 2.15 → 2.16 → App Store.
