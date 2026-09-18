@@ -18,9 +18,20 @@
       let old = store.records
       let sampled = store.statistics.sampledPixels
       let recolours = store.statistics.recolours
+      // Only the records that can differ are repainted: at the lower limit that
+      // is exactly those holding a count at or above it.
+      let changeable = (Array(store.records.values) + store.fallback).filter {
+        $0.maximumEscaped >= 100
+      }.count
+      let repaints = store.statistics.recolouredRecords
       update(store, 100)
       try await store.waitUntilReady()
       try require(store.statistics.recolours == recolours + 1, "Decrease did not recolour")
+      try require(changeable > 0, "The decrease check found nothing that could change")
+      try require(
+        store.statistics.recolouredRecords - repaints == changeable,
+        "A decrease repainted \(store.statistics.recolouredRecords - repaints) records, "
+          + "not the \(changeable) that can change")
       try require(store.statistics.sampledPixels == sampled, "Decreasing limit recomputed samples")
       for (key, record) in old {
         try require(store.records[key] === record, "Decrease discarded a cached record")
@@ -134,7 +145,15 @@
       let model = ExplorerModel()
       model.viewport = try Viewport(real: "0", imag: "1", zoom: "1e1000")
       let estimate = model.iterations
+      let repaints = model.tiles.statistics.recolouredRecords
       try await settleDepth(model, size: size)
+      // The settle lowers the limit far below every count on screen, so no
+      // record can change colour and none should be repainted.  Before the
+      // floor existed this repainted the whole cache, at depth, on every settle.
+      try require(
+        model.tiles.statistics.recolouredRecords == repaints,
+        "The ceiling settle repainted "
+          + "\(model.tiles.statistics.recolouredRecords - repaints) records for nothing")
       guard let maximum = model.tiles.visibleMaximumEscaped, let ceiling = model.ceiling else {
         throw GPUFailure("A settled deep view did not observe a ceiling")
       }

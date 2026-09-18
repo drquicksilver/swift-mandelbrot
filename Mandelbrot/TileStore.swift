@@ -14,6 +14,9 @@ struct TileStatistics: Equatable, Codable {
   var demandUpdates = 0
   var updateMS = 0.0, presentationFPS = 0.0
   var mipmaps = 0, prefetched = 0, pending = 0, budgetBytes = 0, recolours = 0
+  /// Records actually repainted, across all recolours: a whole-cache repaint
+  /// and a repaint of nothing both count as one recolour, and differ here.
+  var recolouredRecords = 0
   var longestBatchMS = 0.0, frameMS = 0.0, frameP95MS = 0.0, frameMaxMS = 0.0
 }
 @MainActor final class TileRecord {
@@ -142,6 +145,9 @@ struct TileStatistics: Equatable, Codable {
   private var tick: UInt64 = 0
   private var counters = TileStatistics()
   private var needsRecolour = false
+  /// The lowest `maximumEscaped` a record must hold for a pending recolour to
+  /// change it; zero repaints every record, as a palette change must.
+  private var recolourFloor = 0
   private var suspended = false
   private var lastFramePublish = 0.0
   private var frameTimes: [Double] = []
@@ -318,14 +324,22 @@ struct TileStatistics: Equatable, Codable {
       }
     }
     // Colours depend on counts, and on the limit only to mark counts at or above
-    // it as capped.  A raise changes no colour unless a record holds an escaped
-    // count that a lower limit had been colouring as capped.
-    let raiseRevealsCounts =
-      iterations > previousLimit
-      && (records.values.contains { $0.maximumEscaped >= previousLimit }
-        || fallback.contains { $0.maximumEscaped >= previousLimit })
-    if self.colouring != colouring || iterations < previousLimit || raiseRevealsCounts {
+    // it as capped.  Moving the limit between L1 and L2 therefore changes a
+    // pixel only if its count lies between them, so a record can only change
+    // colour if it holds a count at or above the lower of the two.  This is
+    // symmetric: the observed ceiling lowers the limit on every settle at depth,
+    // where nothing holds counts that high and nothing can change.
+    let floor = min(previousLimit, iterations)
+    let limitChangesColour =
+      iterations != previousLimit
+      && (records.values.contains { $0.maximumEscaped >= floor }
+        || fallback.contains { $0.maximumEscaped >= floor })
+    let paletteChanged = self.colouring != colouring
+    if paletteChanged || limitChangesColour {
       self.colouring = colouring
+      // A palette change repaints everything; a limit change repaints only the
+      // records that can differ.  A pending recolour keeps the wider floor.
+      recolourFloor = paletteChanged ? 0 : (needsRecolour ? min(recolourFloor, floor) : floor)
       needsRecolour = true
       generation &+= 1
       worker?.cancel()
@@ -754,7 +768,12 @@ struct TileStatistics: Equatable, Codable {
   private func recolour(_ gpu: GPUContext, generation: UInt64) async throws {
     let settings = colouring
     let limit = iterations
-    let all = Array(records.values) + fallback
+    // Only the records whose colour can actually differ; see the floor's own
+    // comment in `update`.  Each one costs a fresh 258x258 texture and a
+    // dispatch that is awaited, so this is the difference between repainting
+    // the cache and repainting nothing.
+    let floor = recolourFloor
+    let all = (Array(records.values) + fallback).filter { $0.maximumEscaped >= floor }
     var replacements: [(TileRecord, MTLTexture)] = []
     for record in all {
       try Task.checkCancellation()
@@ -769,10 +788,13 @@ struct TileStatistics: Equatable, Codable {
       record.isMip = false
     }
     needsRecolour = false
+    recolourFloor = 0
     counters.recolours += 1
+    counters.recolouredRecords += replacements.count
     onContentChange?()
     // Rebuild bottom-up from the new palette, never reuse old colour mipmaps.
-    for key in Set(records.keys.map(\.parent)).sorted(by: { $0.level > $1.level }) {
+    // Only above records that were repainted: the rest keep matching mipmaps.
+    for key in Set(replacements.map(\.0.key.parent)).sorted(by: { $0.level > $1.level }) {
       try await averageParent(of: key.children[0], gpu: gpu, generation: generation, cascade: false)
     }
   }
