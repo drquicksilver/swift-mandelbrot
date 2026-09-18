@@ -127,8 +127,11 @@
           target.advanceMotion(now: now)
         }
       }
-      // A pinch ignores its first ten degrees, then rotates one to one.
-      model.applyTwist(5 * .pi / 180, at: CGPoint(x: 400, y: 250))
+      // A pinch ignores its first ten degrees, then rotates one to one, and
+      // reports what it applied so that only that much can be flung.
+      try require(
+        model.applyTwist(5 * .pi / 180, at: CGPoint(x: 400, y: 250)) == 0,
+        "A suppressed twist claimed to have rotated the view")
       try require(model.viewport.angle == 0, "A small twist tilted the view")
       model.applyTwist(20 * .pi / 180, at: CGPoint(x: 400, y: 250))
       try require(
@@ -160,6 +163,41 @@
       try require(!model.isAnimating && model.viewport.angle != 0, "Rotation inertia did not settle")
       model.perform(.resetRotation)
       run(model, 2)
+      // The whole touch sequence: a twist small enough to be ignored, then the
+      // fingers lift.  Flinging the raw finger movement would tilt a view the
+      // gesture deliberately left alone.
+      let lift = ExplorerModel()
+      lift.resize(CGSize(width: 800, height: 500), displayScale: 2)
+      let anchor = CGPoint(x: 400, y: 250)
+      var applied = 0.0
+      for _ in 0..<5 { applied += lift.applyTwist(1 * .pi / 180, at: anchor) }
+      lift.endTwist(at: anchor)
+      lift.fling(rotation: applied / (5 / 60.0), anchor: anchor)
+      run(lift, 3)
+      try require(
+        lift.viewport.angle == 0,
+        "A 5 degree twist under the threshold still tilted the view on release")
+      // And a snap decided on release is not undone by the fling that follows.
+      lift.applyTwist((10 + 2) * .pi / 180, at: anchor)
+      lift.endTwist(at: anchor)
+      try require(lift.rotationTarget == 0, "A near-upright twist did not snap")
+      lift.fling(rotation: 6, anchor: anchor)
+      // The spring wins in the end either way, so watch the journey: a fling
+      // that survives the snap throws the view away from upright first.
+      var worst = 0.0
+      var clock = ProcessInfo.processInfo.systemUptime
+      for _ in 0..<180 {
+        clock += 1 / 60
+        lift.advanceMotion(now: clock)
+        worst = max(worst, abs(lift.viewport.angle))
+      }
+      try require(
+        worst < 2.1 * .pi / 180,
+        "A fling on release threw the snapping view \(worst * 180 / .pi) degrees off upright")
+      try require(
+        lift.viewport.angle == 0 && !lift.isAnimating,
+        "The snap back to upright did not settle")
+      lift.setActive(false)
 
       // Gentle bounds: panning into empty space springs back until part of the
       // set is in view, from the same analytic model as inertia.

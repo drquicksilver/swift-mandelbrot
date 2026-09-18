@@ -279,7 +279,7 @@ import SwiftUI
         let angleBefore = atan2(previous[1].y - previous[0].y, previous[1].x - previous[0].x)
         let angleAfter = atan2(current[1].y - current[0].y, current[1].x - current[0].x)
         let turn = Viewport.normalised(Double(angleAfter - angleBefore))
-        model.applyTwist(turn, at: before)
+        let turned = model.applyTwist(turn, at: before)
         let scale = spanBefore > 1 ? Double(spanAfter / spanBefore) : 1
         model.zoom(scale, at: before)
         let delta = CGSize(width: after.x - before.x, height: after.y - before.y)
@@ -287,7 +287,8 @@ import SwiftUI
         anchor = after
         panVelocity = CGPoint(x: delta.width / dt, y: delta.height / dt)
         zoomVelocity = log2(max(0.001, scale)) / dt
-        rotationVelocity = turn / dt
+        // Only rotation that passed the twist threshold can be flung.
+        rotationVelocity = turned / dt
       }
       previous = current
       previousTime = now

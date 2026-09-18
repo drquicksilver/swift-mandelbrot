@@ -258,7 +258,8 @@ import SwiftUI
   ) {
     motion.velocity = SIMD2(max(-4000, min(4000, pan.x)), max(-4000, min(4000, pan.y)))
     motion.zoomVelocity = max(-4, min(4, zoom))
-    motion.rotationVelocity = max(-12, min(12, rotation))
+    // A snap, just decided by endTwist, owns the angle: a fling must not undo it.
+    motion.rotationVelocity = rotationTarget == nil ? max(-12, min(12, rotation)) : 0
     motionAnchor = anchor
     lastMotionTime = ProcessInfo.processInfo.systemUptime
     motionActive = motion.active
@@ -296,15 +297,18 @@ import SwiftUI
     mainViewport = next
   }
   /// A pinch ignores its first ten degrees of twist, so zooming does not leave
-  /// the view tilted; past that the gesture rotates one to one.
-  func applyTwist(_ delta: Double, at point: CGPoint) {
-    guard delta.isFinite, delta != 0 else { return }
+  /// the view tilted; past that the gesture rotates one to one.  Returns the
+  /// rotation it actually applied, which is what may be flung on release: the
+  /// raw finger movement includes the part deliberately ignored.
+  @discardableResult func applyTwist(_ delta: Double, at point: CGPoint) -> Double {
+    guard delta.isFinite, delta != 0 else { return 0 }
     let threshold = 10 * Double.pi / 180
     twist += delta
-    guard abs(twist) > threshold else { return }
+    guard abs(twist) > threshold else { return 0 }
     let effective = twist > 0 ? twist - threshold : twist + threshold
     twist = twist > 0 ? threshold : -threshold
     rotate(effective, at: point)
+    return effective
   }
   /// Ends a twist and snaps to a right angle when within three degrees.
   func endTwist(velocity: Double = 0, at point: CGPoint? = nil) {
