@@ -17,7 +17,8 @@ struct ContentView: View {
       GeometryReader { geometry in
         // A wide screen puts the companion beside the view; a phone insets it in
         // a corner.  Either way the main area keeps the full input surface.
-        let panel = sideBySide
+        let panel =
+          sideBySide
           ? CGSize(width: max(220, geometry.size.width * 0.28), height: geometry.size.height)
           : CGSize(
             width: min(geometry.size.width * 0.42, 220),
@@ -80,15 +81,15 @@ struct ContentView: View {
     #if os(iOS)
       .overlay(alignment: .topTrailing) {
         HStack(spacing: 0) {
-          viewerButton("Reset", icon: "house") { model.perform(.reset) }
+          viewerButton(.reset) { model.perform(.reset) }
           if model.canGoBack {
-            viewerButton("Back", icon: "chevron.backward") { model.perform(.back) }
+            viewerButton(.back) { model.perform(.back) }
           }
-          viewerButton("Places", icon: "bookmark") { model.showPlaces = true }
-          viewerButton("Julia", icon: "circle.lefthalf.filled") { model.toggleJulia() }
-          viewerButton("Movie", icon: "film") { model.showMovie = true }
-          viewerButton("Settings", icon: "slider.horizontal.3") { model.showSettings = true }
-          viewerButton("Controls", icon: "questionmark.circle") { model.showHelp = true }
+          viewerButton(.places) { model.showPlaces = true }
+          viewerButton(.julia) { model.toggleJulia() }
+          viewerButton(.movie) { model.showMovie = true }
+          viewerButton(.settings) { model.showSettings = true }
+          viewerButton(.help) { model.showHelp = true }
         }
         .padding(4)
         .background(.regularMaterial, in: Capsule())
@@ -102,59 +103,30 @@ struct ContentView: View {
     .background(.black)
     #if os(macOS)
       .toolbar {
-        Button {
-          model.perform(.reset)
-        } label: {
-          Label("Reset", systemImage: "house")
-        }
+        toolbarButton(.reset) { model.perform(.reset) }
         if abs(model.mainViewport.angle) > 0.001 {
           Button {
             model.resetRotation()
           } label: {
-            Label("Upright", systemImage: "location.north.line")
-              .rotationEffect(.radians(-model.mainViewport.angle))
+            Label(ToolbarAction.upright.title, systemImage: ToolbarAction.upright.icon)
+            .rotationEffect(.radians(-model.mainViewport.angle))
           }
+          .help(ToolbarAction.upright.explanation)
         }
-        Button {
-          model.perform(.back)
-        } label: {
-          Label("Back", systemImage: "chevron.backward")
-        }
+        toolbarButton(.back) { model.perform(.back) }
         .disabled(!model.canGoBack)
-        Button {
-          model.perform(.forward)
-        } label: {
-          Label("Forward", systemImage: "chevron.forward")
-        }
+        toolbarButton(.forward) { model.perform(.forward) }
         .disabled(!model.canGoForward)
-        Button {
-          model.showPlaces = true
-        } label: {
-          Label("Places", systemImage: "bookmark")
-        }
-        Button {
-          model.toggleJulia()
-        } label: {
-          Label("Julia Companion", systemImage: "circle.lefthalf.filled")
-        }
-        Button {
-          model.showMovie = true
-        } label: {
-          Label("Zoom Movie", systemImage: "film")
-        }
+        toolbarButton(.places) { model.showPlaces = true }
+        toolbarButton(.bookmark) { model.bookmarkCurrentView() }
+        toolbarButton(.julia) { model.toggleJulia() }
+        toolbarButton(.movie) { model.showMovie = true }
         ShareLink(item: model.location.url) {
-          Label("Share", systemImage: "square.and.arrow.up")
+          Label(ToolbarAction.share.title, systemImage: ToolbarAction.share.icon)
         }
-        Button {
-          model.showSettings = true
-        } label: {
-          Label("Settings", systemImage: "slider.horizontal.3")
-        }
-        Button {
-          model.showHelp = true
-        } label: {
-          Label("Controls", systemImage: "questionmark.circle")
-        }
+        .help(ToolbarAction.share.explanation)
+        toolbarButton(.settings) { model.showSettings = true }
+        toolbarButton(.help) { model.showHelp = true }
       }
     #endif
     .sheet(isPresented: $model.showDeveloper) { DeveloperPanel(model: model) }
@@ -168,23 +140,39 @@ struct ContentView: View {
     .focusedSceneValue(\.explorer, model)
   }
 
+  #if os(macOS)
+    /// Every toolbar button, with the tooltip that explains it -- the same
+    /// sentence the help shows beside the same icon.
+    private func toolbarButton(_ action: ToolbarAction, perform: @escaping () -> Void)
+      -> some View
+    {
+      Button(action: perform) {
+        Label(action.title, systemImage: action.icon)
+      }
+      .help(action.explanation)
+      .accessibilityIdentifier("viewer" + action.title)
+    }
+  #endif
+
   private func viewerSize(_ total: CGSize, _ panel: CGSize) -> CGSize {
     guard model.showJulia && sideBySide else { return total }
     return CGSize(width: max(1, total.width - panel.width), height: total.height)
   }
 
   #if os(iOS)
-    private func viewerButton(_ title: String, icon: String, action: @escaping () -> Void)
+    private func viewerButton(_ action: ToolbarAction, perform: @escaping () -> Void)
       -> some View
     {
-      Button(action: action) {
-        Label(title, systemImage: icon)
+      Button(action: perform) {
+        Label(action.title, systemImage: action.icon)
           .labelStyle(.iconOnly)
           .frame(width: 44, height: 44)
           .contentShape(Rectangle())
       }
       .buttonStyle(.plain)
-      .accessibilityIdentifier("viewer" + title)
+      .help(action.explanation)
+      .accessibilityHint(action.explanation)
+      .accessibilityIdentifier("viewer" + action.title)
     }
   #endif
 }

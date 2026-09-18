@@ -965,6 +965,7 @@
           try require(first === second, "Palette GPU texture was rebuilt")
         }
         try checkNativeCommands()
+        try checkHelpCoverage()
         try await checkDemandWakeups()
         try await checkRedrawRouting()
         try await checkRestingScale()
