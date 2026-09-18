@@ -239,3 +239,25 @@ struct MovieSettings: Equatable, Sendable {
     }
   }
 }
+
+#if DEBUG
+  extension MovieRenderer {
+    /// A renderer posed in one of the states the sheet draws, so a `#Preview` can
+    /// show that state without a GPU or a render.  The published state is
+    /// `private(set)` because only a render should move it, so a preview cannot
+    /// set it from outside; this stays beside it, in the same file, for that.
+    static func posed(
+      progress: Double? = nil, stage: String = "", failure: String? = nil, output: URL? = nil
+    ) -> MovieRenderer {
+      let renderer = MovieRenderer()
+      if let progress {
+        renderer.isRendering = true
+        renderer.progress = progress
+        renderer.stage = stage
+      }
+      renderer.error = failure
+      renderer.output = output
+      return renderer
+    }
+  }
+#endif

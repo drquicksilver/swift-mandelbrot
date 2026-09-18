@@ -12,9 +12,11 @@ struct MovieView: View {
   #if os(macOS)
     @ObservedObject private var library = MovieLibrary.shared
   #endif
-  init(model: ExplorerModel) {
+  /// `movies` is the seam the previews use to pose a render that is not
+  /// happening; the app always takes the model's own renderer.
+  init(model: ExplorerModel, movies: MovieRenderer? = nil) {
     _model = ObservedObject(wrappedValue: model)
-    _movies = ObservedObject(wrappedValue: model.movies)
+    _movies = ObservedObject(wrappedValue: movies ?? model.movies)
   }
   @Environment(\.dismiss) private var dismiss
   @State private var startChoice: UUID?
@@ -102,7 +104,12 @@ struct MovieView: View {
       .toolbar { Button("Done") { dismiss() } }
     }
     .frame(minWidth: 420, minHeight: 480)
-    .onAppear { startChoice = startChoice ?? Location.gallery[0].id }
+    .onAppear {
+      startChoice = startChoice ?? Location.gallery[0].id
+      // Reopening the sheet after a render finds the finished movie already
+      // there: `onChange` will not fire for it, so the player is built here.
+      player = player ?? movies.output.map { AVPlayer(url: $0) }
+    }
     .onChange(of: movies.output) { _, url in
       player?.pause()
       player = url.map { AVPlayer(url: $0) }
@@ -147,3 +154,36 @@ struct MovieView: View {
     }
   }
 }
+
+#if DEBUG
+  /// The previews put the viewer deep inside Seahorse Valley, so the journey has
+  /// a real destination and a keyframe count to show.
+  @MainActor private func previewModel() -> ExplorerModel {
+    let model = ExplorerModel()
+    model.apply(Location.gallery[1], record: false)
+    return model
+  }
+
+  #Preview("Settings") {
+    MovieView(model: previewModel(), movies: .posed())
+  }
+
+  #Preview("Rendering") {
+    MovieView(
+      model: previewModel(),
+      movies: .posed(progress: 0.42, stage: "Keyframe 6 of 13"))
+  }
+
+  #Preview("Failed") {
+    MovieView(model: previewModel(), movies: .posed(failure: "The movie writer rejected its input"))
+  }
+
+  #Preview("Finished") {
+    // The player is empty here: no render has written the file a preview names.
+    MovieView(
+      model: previewModel(),
+      movies: .posed(
+        output: FileManager.default.temporaryDirectory
+          .appendingPathComponent("Mandelbrot zoom preview.mov")))
+  }
+#endif
