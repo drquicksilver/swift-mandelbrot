@@ -216,7 +216,13 @@ fragment float4 movieFragment(QuadOutput in [[stage_in]],texture2d<float> first 
     constexpr sampler s(coord::normalized,address::clamp_to_edge,filter::linear);
     float2 a=p.originA+in.uv.x*p.duA+in.uv.y*p.dvA;
     float2 b=p.originB+in.uv.x*p.duB+in.uv.y*p.dvB;
-    return float4(mix(first.sample(s,a).rgb,second.sample(s,b).rgb,p.blend),1);
+    // A frame is up to twice as wide as the deeper keyframe it samples, so its
+    // outer band falls outside that texture, where clamping would smear the edge
+    // row across it.  The shallower keyframe always covers the frame, so the
+    // deeper one's weight fades out as its sample leaves it.
+    float2 edge=min(b,1.0f-b);
+    float inside=smoothstep(0.0f,0.01f,min(edge.x,edge.y));
+    return float4(mix(first.sample(s,a).rgb,second.sample(s,b).rgb,p.blend*inside),1);
 }
 
 // Only the worker sees unfinished records; counts remain exact at the product cap.

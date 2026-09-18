@@ -11,10 +11,9 @@
       let width = 320
       let height = 180
       let end = Location(
-        name: "Seahorse", real: "-0.743643887037151", imag: "0.13182590420533", scale: "4e3",
-        palette: .ink)
+        name: "Triple Spiral", real: "-0.088", imag: "0.654", scale: "1.5e3", palette: .twilight)
       let path = try ZoomPath(start: Location(real: "-0.5", imag: "0", scale: "1"), end: end)
-      var settings = MovieSettings(duration: 1, width: width, height: height, framesPerSecond: 15)
+      var settings = MovieSettings(duration: 2, width: width, height: height, framesPerSecond: 30)
       settings.paletteCycles = 0
       let url = FileManager.default.temporaryDirectory.appendingPathComponent(
         "diagnostic-zoom.mov")
@@ -33,6 +32,37 @@
       try require(
         Int(naturalSize.width) == width && Int(naturalSize.height) == height,
         "The movie is \(naturalSize), not \(width)x\(height)")
+      // Worst case is the frame furthest from both keyframes: pick it the way the
+      // renderer brackets, and measure how far outside the deeper keyframe it
+      // reaches as well as what it looks like.
+      var worstFrame = 0
+      var worstBlend = 0.0
+      var worstOutside = 0.0
+      for frame in 0..<settings.frameCount {
+        let level = path.level(at: Double(frame) / Double(settings.frameCount - 1))
+        var index = 0
+        while index + 2 < path.keyframeLevels.count && path.keyframeLevels[index + 1] <= level {
+          index += 1
+        }
+        let lower = path.keyframeLevels[index], upper = path.keyframeLevels[index + 1]
+        let blend = upper > lower ? min(1, max(0, (level - lower) / (upper - lower))) : 0
+        if abs(blend - 0.5) < abs(worstBlend - 0.5) {
+          worstBlend = blend
+          worstFrame = frame
+          // How far the frame's corners fall outside the deeper keyframe's
+          // texture, in units of that texture: zero means it is covered.
+          let view = path.viewport(at: level)
+          let map = MovieRenderer.mapping(
+            frame: view, keyframe: path.viewport(at: upper),
+            size: CGSize(width: width, height: height))
+          var reach = 0.0
+          for corner in [SIMD2<Float>(0, 0), SIMD2(1, 0), SIMD2(0, 1), SIMD2(1, 1)] {
+            let uv = map.origin + corner.x * map.du + corner.y * map.dv
+            reach = max(reach, Double(max(-uv.x, uv.x - 1, -uv.y, uv.y - 1)))
+          }
+          worstOutside = reach
+        }
+      }
       let reader = try AVAssetReader(asset: asset)
       let output = AVAssetReaderTrackOutput(
         track: track,
@@ -44,6 +74,7 @@
       var last: [UInt8] = []
       var first: [UInt8] = []
       var middle: [UInt8] = []
+      var worstPixels: [UInt8] = []
       let middleIndex = settings.frameCount / 2
       while let sample = output.copyNextSampleBuffer() {
         frames += 1
@@ -59,6 +90,7 @@
             }
             if frames == 1 { first = pixels }
             if frames == middleIndex + 1 { middle = pixels }
+            if frames == worstFrame + 1 { worstPixels = pixels }
             last = pixels
           }
           CVPixelBufferUnlockBaseAddress(buffer, .readOnly)
@@ -69,7 +101,7 @@
         "The movie has \(frames) frames, not \(settings.frameCount)")
       for (index, time) in times.enumerated() {
         try require(
-          abs(time - Double(index) / 15) < 1e-6, "Frame \(index) is timed at \(time)")
+          abs(time - Double(index) / Double(settings.framesPerSecond)) < 1e-6, "Frame \(index) is timed at \(time)")
       }
       try require(Set(last).count > 32 && Set(first).count > 32, "A movie frame is flat")
 
@@ -113,10 +145,46 @@
       // A frame between keyframes blends both through the affine map: check one
       // against a direct render at the same level, where nothing is blended.
       let middleLevel = path.level(at: Double(middleIndex) / Double(settings.frameCount - 1))
-      let middleError = difference(middle, try await direct(middleLevel))
+      let middleDirect = try await direct(middleLevel)
+      let middleError = difference(middle, middleDirect)
       try require(
         middleError < 20,
         "An interpolated frame differs from a direct render by \(middleError)")
+      // The border separately: a frame is wider than the deeper keyframe it
+      // samples, so the outer band is where that keyframe has no data at all.
+      // A whole-frame mean hides it.
+      func borderDifference(_ a: [UInt8], _ b: [UInt8]) -> Double {
+        guard a.count == b.count, !a.isEmpty else { return 255 }
+        let band = max(1, width * 8 / 100)
+        var total = 0.0
+        var counted = 0
+        for y in 0..<height {
+          for x in 0..<width where x < band || x >= width - band {
+            let index = (y * width + x) * 4
+            for channel in 0..<3 {
+              total += abs(Double(a[index + channel]) - Double(b[index + channel]))
+            }
+            counted += 3
+          }
+        }
+        return counted == 0 ? 255 : total / Double(counted)
+      }
+      let worstLevel = path.level(at: Double(worstFrame) / Double(settings.frameCount - 1))
+      let worstDirect = try await direct(worstLevel)
+      let borderError = borderDifference(worstPixels, worstDirect)
+      let worstWhole = difference(worstPixels, worstDirect)
+      try require(
+        worstOutside > 0.1,
+        "No frame reached outside its deeper keyframe; the border check is vacuous")
+      try require(
+        borderError < 8,
+        "The border of an interpolated frame differs from a direct render by "
+          + "\(borderError)/255, against \(worstWhole)/255 for the whole frame")
+      print(
+        "Interpolated frame: blend \(String(format: "%.2f", worstBlend)), reaching "
+          + "\(String(format: "%.0f%%", worstOutside * 100)) outside the deeper keyframe; "
+          + "border error \(String(format: "%.1f", borderError))/255, whole frame "
+          + "\(String(format: "%.1f", worstWhole))/255")
 
       // Every keyframe's depth is recorded, and is the automatic estimate for its
       // level: what a movie's iteration budget actually is, for Performance.md.
