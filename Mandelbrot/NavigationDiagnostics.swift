@@ -58,6 +58,45 @@
       model.recordHistory()
       try require(model.canGoBack && steps, "A large zoom was not recorded")
 
+      // Ordinary navigation is history too: keyboard zooming settles at once,
+      // and jumping away has to record the view being left, not the last one
+      // that happened to settle onto the record.
+      let keyboard = ExplorerModel(bookmarks: store)
+      keyboard.resize(CGSize(width: 800, height: 500), displayScale: 2)
+      for _ in 0..<5 { keyboard.perform(.zoomIn) }
+      let zoomed = keyboard.viewport
+      try require(
+        abs(zoomed.logScale - 5) < 1e-9 && keyboard.canGoBack,
+        "Keyboard zooming did not reach 32x, or recorded no history")
+      keyboard.apply(Location.gallery[0])
+      keyboard.goBack()
+      try require(
+        abs(keyboard.viewport.logScale - zoomed.logScale) < 1e-9,
+        "Back did not return to the view the jump departed from")
+      // Leaving home is recorded, so the first jump of a session can come back.
+      let fresh = ExplorerModel(bookmarks: store)
+      fresh.resize(CGSize(width: 800, height: 500), displayScale: 2)
+      let home = fresh.viewport
+      // Not gallery[0]: that is the home view itself, and going nowhere records
+      // nothing.
+      fresh.apply(Location.gallery[1])
+      try require(fresh.canGoBack, "The first jump of a session left Back unavailable")
+      fresh.goBack()
+      try require(fresh.viewport == home, "Back from the first jump did not reach home")
+      // The record carries the settings the departing view was seen under.
+      let manual = ExplorerModel(bookmarks: store)
+      manual.resize(CGSize(width: 800, height: 500), displayScale: 2)
+      manual.automaticIterations = false
+      manual.manualIterations = 1234
+      manual.apply(Location.gallery[1])
+      manual.goBack()
+      try require(
+        !manual.automaticIterations && manual.iterations == 1234,
+        "Back did not restore the detail the departing view was seen with")
+      keyboard.setActive(false)
+      fresh.setActive(false)
+      manual.setActive(false)
+
       // Bookmarks persist, rename and delete.
       model.bookmarkCurrentView(named: "Test spot")
       try require(store.bookmarks.first?.name == "Test spot", "Bookmarking did not store the view")

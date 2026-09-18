@@ -155,7 +155,9 @@ import SwiftUI
   @Published private(set) var canGoForward = false
   private var history: [Location] = []
   private var future: [Location] = []
-  private var recorded: Viewport?
+  /// The last view put on the record, starting at the one the app opens with, so
+  /// that leaving home can go back to it.
+  private var recorded: Viewport? = Viewport()
   var location: Location {
     Location(
       viewport: viewport, iterations: automaticIterations ? nil : iterations, colouring: colouring)
@@ -167,34 +169,35 @@ import SwiftUI
     let moved = recorded.screen(for: view.preciseCenter, in: size)
     return hypot(moved.x - size.width / 2, moved.y - size.height / 2) > size.width / 4
   }
-  private func push(_ view: Viewport) {
-    history.append(
-      Location(
-        viewport: view, iterations: automaticIterations ? nil : iterations, colouring: colouring))
+  private func push(_ place: Location) {
+    history.append(place)
     if history.count > 100 { history.removeFirst(history.count - 100) }
     future.removeAll()
+  }
+  /// The view being left, with the settings it was seen under.
+  private func record(of view: Viewport) -> Location {
+    Location(
+      viewport: view, iterations: automaticIterations ? nil : iterations, colouring: colouring)
   }
   /// Records the view it is leaving, once the current one has come to rest and
   /// moved far enough to be a different place.
   func recordHistory() {
     guard differsFromRecord(viewport) else { return }
-    if let recorded { push(recorded) }
+    if let recorded { push(record(of: recorded)) }
     recorded = viewport
     canGoBack = !history.isEmpty
     canGoForward = !future.isEmpty
   }
   func goBack() {
     guard let previous = history.popLast() else { return }
-    let current = Location(
-      viewport: viewport, iterations: automaticIterations ? nil : iterations, colouring: colouring)
+    let current = location
     apply(previous, record: false)
     future.append(current)
     canGoForward = true
   }
   func goForward() {
     guard let next = future.popLast() else { return }
-    let current = Location(
-      viewport: viewport, iterations: automaticIterations ? nil : iterations, colouring: colouring)
+    let current = location
     apply(next, record: false)
     history.append(current)
     canGoBack = true
@@ -205,8 +208,11 @@ import SwiftUI
       locationError = "That location could not be opened."
       return
     }
-    // Jumping somewhere always records where it came from, however near it is.
-    if record, let recorded, recorded != view { push(recorded) }
+    // Jumping somewhere always records where it came from, however near it is,
+    // and records the view actually being left with the settings it was seen
+    // under, not whichever view last settled onto the record.
+    // `self`, because the parameter shadows the computed property.
+    if record, viewport != view { push(self.location) }
     stopMotion()
     colouring = location.colouring
     if let limit = location.iterations {
@@ -441,6 +447,16 @@ import SwiftUI
   }
   func perform(_ command: ExplorerCommand) {
     stopMotion()
+    // Keyboard navigation settles the instant it runs: nothing else will call
+    // recordHistory for it, as an interaction or a spring would.
+    defer {
+      switch command {
+      // resetRotation animates, so the spring's own settle records it.
+      case .reset, .zoomIn, .zoomOut, .left, .right, .up, .down, .rotateLeft, .rotateRight:
+        recordHistory()
+      default: break
+      }
+    }
     switch command {
     case .reset:
       viewport = Viewport()
