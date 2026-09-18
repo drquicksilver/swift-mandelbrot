@@ -1,9 +1,16 @@
 import AVKit
 import CoreGraphics
 import Foundation
+import SwiftUI
 import Testing
 
 @testable import Mandelbrot
+
+#if os(macOS)
+  typealias PlatformView = NSView
+#else
+  typealias PlatformView = UIView
+#endif
 
 /// What the Mac sheet does when its buttons are pressed, minus the pressing:
 /// the thumbnails at the ends of the journey, the zoom it labels them with, and
@@ -53,6 +60,46 @@ import Testing
       #expect(NSClassFromString("AVPlayerView") != nil)
     }
   #endif
+
+  /// Builds the view SwiftUI builds when a render finishes.  This is the step
+  /// that aborted the process on macOS: realising `VideoPlayer` instantiates a
+  /// class whose superclass lives in AVKit, which nothing had linked.  A crash
+  /// here fails the suite instead of the app.
+  ///
+  /// The view has to be in a window, or SwiftUI never makes the representable
+  /// and the crash never happens -- which is exactly how this got shipped.
+  ///
+  /// It runs on both platforms, though only macOS was ever affected: with the
+  /// framework unlinked this aborts on the Mac and passes on the iOS simulator,
+  /// which finds AVKit some other way.
+  @Test func theFinishedMoviesPlayerCanBeRealised() async throws {
+    let player = AVPlayer()
+    let frame = CGRect(x: 0, y: 0, width: 320, height: 180)
+    #if os(macOS)
+      let window = NSWindow(
+        contentRect: frame, styleMask: [.titled], backing: .buffered, defer: false)
+      window.contentView = NSHostingView(rootView: VideoPlayer(player: player))
+      window.orderFront(nil)
+      window.contentView?.layoutSubtreeIfNeeded()
+      let root = try #require(window.contentView)
+    #else
+      let window = UIWindow(frame: frame)
+      window.rootViewController = UIHostingController(
+        rootView: VideoPlayer(player: player))
+      window.makeKeyAndVisible()
+      window.layoutIfNeeded()
+      let root = try #require(window.rootViewController?.view)
+    #endif
+    // A moment for SwiftUI to build what the window asked for.
+    try await Task.sleep(for: .milliseconds(500))
+    #expect(Self.holdsAPlayerView(root), "No AVKit player view was ever made")
+  }
+
+  /// AVKit's own view, somewhere under the one SwiftUI made.
+  private static func holdsAPlayerView(_ view: PlatformView) -> Bool {
+    if String(describing: type(of: view)).contains("AVPlayer") { return true }
+    return view.subviews.contains { holdsAPlayerView($0) }
+  }
 
   /// The whole path the Render button takes: a zoom path, a render, a file.
   /// Small on purpose -- it is the plumbing under test, not the picture.
