@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		84AV02D02F1ECE51005E293A /* AVKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 84AV01D02F1ECE51005E293A /* AVKit.framework */; };
 		849188042F23975A005E293A /* Performance.md in Resources */ = {isa = PBXBuildFile; fileRef = 849188032F23975A005E293A /* Performance.md */; };
 /* End PBXBuildFile section */
 
@@ -28,6 +29,7 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
+		84AV01D02F1ECE51005E293A /* AVKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = AVKit.framework; path = System/Library/Frameworks/AVKit.framework; sourceTree = SDKROOT; };
 		849187D32F1ECE51005E293A /* Mandelbrot.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Mandelbrot.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		849187E02F1ECE53005E293A /* MandelbrotTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = MandelbrotTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		849187EA2F1ECE53005E293A /* MandelbrotUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = MandelbrotUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -57,6 +59,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				84AV02D02F1ECE51005E293A /* AVKit.framework in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -85,7 +88,16 @@
 				849187E32F1ECE53005E293A /* MandelbrotTests */,
 				849187ED2F1ECE53005E293A /* MandelbrotUITests */,
 				849187D42F1ECE51005E293A /* Products */,
+				84AV03D02F1ECE51005E293A /* Frameworks */,
 			);
+			sourceTree = "<group>";
+		};
+		84AV03D02F1ECE51005E293A /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+				84AV01D02F1ECE51005E293A /* AVKit.framework */,
+			);
+			name = Frameworks;
 			sourceTree = "<group>";
 		};
 		849187D42F1ECE51005E293A /* Products */ = {
