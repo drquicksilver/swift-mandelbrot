@@ -27,6 +27,17 @@ struct MovieSettings: Equatable, Sendable {
   }()
 }
 
+/// Where a render has reached, on both of its counters.
+struct MovieCounts: Equatable, Sendable {
+  var frame = 0
+  var frames = 0
+  var keyframe = 0
+  var keyframes = 0
+  /// True while a keyframe is being rendered, which is what the sheet leads
+  /// with: the frame it is working towards is waiting on it.
+  var onKeyframe = false
+}
+
 /// Renders a zoom movie: one keyframe per zoom level straight from the tile
 /// cache, then an exponential zoom composed by interpolating between the two
 /// keyframes that bracket each frame.  Only two keyframes are ever resident.
@@ -34,6 +45,10 @@ struct MovieSettings: Equatable, Sendable {
   @Published private(set) var progress = 0.0
   @Published private(set) var isRendering = false
   @Published private(set) var stage = ""
+  /// Both counters a render moves through, so a sheet can show the one it is on
+  /// and the one it is between.  Keyframes are where the time goes -- one full
+  /// render per zoom level -- and frames are the cheap resamples between them.
+  @Published private(set) var counts = MovieCounts()
   @Published var error: String?
   @Published var output: URL?
   private var task: Task<Void, Never>?
@@ -88,6 +103,7 @@ struct MovieSettings: Equatable, Sendable {
     isRendering = true
     progress = 0
     error = nil
+    counts = MovieCounts()
     keyframeLimits = []
     defer {
       isRendering = false
@@ -137,6 +153,10 @@ struct MovieSettings: Equatable, Sendable {
       if let existing = keyframes[index] { return existing }
       let level = path.keyframeLevels[index]
       stage = "Keyframe \(index + 1) of \(path.keyframeLevels.count)"
+      counts.keyframes = path.keyframeLevels.count
+      counts.keyframe = index + 1
+      counts.onKeyframe = true
+      defer { counts.onKeyframe = false }
       var settingsForLevel = colouring
       settingsForLevel.offset = Float(
         path.paletteOffset(at: level, cycles: settings.paletteCycles))
@@ -215,6 +235,8 @@ struct MovieSettings: Equatable, Sendable {
       }
       progress = Double(frame + 1) / Double(frames)
       stage = "Frame \(frame + 1) of \(frames)"
+      counts.frame = frame + 1
+      counts.frames = frames
     }
     input.markAsFinished()
     await writer.finishWriting()
@@ -232,6 +254,9 @@ struct MovieSettings: Equatable, Sendable {
         _ = try await self.render(
           path: path, settings: settings, colouring: colouring, to: url)
       } catch is CancellationError {
+        // A cancelled render never finished writing, so what is on disk is an
+        // unplayable stub: take it away rather than leave it in the folder.
+        try? FileManager.default.removeItem(at: url)
         self.error = nil
       } catch {
         self.error = String(describing: error)
@@ -247,13 +272,15 @@ struct MovieSettings: Equatable, Sendable {
     /// `private(set)` because only a render should move it, so a preview cannot
     /// set it from outside; this stays beside it, in the same file, for that.
     static func posed(
-      progress: Double? = nil, stage: String = "", failure: String? = nil, output: URL? = nil
+      progress: Double? = nil, stage: String = "", counts: MovieCounts = MovieCounts(),
+      failure: String? = nil, output: URL? = nil
     ) -> MovieRenderer {
       let renderer = MovieRenderer()
       if let progress {
         renderer.isRendering = true
         renderer.progress = progress
         renderer.stage = stage
+        renderer.counts = counts
       }
       renderer.error = failure
       renderer.output = output

@@ -134,7 +134,15 @@ struct ContentView: View {
       BenchmarkView(viewport: model.viewport, iterations: model.iterations)
     }
     .sheet(isPresented: $model.showPlaces) { PlacesView(model: model) }
-    .sheet(isPresented: $model.showMovie) { MovieView(model: model) }
+    .sheet(isPresented: $model.showMovie) {
+      // Each platform has its own shape: a dialog on the Mac, a grouped form
+      // where a sheet fills a phone.
+      #if os(macOS)
+        MovieSheetMac(model: model)
+      #else
+        MovieView(model: model)
+      #endif
+    }
     .sheet(isPresented: $model.showSettings) { AppearanceView(model: model) }
     .sheet(isPresented: $model.showHelp) { HelpView() }
     .focusedSceneValue(\.explorer, model)
