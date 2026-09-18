@@ -26,7 +26,12 @@ import SwiftUI
     redrawRequests &+= 1
     onRedrawNeeded?()
   }
-  @Published var colouring = ColourSettings() { didSet { requestRedraw() } }
+  @Published var colouring = ColourSettings() {
+    didSet {
+      requestRedraw()
+      requestJuliaRedraw()
+    }
+  }
   @Published var isActive = true
   func setActive(_ active: Bool) {
     isActive = active
@@ -46,10 +51,18 @@ import SwiftUI
       if viewport != oldValue {
         updateDepth()
         requestRender()
+        // The crosshair is drawn from this view, and the panel shows it while
+        // the two are swapped.
+        if juliaSwapped { requestJuliaRedraw() }
       }
     }
   }
-  @Published private(set) var iterations = 200 { didSet { requestRender() } }
+  @Published private(set) var iterations = 200 {
+    didSet {
+      requestRender()
+      requestJuliaRedraw()
+    }
+  }
   @Published var automaticIterations = true {
     didSet {
       ceiling = nil
@@ -143,27 +156,125 @@ import SwiftUI
   /// of the two fills the main area.
   @Published var showJulia = false
   @Published var juliaSwapped = false
-  @Published var juliaC = CGPoint(x: -0.8, y: 0.156)
-  @Published var juliaViewport = Viewport(center: .zero, scale: 1)
-  @Published var juliaFollows = true
+  @Published var juliaC = CGPoint(x: -0.8, y: 0.156) { didSet { requestJuliaRedraw() } }
+  @Published var juliaViewport = Viewport(center: .zero, scale: 1) {
+    didSet { requestJuliaRedraw() }
+  }
+  /// Whether c follows the pointer or finger by default.  A setting, remembered
+  /// between launches.
+  @Published var juliaFollows = ExplorerModel.defaultFollows {
+    didSet { UserDefaults.standard.set(juliaFollows, forKey: ExplorerModel.followsKey) }
+  }
+  static let followsKey = "JuliaFollowsPointer"
+  static var defaultFollows: Bool {
+    UserDefaults.standard.object(forKey: followsKey) as? Bool ?? true
+  }
+  /// A pinned marker stays where it was put: it survives panning and zooming,
+  /// and the pointer no longer moves it.
+  @Published var juliaPinned = false
+  /// The panel's own area, which its gestures measure against.
+  var panelSize = CGSize(width: 220, height: 220)
   let julia = JuliaRenderer()
   let movies = MovieRenderer()
   @Published var showMovie = false
-  /// The panel follows the cursor or finger while it is the companion.
+  /// Everything the panel draws from.  The panel's view is a SwiftUI value, and
+  /// a value that never changes is a view SwiftUI never updates -- which is why
+  /// the panel was never seen to redraw.  It now carries this.
+  var juliaScene: JuliaScene {
+    JuliaScene(
+      c: juliaC, viewport: juliaViewport, iterations: iterations, colouring: colouring,
+      swapped: juliaSwapped)
+  }
+  /// The panel's own redraw route, the companion's counterpart to
+  /// `requestRedraw`: it does not share the main canvas's clock.
+  var onJuliaRedrawNeeded: (() -> Void)?
+  func requestJuliaRedraw() {
+    guard isActive, showJulia else { return }
+    onJuliaRedrawNeeded?()
+  }
+  /// The point c, on the Mandelbrot view, where the crosshair belongs -- or nil
+  /// when there is no Mandelbrot view in the main area to put it on.
+  var juliaMarker: CGPoint? {
+    guard showJulia, !juliaSwapped else { return nil }
+    return viewport.screen(for: juliaC, in: size)
+  }
+  /// How near the pointer has to be, in points, to take hold of the marker.
+  static let markerGrabRadius = 22.0
+  func isOnJuliaMarker(_ point: CGPoint) -> Bool {
+    guard let marker = juliaMarker else { return false }
+    return hypot(point.x - marker.x, point.y - marker.y) <= Self.markerGrabRadius
+  }
+  /// The panel follows the cursor or finger until the marker is pinned.
   func trackJulia(at point: CGPoint) {
-    guard showJulia, juliaFollows, !juliaSwapped else { return }
+    guard showJulia, juliaFollows, !juliaPinned, !juliaSwapped else { return }
+    setJulia(at: point)
+  }
+  /// Moves c to a screen point on the Mandelbrot view, whether by following or
+  /// by dragging the marker.
+  func setJulia(at point: CGPoint) {
     let c = viewport.complex(at: point, in: size)
     guard c.x.isFinite, c.y.isFinite, abs(c.x) <= 4, abs(c.y) <= 4 else { return }
     juliaC = c
   }
+  /// Dragging the marker pins it: it was put somewhere deliberately.
+  func dragJulia(to point: CGPoint) {
+    juliaPinned = true
+    setJulia(at: point)
+  }
+  func toggleJuliaPin() {
+    juliaPinned.toggle()
+    requestJuliaRedraw()
+  }
   func toggleJulia() {
     showJulia.toggle()
     if !showJulia { juliaSwapped = false }
+    requestJuliaRedraw()
   }
   func swapJulia() {
     guard showJulia else { return }
     stopMotion()
     juliaSwapped.toggle()
+    requestJuliaRedraw()
+    requestRedraw()
+  }
+  /// The view the panel shows: the companion, or the Mandelbrot behind it when
+  /// the two are swapped.  The panel's own gestures drive this, so it no longer
+  /// takes a swap to zoom the companion.
+  var panelViewport: Viewport {
+    get { juliaSwapped ? viewport : juliaViewport }
+    set {
+      if juliaSwapped {
+        viewport = newValue
+      } else {
+        juliaViewport = newValue
+      }
+    }
+  }
+  private var panelCentre: CGPoint {
+    CGPoint(x: panelSize.width / 2, y: panelSize.height / 2)
+  }
+  func panPanel(_ delta: CGSize) {
+    var next = panelViewport
+    next.pan(by: delta, in: panelSize)
+    panelViewport = next
+  }
+  func zoomPanel(_ factor: Double, at point: CGPoint? = nil) {
+    var next = panelViewport
+    // The companion stays shallow: float and double-float only.
+    if !juliaSwapped, next.logScale + log2(max(1e-9, factor)) >= 26 { return }
+    next.zoom(
+      by: factor, at: point ?? panelCentre, in: panelSize,
+      pixelWidth: panelSize.width * displayScale)
+    panelViewport = next
+  }
+  func rotatePanel(_ delta: Double, at point: CGPoint? = nil) {
+    guard delta.isFinite, delta != 0 else { return }
+    var next = panelViewport
+    next.rotate(by: delta, at: point ?? panelCentre, in: panelSize)
+    panelViewport = next
+  }
+  func resetPanel() {
+    panelViewport = juliaSwapped ? Viewport() : Viewport(center: .zero, scale: 1)
   }
   @Published var locationError: String?
   /// Back and forward history of settled views.  A view is recorded when it

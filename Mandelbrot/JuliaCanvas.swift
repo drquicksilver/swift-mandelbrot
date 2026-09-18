@@ -3,24 +3,39 @@ import SwiftUI
 
 /// Draws the Julia companion's texture.  It renders only when something it
 /// depends on changes, then asks for one more frame to present the result.
+///
+/// The surface carries the scene it draws, not just the model: SwiftUI updates
+/// a representable only when its value changes, and a surface holding nothing
+/// but a model reference and a size never changed, so the panel was never
+/// marked dirty and never seen to redraw.  The model's own redraw route backs
+/// that up, so a frame does not depend on SwiftUI noticing.
 struct JuliaCanvas: View {
   @ObservedObject var model: ExplorerModel
   var body: some View {
     GeometryReader { geometry in
-      JuliaSurface(model: model, size: geometry.size)
+      JuliaSurface(model: model, scene: model.juliaScene, size: geometry.size)
     }
   }
 }
 
 private struct JuliaSurface {
   var model: ExplorerModel
+  var scene: JuliaScene
   var size: CGSize
 }
 
 @MainActor final class JuliaCoordinator: NSObject, MTKViewDelegate {
-  let model: ExplorerModel
-  private var scale = 1.0
+  var model: ExplorerModel
+  private weak var view: MTKView?
   init(model: ExplorerModel) { self.model = model }
+  /// SwiftUI hands over a fresh model value on each update; the panel's redraw
+  /// route follows it, as the main canvas's does.
+  func adopt(_ model: ExplorerModel, view: MTKView) {
+    self.model = model
+    self.view = view
+    model.onJuliaRedrawNeeded = { [weak view] in view?.setNeedsDisplayCompat() }
+    view.setNeedsDisplayCompat()
+  }
   func mtkView(_ view: MTKView, drawableSizeWillChange size: CGSize) {}
   func draw(in view: MTKView) {
     guard let gpu = GPUContext.shared, model.isActive else { return }
@@ -67,13 +82,17 @@ extension MTKView {
   extension JuliaSurface: NSViewRepresentable {
     func makeCoordinator() -> JuliaCoordinator { JuliaCoordinator(model: model) }
     func makeNSView(context: Context) -> MTKView { makeView(context.coordinator) }
-    func updateNSView(_ view: MTKView, context: Context) { view.needsDisplay = true }
+    func updateNSView(_ view: MTKView, context: Context) {
+      context.coordinator.adopt(model, view: view)
+    }
   }
 #else
   extension JuliaSurface: UIViewRepresentable {
     func makeCoordinator() -> JuliaCoordinator { JuliaCoordinator(model: model) }
     func makeUIView(context: Context) -> MTKView { makeView(context.coordinator) }
-    func updateUIView(_ view: MTKView, context: Context) { view.setNeedsDisplay() }
+    func updateUIView(_ view: MTKView, context: Context) {
+      context.coordinator.adopt(model, view: view)
+    }
   }
 #endif
 
@@ -86,6 +105,7 @@ extension JuliaSurface {
     view.colorPixelFormat = .bgra8Unorm
     view.framebufferOnly = true
     view.clearColor = MTLClearColor(red: 0.01, green: 0.01, blue: 0.02, alpha: 1)
+    coordinator.adopt(model, view: view)
     return view
   }
 }

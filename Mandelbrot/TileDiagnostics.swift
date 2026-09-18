@@ -979,6 +979,7 @@
         try await checkRotationAndBounds()
         try await checkLocations()
         try await checkJuliaCompanion(gpu)
+        try await checkCompanionPanel(gpu)
         let movieMetrics = try await checkZoomMovie(gpu)
         try await checkMovieOnASmallBudget(gpu)
         try await checkRotatedComposition(gpu)

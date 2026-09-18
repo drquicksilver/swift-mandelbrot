@@ -17,6 +17,10 @@ import SwiftUI
     private var previousTime = 0.0
     private var velocity = CGPoint.zero
     private var selecting = false
+    /// The crosshair, once the pointer has taken hold of it: a drag moves c
+    /// instead of panning, and a click that barely moves toggles the pin.
+    private var draggingMarker = false
+    private var markerMoved = false
     private var timer: Timer?
     override var isFlipped: Bool { true }
     override var acceptsFirstResponder: Bool { true }
@@ -67,10 +71,20 @@ import SwiftUI
       previousTime = event.timestamp
       velocity = .zero
       selecting = event.modifierFlags.contains(.shift)
+      draggingMarker = !selecting && model.isOnJuliaMarker(last)
+      markerMoved = false
+      if draggingMarker { return }
       if event.clickCount == 2 { model.zoom(2, at: last) }
     }
     override func mouseDragged(with event: NSEvent) {
       let point = convert(event.locationInWindow, from: nil)
+      if draggingMarker {
+        if hypot(point.x - start.x, point.y - start.y) > 2 { markerMoved = true }
+        model.dragJulia(to: point)
+        last = point
+        previousTime = event.timestamp
+        return
+      }
       if selecting {
         model.selection = CGRect(
           x: min(start.x, point.x), y: min(start.y, point.y), width: abs(point.x - start.x),
@@ -87,6 +101,13 @@ import SwiftUI
       previousTime = event.timestamp
     }
     override func mouseUp(with event: NSEvent) {
+      if draggingMarker {
+        // A click on the crosshair, rather than a drag of it, pins or releases.
+        if !markerMoved { model.toggleJuliaPin() }
+        draggingMarker = false
+        model.interactionActive = false
+        return
+      }
       if selecting, let rect = model.selection, rect.width > 3, rect.height > 3 {
         model.viewport.fit(rect, in: bounds.size, pixelWidth: model.pixelWidth)
       } else if event.timestamp - previousTime < 0.08 {
@@ -154,6 +175,52 @@ import SwiftUI
       super.keyDown(with: event)
     }
   }
+  /// The companion panel's own gestures: drag to pan, scroll or pinch to zoom,
+  /// twist to rotate.  The panel is small and never deep, so it has no inertia
+  /// and no gentle bounds -- it moves exactly as far as the fingers do.
+  struct CompanionInput: NSViewRepresentable {
+    var model: ExplorerModel
+    func makeNSView(context: Context) -> PanelInputView { PanelInputView(model: model) }
+    func updateNSView(_ view: PanelInputView, context: Context) { view.model = model }
+  }
+  @MainActor final class PanelInputView: NSView {
+    var model: ExplorerModel
+    private var last = CGPoint.zero
+    override var isFlipped: Bool { true }
+    init(model: ExplorerModel) {
+      self.model = model
+      super.init(frame: .zero)
+    }
+    required init?(coder: NSCoder) { fatalError("init(coder:) is not supported") }
+    override func mouseDown(with event: NSEvent) {
+      last = convert(event.locationInWindow, from: nil)
+      if event.clickCount == 2 { model.zoomPanel(2, at: last) }
+    }
+    override func mouseDragged(with event: NSEvent) {
+      let point = convert(event.locationInWindow, from: nil)
+      model.panPanel(CGSize(width: point.x - last.x, height: point.y - last.y))
+      last = point
+    }
+    override func scrollWheel(with event: NSEvent) {
+      let precise = event.hasPreciseScrollingDeltas
+      let point = convert(event.locationInWindow, from: nil)
+      if !precise || event.modifierFlags.contains(.command) {
+        model.zoomPanel(exp(Double(event.scrollingDeltaY) * (precise ? 0.008 : 0.12)), at: point)
+      } else {
+        model.panPanel(
+          CGSize(width: event.scrollingDeltaX, height: event.scrollingDeltaY))
+      }
+    }
+    override func magnify(with event: NSEvent) {
+      model.zoomPanel(
+        max(0.01, 1 + Double(event.magnification)),
+        at: convert(event.locationInWindow, from: nil))
+    }
+    override func rotate(with event: NSEvent) {
+      model.rotatePanel(
+        -Double(event.rotation) * .pi / 180, at: convert(event.locationInWindow, from: nil))
+    }
+  }
 #else
   import UIKit
   struct PlatformInput: UIViewRepresentable {
@@ -177,6 +244,10 @@ import SwiftUI
     private var zoomVelocity = 0.0
     private var rotationVelocity = 0.0
     private var anchor = CGPoint.zero
+    /// The crosshair, once a finger has taken hold of it.
+    private var draggingMarker = false
+    private var markerMoved = false
+    private var markerStart = CGPoint.zero
     init(model: ExplorerModel) {
       self.model = model
       super.init(frame: .zero)
@@ -245,11 +316,29 @@ import SwiftUI
       }
     }
     override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {
+      if tracked.isEmpty, let touch = touches.first,
+        model.isOnJuliaMarker(touch.location(in: self))
+      {
+        draggingMarker = true
+        markerMoved = false
+        markerStart = touch.location(in: self)
+        tracked = [touch]
+        previous = snapshot()
+        model.interactionActive = true
+        model.stopMotion()
+        return
+      }
       beginTracking(touches)
       if let point = previous.first { model.trackJulia(at: point) }
     }
     override func touchesMoved(_ touches: Set<UITouch>, with event: UIEvent?) {
       guard !tracked.isEmpty else { return }
+      if draggingMarker {
+        guard let point = snapshot().first else { return }
+        if hypot(point.x - markerStart.x, point.y - markerStart.y) > 4 { markerMoved = true }
+        model.dragJulia(to: point)
+        return
+      }
       let current = snapshot()
       guard current.count == previous.count else {
         previous = current
@@ -295,6 +384,15 @@ import SwiftUI
     }
     override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent?) {
       tracked.removeAll { touches.contains($0) }
+      if draggingMarker {
+        guard tracked.isEmpty else { return }
+        // A tap on the crosshair, rather than a drag of it, pins or releases.
+        if !markerMoved { model.toggleJuliaPin() }
+        draggingMarker = false
+        previous.removeAll()
+        model.interactionActive = false
+        return
+      }
       if tracked.isEmpty {
         // A quick lift keeps its fling; a held finish does not.
         let resting = ProcessInfo.processInfo.systemUptime - previousTime > 0.08
@@ -311,6 +409,13 @@ import SwiftUI
     }
     override func touchesCancelled(_ touches: Set<UITouch>, with event: UIEvent?) {
       tracked.removeAll { touches.contains($0) }
+      if draggingMarker {
+        guard tracked.isEmpty else { return }
+        draggingMarker = false
+        previous.removeAll()
+        model.interactionActive = false
+        return
+      }
       if tracked.isEmpty { endTracking(cancelled: true) } else { previous = snapshot() }
     }
     @objc private func doubleTap(_ recognizer: UITapGestureRecognizer) {
@@ -320,6 +425,72 @@ import SwiftUI
     @objc private func twoFingerTap(_ recognizer: UITapGestureRecognizer) {
       model.stopMotion()
       model.zoom(0.5, at: recognizer.location(in: self))
+    }
+  }
+  /// The companion panel's own gestures: drag to pan, pinch to zoom, twist to
+  /// rotate.  The panel is small and never deep, so it has no inertia -- it
+  /// moves exactly as far as the fingers do.
+  struct CompanionInput: UIViewRepresentable {
+    var model: ExplorerModel
+    func makeUIView(context: Context) -> PanelInputView { PanelInputView(model: model) }
+    func updateUIView(_ view: PanelInputView, context: Context) { view.model = model }
+  }
+  @MainActor final class PanelInputView: UIView {
+    var model: ExplorerModel
+    private var tracked: [UITouch] = []
+    private var previous: [CGPoint] = []
+    init(model: ExplorerModel) {
+      self.model = model
+      super.init(frame: .zero)
+      isMultipleTouchEnabled = true
+      let doubleTap = UITapGestureRecognizer(target: self, action: #selector(doubleTap(_:)))
+      doubleTap.numberOfTapsRequired = 2
+      doubleTap.cancelsTouchesInView = false
+      addGestureRecognizer(doubleTap)
+    }
+    required init?(coder: NSCoder) { fatalError("init(coder:) is not supported") }
+    private func snapshot() -> [CGPoint] { tracked.map { $0.location(in: self) } }
+    override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {
+      for touch in touches where tracked.count < 2 { tracked.append(touch) }
+      previous = snapshot()
+    }
+    override func touchesMoved(_ touches: Set<UITouch>, with event: UIEvent?) {
+      let current = snapshot()
+      guard !tracked.isEmpty, current.count == previous.count else {
+        previous = current
+        return
+      }
+      if current.count == 1 {
+        model.panPanel(
+          CGSize(width: current[0].x - previous[0].x, height: current[0].y - previous[0].y))
+      } else {
+        // The same transform the main view uses: rotate and scale about the
+        // previous midpoint, then translate it.
+        let before = CGPoint(
+          x: (previous[0].x + previous[1].x) / 2, y: (previous[0].y + previous[1].y) / 2)
+        let after = CGPoint(
+          x: (current[0].x + current[1].x) / 2, y: (current[0].y + current[1].y) / 2)
+        let spanBefore = hypot(previous[1].x - previous[0].x, previous[1].y - previous[0].y)
+        let spanAfter = hypot(current[1].x - current[0].x, current[1].y - current[0].y)
+        let angleBefore = atan2(previous[1].y - previous[0].y, previous[1].x - previous[0].x)
+        let angleAfter = atan2(current[1].y - current[0].y, current[1].x - current[0].x)
+        model.rotatePanel(
+          Viewport.normalised(Double(angleAfter - angleBefore)), at: before)
+        model.zoomPanel(spanBefore > 1 ? Double(spanAfter / spanBefore) : 1, at: before)
+        model.panPanel(CGSize(width: after.x - before.x, height: after.y - before.y))
+      }
+      previous = current
+    }
+    override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent?) {
+      tracked.removeAll { touches.contains($0) }
+      previous = snapshot()
+    }
+    override func touchesCancelled(_ touches: Set<UITouch>, with event: UIEvent?) {
+      tracked.removeAll { touches.contains($0) }
+      previous = snapshot()
+    }
+    @objc private func doubleTap(_ recognizer: UITapGestureRecognizer) {
+      model.zoomPanel(2, at: recognizer.location(in: self))
     }
   }
 #endif

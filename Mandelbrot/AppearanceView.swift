@@ -42,6 +42,13 @@ struct AppearanceView: View {
             "Automatic detail estimates a starting limit from zoom depth. Raise the detail multiplier if a region remains dark."
           ).font(.caption)
         }
+        Section("Julia companion") {
+          Toggle("Follow the pointer", isOn: $model.juliaFollows)
+          Toggle("Pin c where it is", isOn: $model.juliaPinned)
+          Text(
+            "The crosshair on the Mandelbrot view shows the point the companion is drawn for. Drag it to move it, or click it to pin and release it. The panel has its own drag, pinch and twist."
+          ).font(.caption)
+        }
         Section("About") {
           Text("Mandelbrot")
           NavigationLink("Acknowledgements") { AcknowledgementsView() }

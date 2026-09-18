@@ -54,3 +54,14 @@ import Metal
     }
   }
 }
+
+/// Everything the companion panel draws from, as one value.  SwiftUI updates a
+/// representable only when its value changes, so the panel's view has to carry
+/// this rather than just a reference to the model.
+struct JuliaScene: Equatable {
+  var c: CGPoint
+  var viewport: Viewport
+  var iterations: Int
+  var colouring: ColourSettings
+  var swapped: Bool
+}

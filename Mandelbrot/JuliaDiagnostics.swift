@@ -2,6 +2,7 @@
   import CoreGraphics
   import Foundation
   import Metal
+  import MetalKit
 
   extension TileDiagnostics {
     /// Checks the companion against the mathematics rather than against itself:
@@ -166,6 +167,132 @@
       model.swapJulia()
       try require(model.isAnimating, "Unswapping did not resume the bounds spring")
       model.stopMotion()
+      model.setActive(false)
+    }
+    /// The panel's own view, which nothing used to drive.  SwiftUI updates a
+    /// representable only when its value changes, and the panel's surface
+    /// carried nothing but a model reference and a size, so it was never marked
+    /// dirty: in hands-on use the panel was never seen to update.  The scene it
+    /// draws is now a value, and the model has a redraw route of its own.
+    static func checkCompanionPanel(_ gpu: GPUContext) async throws {
+      let model = ExplorerModel()
+      model.resize(CGSize(width: 800, height: 500), displayScale: 2)
+      model.panelSize = CGSize(width: 220, height: 220)
+      model.showJulia = true
+      var redraws = 0
+      model.onJuliaRedrawNeeded = { redraws += 1 }
+
+      // Everything the panel draws from moves its value, so SwiftUI has a
+      // reason to update it, and the redraw route asks for a frame besides.
+      var scene = model.juliaScene
+      func changed(_ what: String, _ change: () -> Void) throws {
+        let before = redraws
+        change()
+        try require(model.juliaScene != scene, "The panel's view ignores \(what)")
+        try require(redraws > before, "Changing \(what) did not ask the panel for a frame")
+        scene = model.juliaScene
+      }
+      try changed("c") { model.trackJulia(at: CGPoint(x: 120, y: 140)) }
+      try changed("the companion's view") { model.zoomPanel(2) }
+      try changed("the palette") { model.colouring = ColourSettings(palette: .fire) }
+      try changed("the swap") { model.swapJulia() }
+      model.swapJulia()
+      scene = model.juliaScene
+
+      // And the panel's own view really renders: drive the coordinator the way
+      // the view does and the texture must arrive, and change with c.
+      let view = MTKView(frame: .zero, device: gpu.device)
+      let coordinator = JuliaCoordinator(model: model)
+      view.delegate = coordinator
+      coordinator.adopt(model, view: view)
+      func drawPanel() async {
+        coordinator.draw(in: view)
+        // The coordinator renders in a task of its own and presents the result
+        // on the frame after; let it run, then draw again.
+        for _ in 0..<40 {
+          await Task.yield()
+          try? await Task.sleep(for: .milliseconds(5))
+          if !model.julia.isBusy && model.julia.colour != nil { break }
+        }
+      }
+      model.juliaC = CGPoint(x: -0.8, y: 0.156)
+      await drawPanel()
+      guard let colour = model.julia.colour else {
+        throw GPUFailure("Driving the panel's own view produced no picture")
+      }
+      let first = try await gpu.readback(colour)
+      try require(model.julia.error == nil, "The panel's own view failed to render")
+      model.juliaC = CGPoint(x: 0.285, y: 0.01)
+      await drawPanel()
+      let second = try await gpu.readback(model.julia.colour!)
+      try require(first != second, "Moving c did not change what the panel draws")
+
+      // Pinning: the crosshair follows until it is pinned, a drag moves it and
+      // pins it, and a pinned point survives panning and zooming.
+      model.juliaPinned = false
+      model.trackJulia(at: CGPoint(x: 200, y: 200))
+      let followed = model.juliaC
+      model.toggleJuliaPin()
+      try require(model.juliaPinned, "Clicking the crosshair did not pin it")
+      model.trackJulia(at: CGPoint(x: 500, y: 300))
+      try require(model.juliaC == followed, "A pinned crosshair still followed the pointer")
+      model.dragJulia(to: CGPoint(x: 500, y: 300))
+      try require(
+        model.juliaC == model.viewport.complex(at: CGPoint(x: 500, y: 300), in: model.size)
+          && model.juliaPinned,
+        "Dragging the crosshair did not move it, or released the pin")
+      let pinned = model.juliaC
+      guard let before = model.juliaMarker else { throw GPUFailure("The crosshair is not drawn") }
+      model.pan(CGSize(width: -60, height: 25))
+      model.zoom(1.5, at: model.centreOfView)
+      try require(model.juliaC == pinned, "Panning and zooming moved the pinned point")
+      guard let after = model.juliaMarker else { throw GPUFailure("The crosshair went missing") }
+      try require(
+        after != before
+          && abs(after.x - model.viewport.screen(for: pinned, in: model.size).x) < 1e-6,
+        "The crosshair did not stay on its point through a pan and a zoom")
+      try require(
+        model.isOnJuliaMarker(after)
+          && !model.isOnJuliaMarker(CGPoint(x: after.x + 60, y: after.y)),
+        "The crosshair is grabbed from the wrong place")
+      // The setting switches following off without unpinning.
+      model.juliaPinned = false
+      model.juliaFollows = false
+      let still = model.juliaC
+      model.trackJulia(at: CGPoint(x: 90, y: 90))
+      try require(model.juliaC == still, "The companion followed with following switched off")
+      try require(
+        UserDefaults.standard.bool(forKey: ExplorerModel.followsKey) == false,
+        "The following setting was not remembered")
+      model.juliaFollows = true
+
+      // The panel's own gestures: no swap needed to move the companion, and
+      // while swapped they drive the Mandelbrot the panel is showing.
+      let mandelbrot = model.viewport
+      let companion = model.juliaViewport
+      model.panPanel(CGSize(width: 30, height: -10))
+      model.zoomPanel(4, at: CGPoint(x: 110, y: 110))
+      model.rotatePanel(15 * .pi / 180)
+      try require(
+        model.viewport == mandelbrot, "A gesture in the panel moved the main view")
+      try require(
+        model.juliaViewport != companion
+          && model.juliaViewport.logScale > companion.logScale
+          && abs(model.juliaViewport.angle - 15 * .pi / 180) < 1e-9,
+        "The panel's own gestures did not pan, zoom and rotate the companion")
+      for _ in 0..<60 { model.zoomPanel(4) }
+      try require(model.juliaViewport.logScale < 26, "The panel zoomed past its precision")
+      model.resetPanel()
+      try require(
+        model.juliaViewport == Viewport(center: .zero, scale: 1),
+        "Resetting the panel did not return the companion to its whole view")
+      model.swapJulia()
+      let swappedCompanion = model.juliaViewport
+      model.panPanel(CGSize(width: 20, height: 0))
+      try require(
+        model.viewport != mandelbrot && model.juliaViewport == swappedCompanion,
+        "While swapped the panel's gestures moved the companion, not the Mandelbrot")
+      model.swapJulia()
       model.setActive(false)
     }
   }
