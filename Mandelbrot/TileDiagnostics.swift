@@ -982,6 +982,7 @@
         try await checkCompanionPanel(gpu)
         let movieMetrics = try await checkZoomMovie(gpu)
         try await checkMovieOnASmallBudget(gpu)
+        try await checkMovieSheet()
         try await checkRotatedComposition(gpu)
         try await checkStreamedReferences(gpu)
         try await checkResumption(gpu)

@@ -1,5 +1,6 @@
 #if os(macOS)
   import AVFoundation
+  import Combine
   import CoreGraphics
   import Foundation
   import Metal
@@ -44,7 +45,8 @@
         while index + 2 < path.keyframeLevels.count && path.keyframeLevels[index + 1] <= level {
           index += 1
         }
-        let lower = path.keyframeLevels[index], upper = path.keyframeLevels[index + 1]
+        let lower = path.keyframeLevels[index]
+        let upper = path.keyframeLevels[index + 1]
         let blend = upper > lower ? min(1, max(0, (level - lower) / (upper - lower))) : 0
         if abs(blend - 0.5) < abs(worstBlend - 0.5) {
           worstBlend = blend
@@ -101,7 +103,8 @@
         "The movie has \(frames) frames, not \(settings.frameCount)")
       for (index, time) in times.enumerated() {
         try require(
-          abs(time - Double(index) / Double(settings.framesPerSecond)) < 1e-6, "Frame \(index) is timed at \(time)")
+          abs(time - Double(index) / Double(settings.framesPerSecond)) < 1e-6,
+          "Frame \(index) is timed at \(time)")
       }
       try require(Set(last).count > 32 && Set(first).count > 32, "A movie frame is flat")
 
@@ -259,5 +262,80 @@
           + "\(store.tileResidentLimit / 1024 / 1024) MiB")
     }
 
+    /// What the sheet shows.  The sheet observed the model, which does not
+    /// republish what the renderer says, so progress, the stage, completion and
+    /// the finished file never reached it; and a render landed in
+    /// `temporaryDirectory`, one purge from gone.
+    static func checkMovieSheet() async throws {
+      // The folder a render writes to: `~/Movies` until one is chosen, and a
+      // chosen one survives a relaunch, which is a fresh library reading the
+      // same defaults.
+      let defaults = UserDefaults(suiteName: "MandelbrotDiagnostics")!
+      defaults.removeObject(forKey: MovieLibrary.bookmarkKey)
+      let library = MovieLibrary(defaults: defaults)
+      try require(
+        library.folder == MovieLibrary.defaultFolder
+          && library.folder.lastPathComponent == "Movies",
+        "A movie library with no choice made did not default to ~/Movies")
+      let chosen = FileManager.default.temporaryDirectory.appendingPathComponent(
+        "MandelbrotDiagnosticMovies", isDirectory: true)
+      try FileManager.default.createDirectory(at: chosen, withIntermediateDirectories: true)
+      defer { try? FileManager.default.removeItem(at: chosen) }
+      library.adopt(chosen)
+      let relaunched = MovieLibrary(defaults: defaults)
+      try require(
+        relaunched.folder.resolvingSymlinksInPath() == chosen.resolvingSymlinksInPath(),
+        "The chosen folder did not survive a relaunch: \(relaunched.folder)")
+      let destination = relaunched.destination(named: MovieNaming.fileName())
+      try require(
+        destination.deletingLastPathComponent().resolvingSymlinksInPath()
+          == chosen.resolvingSymlinksInPath()
+          && destination.pathExtension == "mov"
+          && !destination.path.hasPrefix(FileManager.default.temporaryDirectory.path + "/mandel"),
+        "A render would not have been written to the chosen folder")
+      relaunched.forget()
+      let forgotten = defaults.data(forKey: MovieLibrary.bookmarkKey) == nil
+      try require(
+        relaunched.folder == MovieLibrary.defaultFolder && forgotten,
+        "Forgetting the chosen folder did not return to ~/Movies")
+      defaults.removeObject(forKey: MovieLibrary.bookmarkKey)
+
+      // And the renderer publishes what the sheet draws: progress that moves,
+      // a stage that names the work, and a completion carrying the file.
+      let renderer = MovieRenderer()
+      var progresses: [Double] = []
+      var stages: Set<String> = []
+      var finished: URL?
+      var rendering: [Bool] = []
+      var observers: Set<AnyCancellable> = []
+      renderer.$progress.sink { progresses.append($0) }.store(in: &observers)
+      renderer.$stage.sink { if !$0.isEmpty { stages.insert($0) } }.store(in: &observers)
+      renderer.$isRendering.sink { rendering.append($0) }.store(in: &observers)
+      renderer.$output.sink { if let url = $0 { finished = url } }.store(in: &observers)
+      let url = chosen.appendingPathComponent(MovieNaming.fileName())
+      let path = try ZoomPath(
+        start: Location(real: "-0.5", imag: "0", scale: "1"),
+        end: Location(real: "-0.088", imag: "0.654", scale: "60"))
+      renderer.start(
+        path: path,
+        settings: MovieSettings(duration: 1, width: 160, height: 90, framesPerSecond: 12),
+        colouring: ColourSettings(), to: url)
+      for _ in 0..<600 {
+        if !renderer.isRendering && finished != nil { break }
+        try await Task.sleep(for: .milliseconds(50))
+      }
+      try require(finished == url, "The sheet was never told the movie was finished")
+      try require(!renderer.isRendering, "The renderer never reported that it had stopped")
+      try require(rendering.contains(true), "The sheet was never told a render had started")
+      try require(
+        Set(progresses).count > 3 && progresses.last == 1,
+        "Progress did not move, or did not reach the end: \(Set(progresses).sorted())")
+      try require(
+        stages.contains { $0.hasPrefix("Keyframe") } && stages.contains { $0.hasPrefix("Frame") },
+        "The stage never named the keyframes or the frames: \(stages.sorted())")
+      try require(
+        FileManager.default.fileExists(atPath: url.path),
+        "The finished movie is not where the sheet says it is")
+    }
   }
 #endif
