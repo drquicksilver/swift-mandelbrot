@@ -498,9 +498,12 @@
         let began = ProcessInfo.processInfo.systemUptime
         _ = try await renderer.render(
           path: path, settings: options.movieSettings, colouring: end.colouring, to: url)
+        // The movie's total iteration budget: the sum of its keyframes' limits,
+        // which is what a depth policy for keyframes would have to move.
         let report: [String: Any] = [
           "frames": options.movieSettings.frameCount,
           "keyframes": path.keyframeLevels.count,
+          "keyframeLimitSum": renderer.keyframeLimits.reduce(0) { $0 + $1.limit },
           "width": options.movieSettings.width, "height": options.movieSettings.height,
           "duration": options.movieSettings.duration,
           "startLog": path.startLog, "endLog": path.endLog,

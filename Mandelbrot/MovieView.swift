@@ -92,6 +92,11 @@ struct MovieView: View {
       let path = try ZoomPath(start: start, end: end, eased: settings.eased)
       let url = FileManager.default.temporaryDirectory
         .appendingPathComponent("mandelbrot-zoom-\(Int(Date().timeIntervalSince1970)).mov")
+      // Nothing behind the sheet is on screen, and a render wants the GPU and the
+      // memory: stop the viewer's cache competing for both.  Its next update
+      // resumes it, which the compositor does on the first frame after the sheet
+      // closes.
+      model.tiles.cancel()
       model.movies.start(
         path: path, settings: settings, colouring: model.colouring, to: url)
     } catch {

@@ -87,6 +87,12 @@ struct ZoomPath: Sendable {
   }
   /// The iteration limit for a keyframe: the movie honours an explicit limit at
   /// the destination and otherwise follows the automatic depth estimate.
+  ///
+  /// Bounding this by what an earlier keyframe observed, as the viewer's ceiling
+  /// does, was measured and removed: see Performance.md 2.8.  Where the estimate
+  /// overshoots it gave back 59% of the summed limit for about 6% of the time,
+  /// and on a descent into a minibrot -- the slow case -- it never engaged at
+  /// all, because such a view always holds counts close to its limit.
   func iterations(at level: Double) -> Int {
     if let limit = end.iterations { return limit }
     return IterationPolicy.estimate(logScale: level)

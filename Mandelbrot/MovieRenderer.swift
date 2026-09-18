@@ -14,9 +14,17 @@ struct MovieSettings: Equatable, Sendable {
   var paletteCycles = 0.0
   var eased = true
   var frameCount: Int { max(2, Int((duration * Double(framesPerSecond)).rounded())) }
-  static let resolutions: [(name: String, width: Int, height: Int)] = [
-    ("720p", 1280, 720), ("1080p", 1920, 1080), ("4K", 3840, 2160),
-  ]
+  /// A phone renders a movie beside the viewer's own cache, on a third of the
+  /// memory a Mac has, and a 4K keyframe pair alone is 66 MB, so it stops at
+  /// 1080p.
+  static let resolutions: [(name: String, width: Int, height: Int)] = {
+    let all = [("720p", 1280, 720), ("1080p", 1920, 1080), ("4K", 3840, 2160)]
+    #if os(iOS)
+      return all.filter { $0.1 <= 1920 }
+    #else
+      return all
+    #endif
+  }()
 }
 
 /// Renders a zoom movie: one keyframe per zoom level straight from the tile
@@ -29,6 +37,22 @@ struct MovieSettings: Equatable, Sendable {
   @Published var error: String?
   @Published var output: URL?
   private var task: Task<Void, Never>?
+  /// The store a render makes for itself, when it is not given one.  A phone
+  /// renders beside the viewer's own live cache on a third of a Mac's memory, so
+  /// this stays below the viewer's own budget rather than being a flat 512 MiB --
+  /// which on iOS was 3.4x the whole viewer budget.  A keyframe is rendered once
+  /// and read straight back, so a movie keeps far less resident than exploring.
+  static let defaultBudgetBytes: Int = {
+    #if os(iOS)
+      // Two thirds of the viewer's 150 MiB, since both stores are alive at once.
+      return 96 * 1024 * 1024
+    #else
+      // The viewer's own default on this platform.
+      return 500 * 1024 * 1024
+    #endif
+  }()
+  /// The limit each keyframe was rendered at, in order, for the diagnostics.
+  private(set) var keyframeLimits: [(level: Double, limit: Int)] = []
   private struct Uniforms {
     var originA = SIMD2<Float>(0, 0), duA = SIMD2<Float>(1, 0), dvA = SIMD2<Float>(0, 1)
     var originB = SIMD2<Float>(0, 0), duB = SIMD2<Float>(1, 0), dvB = SIMD2<Float>(0, 1)
@@ -64,6 +88,7 @@ struct MovieSettings: Equatable, Sendable {
     isRendering = true
     progress = 0
     error = nil
+    keyframeLimits = []
     defer {
       isRendering = false
       stage = ""
@@ -102,7 +127,11 @@ struct MovieSettings: Equatable, Sendable {
     guard let cache else { throw GPUFailure("No Metal texture cache for the movie") }
 
     let size = CGSize(width: settings.width, height: settings.height)
-    let tiles = store ?? TileStore(budgetBytes: 512 * 1024 * 1024)
+    // The viewer's own default, not a fixed 512 MiB: on a phone that was 3.4x
+    // the whole viewer budget, asked for on top of the viewer's live cache, from
+    // a sheet the phone can open.  A keyframe is rendered once and read straight
+    // back, so a movie has far less to keep resident than a view being explored.
+    let tiles = store ?? TileStore(budgetBytes: Self.defaultBudgetBytes)
     var keyframes: [Int: MTLTexture] = [:]
     func keyframe(_ index: Int) async throws -> MTLTexture {
       if let existing = keyframes[index] { return existing }
@@ -112,9 +141,11 @@ struct MovieSettings: Equatable, Sendable {
       settingsForLevel.offset = Float(
         path.paletteOffset(at: level, cycles: settings.paletteCycles))
       let view = try path.viewport(at: level)
+      let limit = path.iterations(at: level)
+      keyframeLimits.append((level, limit))
       tiles.update(
         viewport: view, size: size, pixelWidth: size.width,
-        iterations: path.iterations(at: level), override: nil, colouring: settingsForLevel)
+        iterations: limit, override: nil, colouring: settingsForLevel)
       try await tiles.waitUntilReady()
       let texture = try await TileCompositor.snapshot(
         store: tiles, viewport: view, width: settings.width, height: settings.height,

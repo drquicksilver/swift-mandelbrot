@@ -118,6 +118,16 @@
         middleError < 20,
         "An interpolated frame differs from a direct render by \(middleError)")
 
+      // Every keyframe's depth is recorded, and is the automatic estimate for its
+      // level: what a movie's iteration budget actually is, for Performance.md.
+      let limits = renderer.keyframeLimits
+      try require(
+        limits.count == path.keyframeLevels.count,
+        "\(limits.count) keyframe limits recorded for \(path.keyframeLevels.count) keyframes")
+      try require(
+        limits.allSatisfy { $0.limit == IterationPolicy.estimate(logScale: $0.level) },
+        "A keyframe was rendered at a depth other than its estimate")
+
       // Palette cycling changes the colouring along the descent.
       var cycling = settings
       cycling.paletteCycles = 4
@@ -139,5 +149,47 @@
         "movieSeconds": seconds, "movieEndError": endError, "movieMiddleError": middleError,
       ]
     }
+
+    /// A movie on a phone's memory: the store used to ask for a flat 512 MiB,
+    /// 3.4x the whole iOS viewer budget, beside the viewer's own live cache.
+    static func checkMovieOnASmallBudget(_ gpu: GPUContext) async throws {
+      let end = Location(
+        name: "Seahorse", real: "-0.743643887037151", imag: "0.13182590420533", scale: "4e3",
+        palette: .ink)
+      let path = try ZoomPath(start: Location(real: "-0.5", imag: "0", scale: "1"), end: end)
+      let settings = MovieSettings(
+        duration: 1, width: 320, height: 180, framesPerSecond: 15)
+      let url = FileManager.default.temporaryDirectory.appendingPathComponent(
+        "diagnostic-small.mov")
+      let budget = 24 * 1024 * 1024
+      let store = TileStore(budgetBytes: budget)
+      _ = try await MovieRenderer().render(
+        path: path, settings: settings, colouring: end.colouring, to: url, store: store)
+      defer { try? FileManager.default.removeItem(at: url) }
+      try require(
+        FileManager.default.fileExists(atPath: url.path),
+        "A movie on a small budget was not written")
+      try require(
+        store.residentBytes <= store.tileResidentLimit,
+        "A movie left \(store.residentBytes) bytes against a \(store.tileResidentLimit) limit")
+      // A render that is given no store must not ask for more than the viewer
+      // itself would, and no offered resolution's keyframe pair may crowd it.
+      try require(
+        MovieRenderer.defaultBudgetBytes <= TileStore().budgetBytes,
+        "A movie's own store asks for more than the whole viewer budget")
+      for option in MovieSettings.resolutions {
+        let pair = option.width * option.height * 4 * 2
+        try require(
+          pair * 4 <= MovieRenderer.defaultBudgetBytes,
+          "\(option.name) keyframes are \(pair / 1024 / 1024) MiB against a "
+            + "\(MovieRenderer.defaultBudgetBytes / 1024 / 1024) MiB budget")
+      }
+      store.cancel()
+      print(
+        "Movie on a \(budget / 1024 / 1024) MiB store: "
+          + "\(store.residentBytes / 1024 / 1024) MiB resident of "
+          + "\(store.tileResidentLimit / 1024 / 1024) MiB")
+    }
+
   }
 #endif
