@@ -197,7 +197,7 @@ import Testing
   let destination = try end.viewport().preciseCenter
   var previousOffset = Double.infinity
   for level in stride(from: path.startLog, through: path.endLog, by: 0.37) {
-    let view = try path.viewport(at: level)
+    let view = path.viewport(at: level)
     let screen = view.screen(for: destination, in: size)
     let offset = hypot(screen.x - 320, screen.y - 180)
     #expect(offset <= previousOffset + 1e-9)
@@ -207,18 +207,18 @@ import Testing
   }
   // It converges steadily rather than lurching at the end: half way through,
   // the destination is already most of the way to the centre.
-  let middle = try path.viewport(at: (path.startLog + path.endLog) / 2)
+  let middle = path.viewport(at: (path.startLog + path.endLog) / 2)
     .screen(for: destination, in: size)
-  let first = try path.viewport(at: path.startLog).screen(for: destination, in: size)
+  let first = path.viewport(at: path.startLog).screen(for: destination, in: size)
   #expect(
     hypot(middle.x - 320, middle.y - 180) < hypot(first.x - 320, first.y - 180) * 0.75)
-  let arrival = try path.viewport(at: path.endLog).screen(for: destination, in: size)
+  let arrival = path.viewport(at: path.endLog).screen(for: destination, in: size)
   #expect(abs(arrival.x - 320) < 0.01)
   // The ends are exactly the start and end views.
-  let opening = try path.viewport(at: path.startLog)
+  let opening = path.viewport(at: path.startLog)
   #expect(abs(opening.center.x - -0.5) < 1e-9 && abs(opening.center.y) < 1e-9)
   #expect(opening.angle == 0)
-  let last = try path.viewport(at: path.endLog)
+  let last = path.viewport(at: path.endLog)
   #expect(abs(Viewport.normalised(last.angle - 20 * .pi / 180)) < 1e-9)
   #expect(abs((last.preciseCenter.x - destination.x).wide / last.wideSpan) < 1e-6)
   // Easing starts and ends gently but covers the whole path.
@@ -250,7 +250,7 @@ import Testing
   let size = CGSize(width: 320, height: 200)
   var last = Double.infinity
   for level in [50.0, 120, 250, path.endLog] {
-    let view = try path.viewport(at: level)
+    let view = path.viewport(at: level)
     let screen = view.screen(for: destination, in: size)
     let offset = hypot(screen.x - 160, screen.y - 100)
     #expect(offset <= last + 1e-9)

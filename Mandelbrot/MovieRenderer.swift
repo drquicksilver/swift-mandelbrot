@@ -140,7 +140,7 @@ struct MovieSettings: Equatable, Sendable {
       var settingsForLevel = colouring
       settingsForLevel.offset = Float(
         path.paletteOffset(at: level, cycles: settings.paletteCycles))
-      let view = try path.viewport(at: level)
+      let view = path.viewport(at: level)
       let limit = path.iterations(at: level)
       keyframeLimits.append((level, limit))
       tiles.update(
@@ -169,9 +169,9 @@ struct MovieSettings: Equatable, Sendable {
       let blend = upper > lower ? min(1, max(0, (level - lower) / (upper - lower))) : 0
       let first = try await keyframe(index)
       let second = try await keyframe(index + 1)
-      let view = try path.viewport(at: level)
-      let a = Self.mapping(frame: view, keyframe: try path.viewport(at: lower), size: size)
-      let b = Self.mapping(frame: view, keyframe: try path.viewport(at: upper), size: size)
+      let view = path.viewport(at: level)
+      let a = Self.mapping(frame: view, keyframe: path.viewport(at: lower), size: size)
+      let b = Self.mapping(frame: view, keyframe: path.viewport(at: upper), size: size)
       var uniforms = Uniforms(
         originA: a.origin, duA: a.du, dvA: a.dv, originB: b.origin, duB: b.du, dvB: b.dv,
         blend: Float(blend))

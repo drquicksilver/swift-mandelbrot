@@ -67,7 +67,7 @@
       "width": 256,
       "height": 192,
       "iterations": 800,
-      "maxMismatch": 0.02,
+      "maxMismatch": 0.01,
       "maxMeanError": 1.0
     }
   ]

@@ -720,10 +720,14 @@ store reserves room for the root and offsets 1–2.
 
 | Settled scene | Coverage bytes available | Near offsets planned | Sparse offsets planned |
 | --- | ---: | ---: | ---: |
-| phone, shallow | 10 MiB | 2 of 8, plus root | — |
+| phone, shallow | 10 MiB | 2 of 8, plus root | 1 (offset 15) |
 | phone, 1e1000 | 30 MiB | 5 of 8 | 0 of 6 |
-| Mac, shallow | 50 MiB | 8 of 8, plus root | — |
+| Mac, shallow | 50 MiB | 8 of 8, plus root | 1 (offset 15) |
 | Mac, 1e1000 | 50 MiB | 8 of 8 | 2 of 6 |
+
+A shallow view reaches its minimum scale a few levels out, so its sparse tail
+collapses to the single rung that still fits inside the bounds — offset 15 in both
+shallow runs. The deep rows keep the full 16…512 tail.
 
 On a phone, a full-resolution view uses almost all of the resident limit, so
 only the root and the 2–4× zoom-out are guaranteed. The test asserts exactly that;
@@ -764,13 +768,22 @@ about 100× (266,000 against about 2,700 needed). At the period-312 minibrot at
 1e100 it undershoots (about 26,800 against up to 60,000). Raising from pixel data
 needs periodicity checking (2.10).
 
-**Raises no longer recolour.** Colour depends on counts, and on the limit only to
-mark counts at or above it as capped. A raise now recolours only when some record
-holds an escaped count at or above the old limit, which happens after a decrease.
-The iteration diagnostic verifies both cases, and that a raise without a
-recolour matches a fresh render once fades settle. Previously every automatic
-raise recoloured every resident tile and rebuilt its mipmaps first. That is
-about every 3 levels between 1e3 and 1e30, and up to 500 MiB of tiles on the Mac.
+**A changed limit repaints only what it can change.** Colour depends on counts,
+and on the limit only to mark counts at or above it as capped, so moving the limit
+between L1 and L2 can only change a pixel whose count lies between them. Both
+directions now use that predicate, and `recolour` repaints record by record
+against the same floor, rebuilding mipmaps only above the records it repainted.
+The iteration diagnostic verifies both cases, that a raise without a recolour
+matches a fresh render once fades settle, that a decrease repaints exactly the
+records holding counts above the new limit, and that the observed ceiling's settle
+at 1e1000 repaints none.
+
+Previously every automatic raise recoloured every resident tile and rebuilt its
+mipmaps first — about every 3 levels between 1e3 and 1e30, up to 500 MiB of tiles
+on the Mac — and every *decrease* did so unconditionally. The observed ceiling
+(2.3) made that fire on every settle at depth, where it provably changes nothing:
+at 1e1000 the limit falls from 266,000 to 5,600 with the highest escaped count at
+2,707.
 
 The extension check previously ran at 64×48, where every needed tile was also
 coverage and nothing was extended ("increase sampled 0 capped pixels"). At
@@ -780,25 +793,58 @@ unchanged.
 ## 2.8 Zoom movies
 
 Measured on the Apple M1 Pro with the CLI (`--movie`), which shares the viewer's
-tile cache, compositor and encoder. Automatic depth per keyframe; HEVC.
+tile cache, compositor and encoder. Automatic depth per keyframe; HEVC. Every row
+names its destination: the cost depends far more on what is at the bottom than on
+how deep it is, so a row without one cannot be reproduced or compared.
 
-| Movie | Keyframes | Frames | Render time | File |
-| --- | ---: | ---: | ---: | ---: |
-| 1280×720, 8 s, 30 fps, to 4e3 | 13 | 240 | 6.6 s | 0.7 MiB |
-| 1920×1080, 8 s, 30 fps, to 1e12 | 41 | 240 | 242.4 s | 6.9 MiB |
-| 640×360, 4 s, 30 fps, to 1e30 | 101 | 120 | 439.3 s | 0.2 MiB |
+| Movie | Destination | Keyframes | Frames | Render time | File |
+| --- | --- | ---: | ---: | ---: | ---: |
+| 1280×720, 8 s, 30 fps | Seahorse Valley, 4e3 | 13 | 240 | 2.6 s | 3.1 MiB |
+| 1920×1080, 8 s, 30 fps | the point i, 1e12 | 41 | 240 | 9.6 s | 3.5 MiB |
+| 640×360, 4 s, 30 fps | period-312 minibrot, 1e30 | 101 | 120 | 1,236 s | 0.5 MiB |
+
+The earlier numbers here (242.4 s to 1e12, 439.3 s to 1e30) named no destination
+and are not reproducible: the 1e12 row's command takes 9.1 s at the very commit
+they were recorded on, producing a byte-identical file. The rows above are today's
+runs, at the current commit, with the destinations spelled out.
 
 Frame composition is negligible: two textured quads and one encode per frame.
-Essentially all of the time is keyframe rendering, and at 1080p a keyframe needs
-about 60 tiles whose interior pixels each run to the iteration limit — about
-6 s per keyframe at 1e12, and about 4.3 s per keyframe even at 640×360 once the
-descent passes into perturbation depth. Periodicity checking (2.10) is the lever
-on that, not the movie path. A shallow 720p movie is already quick.
+Essentially all of the time is keyframe rendering, and what a keyframe costs
+depends on how much of it is interior. The descent to the point i is nearly all
+exterior and escapes fast: 41 keyframes at 1080p in under 10 s. The descent into a
+minibrot is interior almost to the last pixel, and costs 12 s per keyframe even at
+640×360. Expect run-to-run variation of a few per cent on a laptop; repeats of the
+1e30 row spanned 1,137–1,236 s.
+
+**Keyframe depth: measured and left alone.** Bounding each keyframe's limit by
+what the previous keyframe observed — the viewer's observed ceiling (2.3), carried
+along the descent with twice the margin, re-derived every 16 levels and never
+applied to the destination — was implemented, measured and removed. To the point i
+it bounded 30 of 41 keyframes and gave back 59% of the summed iteration limit, for
+about 6% of the wall clock; bounded keyframes were pixel-identical to renders at
+the full estimate. On the minibrot descent, the case that actually takes 20
+minutes, it bounded **0 of 101** keyframes: such a view always holds escaped counts
+close to its limit, which is exactly when the ceiling must not engage. So the
+limit is not what a deep movie spends its time on, and the cost of a keyframe is
+not its iteration limit but its reference orbit and hierarchy. The CLI now reports
+`keyframeLimitSum`, which is the quantity any future depth policy has to move.
+
+Periodicity checking (2.10) and the orbit follow-up below are the levers. A
+shallow 720p movie is already quick.
 
 Two follow-ups the numbers point at, both listed under 2.13: each keyframe
 re-derives its reference orbit because the centre drifts between levels, so a
 descent recomputes hundreds of orbits that differ slightly; and keyframes are
 rendered strictly in order, so nothing overlaps the encode.
+
+**Memory.** A render that is given no store makes one at the platform's own
+budget: 500 MiB on macOS, and 96 MiB on iOS — two thirds of the viewer's 150 MiB,
+since the viewer's own cache is alive behind the sheet. It was a flat 512 MiB with
+no platform conditional, which on a phone was 3.4× the whole viewer budget asked
+for on top of it, from a sheet the phone can open. iOS is no longer offered 4K (a
+keyframe pair alone is 66 MB), and starting a render suspends the viewer's cache,
+which is behind the sheet and wants the same GPU. A check renders a whole movie
+through a 24 MiB store and holds it to its budget.
 
 The headless check renders 320×180 at 15 fps, reads the file back with
 AVAssetReader and compares the first and last frames against direct renders of

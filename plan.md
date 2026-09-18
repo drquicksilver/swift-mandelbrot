@@ -201,7 +201,9 @@ bounded pyramid of coarse tiles keeps zooming out drawable after cold jumps.
   recoloured with the palette, sampled at their own level's estimate, and never
   extended. The cap is a tenth of the budget (at least 30 MiB, at most 64 tiles),
   never more than the bytes left after the detail band. Choosing detail reserves
-  the root and offsets 1–2. On a phone at 150 MiB a full-resolution view leaves
+  the root and offsets 1–2. One exception to the resident limit: when no room can
+  be made for a root tile it is computed anyway, since a missing root opens holes
+  across the whole view, so resident bytes can exceed the limit by one tile. On a phone at 150 MiB a full-resolution view leaves
   room for about that much; a Mac at 500 MiB holds the whole near ladder.
 - *Memory pressure.* A coverage tile makes room by discarding lower-priority
   coverage (farthest first). The root is never deferred; deferred coverage
@@ -264,7 +266,10 @@ bounded pyramid of coarse tiles keeps zooming out drawable after cold jumps.
   and it rejects anything the renderer cannot represent.
 - *History.* Back and forward over settled views, recorded when the view comes
   to rest and has moved more than half a zoom level, a quarter of the screen or
-  two degrees; jumping to a place always records where it came from. ⌘⇧← / ⌘⇧→.
+  two degrees; jumping to a place always records the view it departed from, with
+  the settings it was seen under, and the record starts at the view the app opens
+  with so the first jump of a session can come back. Keyboard navigation settles
+  the moment it runs, so it records itself. ⌘⇧← / ⌘⇧→.
 - *Bookmarks.* Saved as JSON in user defaults, with rename and delete, capped at
   200. ⌘D bookmarks the current view.
 - *Gallery.* Nine famous places (whole set, Seahorse and Elephant valleys,
@@ -280,19 +285,26 @@ bounded pyramid of coarse tiles keeps zooming out drawable after cold jumps.
 point under the cursor or finger, updated live: side by side on Mac and iPad, a
 corner inset on iPhone (⌘J, or the toolbar button). Tapping the panel swaps it
 with the main view (⌘⇧J); while swapped, gestures drive the companion's own
-view and the Mandelbrot continues live in the panel.
+view — pan, zoom, rotation, the snap and the compass alike — and the Mandelbrot
+continues live in the panel.
 - *Rendering.* One small GPU render per change, float below 2^18 and
   double-float above, sampled at pixel centres and coloured by the same palette
-  kernel as the tiles. The render is skipped when nothing has changed, and its
-  resolution is capped at about 2.2 MP so a full-screen swap cannot stall the
-  GPU.
+  kernel as the tiles. Pixel offsets are measured from the centre of the panel
+  and turned by the viewport's angle, so the companion rotates as the main view
+  does. The render is skipped when nothing has changed, its resolution is capped
+  at about 2.2 MP so a full-screen swap cannot stall the GPU, and its iteration
+  limit is capped at 4000 (`JuliaRenderer.maximumIterations`), which is what
+  governs its quality when the main view is deep.
 - *Deviations.* The companion does not use the tile cache: it is small, always
   redrawn whole, and deliberately shallow (it stops at 2^26, where double-float
   still holds). It shares the palettes, the sample format and the draw pipeline.
 - *Tests.* The kernel is checked against the mathematics rather than against
   itself: for c = 0 every point inside the unit circle is captured and every
-  point outside escapes; for c = -1 the critical point never escapes. Plus the
-  render cache, pointer tracking, and gesture routing while swapped.
+  point outside escapes; for c = -1 the critical point never escapes. Rotation
+  likewise: c = 0 is radially symmetric, so a 37° render must still obey the
+  unit-disc rule, and for an asymmetric c a quarter turn must be the quarter-turn
+  permutation of the upright render. Plus the render cache, pointer tracking, and
+  gesture routing while swapped, including rotation and the compass.
 
 **2.8 Zoom movies.** ✅ Completed. Pick a start (the whole set by default, or
 any gallery place or bookmark) and an end (the current view), then render an
@@ -300,7 +312,11 @@ exponential zoom and share it. ⌘M, or the toolbar button.
 - *Keyframes.* One per zoom level of 2× along the path, rendered straight from
   the tile cache and compositor at the movie's resolution, with the automatic
   depth estimate per level (or the destination's fixed limit). Only the two
-  keyframes a frame needs stay resident.
+  keyframes a frame needs stay resident. Bounding a keyframe's depth by what the
+  previous one observed, as the viewer's ceiling does, was tried, measured and
+  removed: see Performance.md 2.8. The store takes the platform's own budget
+  (two thirds of the viewer's on iOS, where both are alive at once), iOS is not
+  offered 4K, and starting a render suspends the viewer's cache.
 - *Path.* `ZoomPath` places the centre so the offset from the destination shrinks
   with the span, with the remainder drawn down linearly, so the destination
   drifts gently to the centre instead of lurching; the first and last frames are

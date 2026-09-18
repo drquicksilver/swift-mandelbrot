@@ -17,6 +17,9 @@ struct TileStatistics: Equatable, Codable {
   /// Records actually repainted, across all recolours: a whole-cache repaint
   /// and a repaint of nothing both count as one recolour, and differ here.
   var recolouredRecords = 0
+  /// Root coverage offered for deferral, which must never happen; see
+  /// `TileStore.deferCoverage`.
+  var rootDeferralsRefused = 0
   var longestBatchMS = 0.0, frameMS = 0.0, frameP95MS = 0.0, frameMaxMS = 0.0
 }
 @MainActor final class TileRecord {
@@ -458,7 +461,15 @@ struct TileStatistics: Equatable, Codable {
   private func deferCoverage(_ key: TileKey) {
     // A skip must remove the key from every scheduling source.  Otherwise the
     // main-actor worker can select the same over-budget key forever.
-    precondition(key.level != minimumLevel, "Root coverage is never deferred")
+    //
+    // Every caller filters the root today.  A precondition would state that, but
+    // it stays live in release builds, so a later slip would crash the user
+    // rather than cost them a slightly worse picture.  The counter fails the
+    // diagnostics just as loudly.
+    guard key.level != minimumLevel else {
+      counters.rootDeferralsRefused += 1
+      return
+    }
     deferredCoverage[key] = nearCoverage.contains(key) ? .near : .sparse
     coverage.remove(key)
     nearCoverage.remove(key)
@@ -639,8 +650,13 @@ struct TileStatistics: Equatable, Codable {
     }
   }
   private func evict(reserving bytes: Int) {
-    retireFallback(now: ProcessInfo.processInfo.systemUptime)
-    guard residentBytes + bytes > residentLimit else { return }
+    retireFallback(now: ProcessInfo.processInfo.systemUptime, resumeWork: false)
+    guard residentBytes + bytes > residentLimit else {
+      // Memory may have eased without any work being driven: a rested view whose
+      // fallback was retired would otherwise wait for the next demand change.
+      restoreDeferredCoverage()
+      return
+    }
     // Records the current frame still draws go last.  After a zoom-out the
     // previous plan's coverage is no longer protected, yet it is the best
     // picture of the newly exposed edges until their own tiles arrive.
@@ -666,7 +682,7 @@ struct TileStatistics: Equatable, Codable {
       counters.evictions += 1
     }
     // Coarse replacements are not a reason to discard old fine detail.
-    retireFallback(now: ProcessInfo.processInfo.systemUptime)
+    retireFallback(now: ProcessInfo.processInfo.systemUptime, resumeWork: false)
     while residentBytes + bytes > residentLimit,
       let index = fallback.lastIndex(where: { !$0.isCoverage })
     { fallback.remove(at: index) }
@@ -1028,7 +1044,10 @@ struct TileStatistics: Equatable, Codable {
       }
     }
   }
-  func retireFallback(now: Double) {
+  /// `resumeWork` starts the worker when the retirement frees room that deferred
+  /// coverage was waiting for.  Eviction passes false: it runs inside `update`,
+  /// which starts the worker itself once the plan is complete.
+  func retireFallback(now: Double, resumeWork: Bool = true) {
     if allVisibleReady
       && visible.allSatisfy({ now - records[$0]!.readyAt >= TilePresentation.fadeDuration })
     {
@@ -1039,6 +1058,8 @@ struct TileStatistics: Equatable, Codable {
       }
       fallback.removeAll { !$0.isCoverage || rootReady }
       rebuildCoverageIndex()
+      restoreDeferredCoverage()
+      if resumeWork { startWorker() }
     }
   }
   func fallbackAvailable(for key: TileKey, maximumLevel: Int? = nil) -> TileRecord? {

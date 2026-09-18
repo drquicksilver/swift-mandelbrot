@@ -72,12 +72,9 @@ struct ZoomPath: Sendable {
       x: (startCentre.x - endCentre.x).wide * fraction,
       y: (startCentre.y - endCentre.y).wide * fraction, bits: bits)
   }
-  func viewport(at level: Double) throws -> Viewport {
-    var view = try Location(
-      viewport: Viewport(), iterations: nil
-    ).viewport()
+  func viewport(at level: Double) -> Viewport {
     let centre = centre(at: level)
-    view = Viewport(center: centre.point, scale: pow(2, min(level, 1023)))
+    var view = Viewport(center: centre.point, scale: pow(2, min(level, 1023)))
     if level > 30 {
       view.deepCenter = centre
       view.deepLogScale = level

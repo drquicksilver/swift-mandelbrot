@@ -76,7 +76,7 @@
       // The last frame is the destination, and the first is the whole set.
       func direct(_ level: Double, cycles: Double = 0) async throws -> [UInt8] {
         let store = TileStore()
-        let view = try path.viewport(at: level)
+        let view = path.viewport(at: level)
         var colouring = end.colouring
         colouring.offset = Float(path.paletteOffset(at: level, cycles: cycles))
         store.update(

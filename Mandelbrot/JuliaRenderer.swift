@@ -14,6 +14,10 @@ import Metal
     var iterations: Int
     var colouring: ColourSettings
   }
+  /// The companion's own limit, which governs its quality when the main view is
+  /// deep: the panel is small and redrawn whole in one unbatched dispatch, so it
+  /// does not follow a deep view's tens of thousands of iterations.
+  static let maximumIterations = 4000
   private var samples: MTLTexture?
   private var last: Request?
   private var rendering = false
@@ -27,7 +31,7 @@ import Metal
   ) async -> Bool {
     let request = Request(
       c: c, viewport: viewport, width: max(16, width), height: max(16, height),
-      iterations: max(32, min(iterations, 20_000)), colouring: colouring)
+      iterations: max(32, min(iterations, Self.maximumIterations)), colouring: colouring)
     guard !rendering, request != last else { return false }
     rendering = true
     defer { rendering = false }

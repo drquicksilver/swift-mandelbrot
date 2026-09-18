@@ -400,14 +400,19 @@
       try require(store.deferredCoverageCount > 0, "Pressure trace did not defer coverage")
       try require(
         store.residentBytes <= store.tileResidentLimit, "Deferred coverage exceeded the limit")
-      // Relieve the pressure without changing demand: deferral must not outlive it.
+      // Relieve the pressure without changing demand, and without calling
+      // retryFailedWork, which the app never calls: the store's own housekeeping
+      // has to notice that memory eased.  Retiring the fade-held fallback is what
+      // eases it in the app, and that is what is driven here.
       store.diagnosticResidentLimit = nil
-      store.retryFailedWork()
+      store.retireFallback(now: ProcessInfo.processInfo.systemUptime + 10)
       try await store.waitUntilReady()
       try require(
         store.deferredCoverageCount == 0
           && store.coverage.allSatisfy { store.records[$0] != nil },
         "Deferred coverage was not retried after memory eased")
+      try require(
+        store.statistics.rootDeferralsRefused == 0, "Root coverage was offered for deferral")
       // Squeeze again and move to a different root cell: the root must not yield.
       store.diagnosticResidentLimit =
         store.residentBytes - 4 * (store.records.values.first?.bytes ?? 1024 * 1024)

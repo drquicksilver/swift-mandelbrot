@@ -30,7 +30,7 @@ private struct JuliaSurface {
     let shrink = min(1, sqrt(2_200_000 / pixels))
     let width = max(16, Int(view.drawableSize.width * shrink))
     let height = max(16, Int(view.drawableSize.height * shrink))
-    let iterations = min(model.iterations, 4000)
+    let iterations = model.iterations
     Task { @MainActor in
       let updated = await model.julia.update(
         c: model.juliaC, viewport: model.juliaViewport, width: width, height: height,
