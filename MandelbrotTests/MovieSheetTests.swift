@@ -28,6 +28,19 @@ import Testing
     }
   #endif
 
+  #if os(macOS)
+    /// The sandbox has to let a movie reach the folder the sheet names, which
+    /// is `~/Movies` through the container's symlink.  Without the movies-folder
+    /// entitlement this is where a render died, with "you don't have
+    /// permission" after every frame had been rendered.
+    @Test func theMovieFolderIsWritable() throws {
+      let url = MovieLibrary.shared.destination(named: "MovieSheetTests-\(UUID().uuidString).probe")
+      defer { try? FileManager.default.removeItem(at: url) }
+      try Data("probe".utf8).write(to: url)
+      #expect(FileManager.default.fileExists(atPath: url.path))
+    }
+  #endif
+
   /// The whole path the Render button takes: a zoom path, a render, a file.
   /// Small on purpose -- it is the plumbing under test, not the picture.
   @Test func aShortRenderWritesAPlayableMovie() async throws {

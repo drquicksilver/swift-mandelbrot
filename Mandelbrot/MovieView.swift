@@ -150,7 +150,7 @@ struct MovieView: View {
       model.movies.start(
         path: path, settings: settings, colouring: model.colouring, to: url)
     } catch {
-      problem = String(describing: error)
+      problem = error.localizedDescription
     }
   }
 }

@@ -83,9 +83,10 @@ struct DeepNumber: Equatable, Sendable {
   }
   var double: Double { wide.double }
 }
-struct PrecisionError: Error, CustomStringConvertible {
+struct PrecisionError: Error, CustomStringConvertible, LocalizedError {
   let description: String
   init(_ description: String) { self.description = description }
+  var errorDescription: String? { description }
 }
 
 /// Normalized mantissa and base-two exponent. Never materialize a deep span as Double.

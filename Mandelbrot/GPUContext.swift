@@ -2,9 +2,12 @@ import CoreGraphics
 import Foundation
 import Metal
 
-struct GPUFailure: Error, CustomStringConvertible {
+struct GPUFailure: Error, CustomStringConvertible, LocalizedError {
   let description: String
   init(_ description: String) { self.description = description }
+  /// So that a message shown to a person reads as the sentence it was written
+  /// as, rather than "Mandelbrot.GPUFailure error 1".
+  var errorDescription: String? { description }
 }
 struct GPUParameters {
   var realMin, imagMax, stepX, stepY: SIMD2<Float>

@@ -299,8 +299,11 @@
       return FileManager.default.homeDirectoryForCurrentUser.path
     }()
 
+    /// Shown resolved, because the sandbox's own `Movies` is a symlink out to
+    /// the real one: the container path names a folder nobody would go looking
+    /// in, and the file lands in `~/Movies`.
     private func abbreviated(_ url: URL) -> String {
-      let path = url.path
+      let path = url.resolvingSymlinksInPath().path
       guard path.hasPrefix(Self.home) else { return path }
       return "~" + path.dropFirst(Self.home.count)
     }
@@ -459,7 +462,7 @@
           path: path, settings: settings, colouring: model.colouring,
           to: library.destination(named: MovieNaming.fileName()))
       } catch {
-        problem = String(describing: error)
+        problem = error.localizedDescription
       }
     }
 

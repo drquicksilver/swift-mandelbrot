@@ -231,7 +231,7 @@ struct MovieCounts: Equatable, Sendable {
         value: CMTimeValue(frame), timescale: CMTimeScale(settings.framesPerSecond))
       guard adaptor.append(buffer, withPresentationTime: stamp) else {
         throw GPUFailure(
-          writer.error.map { String(describing: $0) } ?? "A movie frame was rejected")
+          writer.error.map(\.localizedDescription) ?? "A movie frame was rejected")
       }
       progress = Double(frame + 1) / Double(frames)
       stage = "Frame \(frame + 1) of \(frames)"
@@ -240,7 +240,7 @@ struct MovieCounts: Equatable, Sendable {
     }
     input.markAsFinished()
     await writer.finishWriting()
-    if let failure = writer.error { throw GPUFailure(String(describing: failure)) }
+    if let failure = writer.error { throw GPUFailure(failure.localizedDescription) }
     tiles.cancel()
     output = url
     return url
@@ -259,7 +259,9 @@ struct MovieCounts: Equatable, Sendable {
         try? FileManager.default.removeItem(at: url)
         self.error = nil
       } catch {
-        self.error = String(describing: error)
+        // `String(describing:)` prints a whole NSError -- domain, code, nested
+        // userInfo -- where the sentence people can act on is one field of it.
+        self.error = error.localizedDescription
       }
     }
   }
