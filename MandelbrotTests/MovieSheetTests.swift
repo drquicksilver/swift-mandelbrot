@@ -1,3 +1,4 @@
+import AVKit
 import CoreGraphics
 import Foundation
 import Testing
@@ -38,6 +39,18 @@ import Testing
       defer { try? FileManager.default.removeItem(at: url) }
       try Data("probe".utf8).write(to: url)
       #expect(FileManager.default.fileExists(atPath: url.path))
+    }
+  #endif
+
+  #if os(macOS)
+    /// `VideoPlayer` is a SwiftUI wrapper around AVKit's `AVPlayerView`, but
+    /// importing AVKit only linked `_AVKit_SwiftUI`, not AVKit itself.  Showing
+    /// the finished movie then crashed the app in the Swift runtime: "failed to
+    /// demangle superclass of VideoPlayerView from mangled name
+    /// 'So12AVPlayerViewC'" -- the superclass is in a framework that was never
+    /// loaded.  This fails long before a person would see that.
+    @Test func avKitIsLinkedForTheFinishedMoviesPlayer() {
+      #expect(NSClassFromString("AVPlayerView") != nil)
     }
   #endif
 
