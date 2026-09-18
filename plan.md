@@ -499,9 +499,21 @@ cold deep views are too slow on the phones.
 - *App Store:* iPhone and iPad layouts, app icon variants, launch screen,
   first-run hint ("pinch to zoom"), the privacy label (no data collected),
   and TestFlight for friends and family first.
-- *Sandbox.* The app is not sandboxed today, which the App Store requires. The
-  movie folder from 2.9(d) then needs a security-scoped bookmark to stay usable
-  between launches.
+- *Sandbox.* The app is not sandboxed today. iOS sandboxes every app itself, so
+  that side needs nothing; the Mac App Store requires
+  `com.apple.security.app-sandbox`. Under it, `~/Movies` for 2.9(d) comes from
+  the asset entitlements, while a folder the user picks anywhere else needs a
+  security-scoped bookmark to survive relaunch.
+- *Open: the CLI under the sandbox.* Undecided, and worth settling before this
+  item starts. The sandbox applies at exec, so a sandboxed build is sandboxed
+  when launched from Terminal too: it cannot install a command on `PATH`, and
+  cannot open an arbitrary `--output` path, though it can write to a descriptor
+  the shell hands it and to the entitled asset folders. The options are roughly
+  one sandboxed build with a CLI written for it, a second Developer ID build
+  carrying the full CLI, or leaving the CLI to source builds — no choice made
+  yet. Whichever it is, the entitlement belongs to an App Store-only
+  configuration: in the shared Release config it breaks `make test`, which
+  drives `--output` into temporary paths.
 - *Employers:* a README with screenshots and a zoom GIF, an architecture doc
   (the tile cache and the precision ladder, with diagrams), `Performance.md`
   as a proper write-up, and a short "what I learned" section.
