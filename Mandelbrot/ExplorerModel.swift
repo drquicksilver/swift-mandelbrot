@@ -275,12 +275,25 @@ import SwiftUI
   private(set) var rotationTarget: Double?
   private var twist = 0.0
   var centreOfView: CGPoint { CGPoint(x: size.width / 2, y: size.height / 2) }
+  /// The view the gestures drive: the companion, while it holds the main area.
+  /// Pan and zoom have always followed the swap; rotation follows it too, so a
+  /// twist turns the picture the user is actually looking at.
+  var mainViewport: Viewport {
+    get { juliaSwapped ? juliaViewport : viewport }
+    set {
+      if juliaSwapped {
+        juliaViewport = newValue
+      } else {
+        viewport = newValue
+      }
+    }
+  }
   func rotate(_ delta: Double, at point: CGPoint? = nil) {
     guard delta.isFinite, delta != 0 else { return }
     rotationTarget = nil
-    var next = viewport
+    var next = mainViewport
     next.rotate(by: delta, at: point ?? centreOfView, in: size)
-    viewport = next
+    mainViewport = next
   }
   /// A pinch ignores its first ten degrees of twist, so zooming does not leave
   /// the view tilted; past that the gesture rotates one to one.
@@ -297,16 +310,17 @@ import SwiftUI
   func endTwist(velocity: Double = 0, at point: CGPoint? = nil) {
     twist = 0
     let quarter = Double.pi / 2
-    let nearest = (viewport.angle / quarter).rounded() * quarter
-    guard abs(Viewport.normalised(viewport.angle - nearest)) <= 3 * Double.pi / 180 else { return }
-    guard viewport.angle != Viewport.normalised(nearest) else { return }
+    let angle = mainViewport.angle
+    let nearest = (angle / quarter).rounded() * quarter
+    guard abs(Viewport.normalised(angle - nearest)) <= 3 * Double.pi / 180 else { return }
+    guard angle != Viewport.normalised(nearest) else { return }
     rotationTarget = Viewport.normalised(nearest)
     motion.rotationVelocity = 0
     hapticTick()
   }
   /// Animates back to upright, for the compass button.
   func resetRotation() {
-    guard viewport.angle != 0 else { return }
+    guard mainViewport.angle != 0 else { return }
     motion.rotationVelocity = 0
     rotationTarget = 0
     motionActive = true
@@ -345,6 +359,19 @@ import SwiftUI
     }
     return sprung
   }
+  /// Eases a view towards the snap or compass target, and clears it on arrival.
+  private func approachRotationTarget(_ view: inout Viewport, seconds: Double) {
+    guard let target = rotationTarget else { return }
+    let remaining = Viewport.normalised(target - view.angle)
+    if abs(remaining) < 1e-4 {
+      view.rotate(by: remaining, at: centreOfView, in: size)
+      rotationTarget = nil
+    } else {
+      view.rotate(
+        by: Motion.approach(from: 0, to: remaining, rate: 12, seconds: seconds), at: centreOfView,
+        in: size)
+    }
+  }
   func advanceMotion(now: Double) {
     guard isActive, isAnimating else {
       lastMotionTime = nil
@@ -355,13 +382,17 @@ import SwiftUI
     zoomDirection = motion.zoomVelocity > 0 ? 1 : (motion.zoomVelocity < 0 ? -1 : 0)
     let delta = motion.step(seconds: dt)
     if juliaSwapped {
-      // Flings in the companion pan and zoom its own shallow view.
-      juliaViewport.pan(by: delta.pan, in: size)
-      let wanted = juliaViewport.logScale + log2(max(1e-9, delta.zoom))
+      // Flings in the companion pan, zoom and rotate its own shallow view.
+      var companion = juliaViewport
+      companion.pan(by: delta.pan, in: size)
+      let anchor = motionAnchor ?? centreOfView
+      if delta.rotation != 0 { companion.rotate(by: delta.rotation, at: anchor, in: size) }
+      let wanted = companion.logScale + log2(max(1e-9, delta.zoom))
       if wanted < 26 {
-        juliaViewport.zoom(
-          by: delta.zoom, at: motionAnchor ?? centreOfView, in: size, pixelWidth: pixelWidth)
+        companion.zoom(by: delta.zoom, at: anchor, in: size, pixelWidth: pixelWidth)
       }
+      approachRotationTarget(&companion, seconds: dt)
+      juliaViewport = companion
       if motionActive != isAnimating { motionActive = isAnimating }
       return
     }
@@ -374,17 +405,7 @@ import SwiftUI
       // Bounce off the precision limit rather than stopping dead.
       motion.zoomVelocity = -min(1.5, motion.zoomVelocity / 3)
     }
-    if let target = rotationTarget {
-      let remaining = Viewport.normalised(target - next.angle)
-      if abs(remaining) < 1e-4 {
-        next.rotate(by: remaining, at: centreOfView, in: size)
-        rotationTarget = nil
-      } else {
-        next.rotate(
-          by: Motion.approach(from: 0, to: remaining, rate: 12, seconds: dt), at: centreOfView,
-          in: size)
-      }
-    }
+    approachRotationTarget(&next, seconds: dt)
     if !interactionActive { _ = applyBounds(&next, seconds: dt) }
     viewport = next
     if motionActive != isAnimating {

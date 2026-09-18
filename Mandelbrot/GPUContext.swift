@@ -170,6 +170,10 @@ final class GPUContext: @unchecked Sendable {
       var image: GPUParameters
       var cr: SIMD2<Float>
       var ci: SIMD2<Float>
+      var centreR: SIMD2<Float>
+      var centreI: SIMD2<Float>
+      var cosAngle: Float
+      var sinAngle: Float
     }
     let width = samples.width, height = samples.height
     // Pixel centres, as the tiles use; the kernel adds the half step.
@@ -183,8 +187,13 @@ final class GPUContext: @unchecked Sendable {
     image.stepX = GPUParameters.split(span / Double(width))
     image.stepY = GPUParameters.split(imaginarySpan / Double(height))
     image.smooth = 1
+    // The kernel walks out from the centre so that it can rotate the offset, and
+    // scales both axes by stepX, which square pixels make equal to stepY.
     var parameters = JuliaParameters(
-      image: image, cr: GPUParameters.split(c.x), ci: GPUParameters.split(c.y))
+      image: image, cr: GPUParameters.split(c.x), ci: GPUParameters.split(c.y),
+      centreR: GPUParameters.split(viewport.center.x),
+      centreI: GPUParameters.split(viewport.center.y),
+      cosAngle: Float(cos(viewport.angle)), sinAngle: Float(sin(viewport.angle)))
     encoder.setTexture(samples, index: 0)
     encoder.setBytes(&parameters, length: MemoryLayout<JuliaParameters>.stride, index: 0)
     dispatch(encoder, pipeline: juliaPipeline, width: width, height: height)

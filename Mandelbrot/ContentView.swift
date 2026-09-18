@@ -107,12 +107,12 @@ struct ContentView: View {
         } label: {
           Label("Reset", systemImage: "house")
         }
-        if abs(model.viewport.angle) > 0.001 {
+        if abs(model.mainViewport.angle) > 0.001 {
           Button {
             model.resetRotation()
           } label: {
             Label("Upright", systemImage: "location.north.line")
-              .rotationEffect(.radians(-model.viewport.angle))
+              .rotationEffect(.radians(-model.mainViewport.angle))
           }
         }
         Button {
@@ -193,14 +193,14 @@ struct ContentView: View {
 struct RotationCompass: View {
   @ObservedObject var model: ExplorerModel
   var body: some View {
-    if abs(model.viewport.angle) > 0.001 {
-      let degrees = -model.viewport.angle * 180 / .pi
+    if abs(model.mainViewport.angle) > 0.001 {
+      let degrees = -model.mainViewport.angle * 180 / .pi
       Button {
         model.resetRotation()
       } label: {
         HStack(spacing: 6) {
           Image(systemName: "location.north.line")
-            .rotationEffect(.radians(-model.viewport.angle))
+            .rotationEffect(.radians(-model.mainViewport.angle))
           Text("\(degrees, specifier: "%.0f")°").font(.caption.monospacedDigit())
         }
         .padding(.horizontal, 12).padding(.vertical, 8)

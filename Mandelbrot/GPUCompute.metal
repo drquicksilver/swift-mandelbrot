@@ -45,16 +45,30 @@ kernel void renderSamples(texture2d<uint, access::write> out [[texture(0)]],
 
 // The Julia companion: one small render per frame, sampled at pixel centres,
 // sharing the sample record format, the palette kernel and the draw pipeline.
-struct JuliaParameters { GPUParameters image; float2 cr, ci; };
+// The companion rotates like the main view: pixel offsets are measured from the
+// centre of the panel and turned by the viewport's angle before they are scaled
+// into the plane.  `step` is the same in both axes (square pixels), so one step
+// can scale a rotated offset that mixes them.
+struct JuliaParameters {
+    GPUParameters image;
+    float2 cr, ci;
+    float2 centreR, centreI;
+    float cosAngle, sinAngle;
+};
 kernel void renderJulia(texture2d<uint, access::write> out [[texture(0)]],
                         constant JuliaParameters &j [[buffer(0)]], uint2 gid [[thread_position_in_grid]]) {
     constant GPUParameters &p = j.image;
     if (gid.x >= p.width || gid.y >= p.height) return;
     uint n = 0;
     float magnitude = 0;
+    // Offsets from the panel centre in pixels, y upwards, then rotated.
+    float vx = float(gid.x) + 0.5f - float(p.width) * 0.5f;
+    float vy = float(p.height) * 0.5f - (float(gid.y) + 0.5f);
+    float ox = j.cosAngle * vx - j.sinAngle * vy;
+    float oy = j.sinAngle * vx + j.cosAngle * vy;
     if (p.precision == 0) {
-        float zr = p.realMin.x + (float(gid.x) + 0.5f) * p.stepX.x;
-        float zi = p.imagMax.x - (float(gid.y) + 0.5f) * p.stepY.x;
+        float zr = j.centreR.x + ox * p.stepX.x;
+        float zi = j.centreI.x + oy * p.stepX.x;
         float cr = j.cr.x, ci = j.ci.x;
         while (zr*zr+zi*zi <= 65536.0f && n < p.maxIterations) {
             float next = zr*zr-zi*zi+cr;
@@ -62,8 +76,8 @@ kernel void renderJulia(texture2d<uint, access::write> out [[texture(0)]],
         }
         magnitude = zr*zr+zi*zi;
     } else {
-        float2 zr = dd_add(p.realMin, dd_mul_float(p.stepX, float(gid.x) + 0.5f));
-        float2 zi = dd_sub(p.imagMax, dd_mul_float(p.stepY, float(gid.y) + 0.5f));
+        float2 zr = dd_add(j.centreR, dd_mul_float(p.stepX, ox));
+        float2 zi = dd_add(j.centreI, dd_mul_float(p.stepX, oy));
         while (n < p.maxIterations) {
             float2 zr2 = dd_mul(zr,zr), zi2 = dd_mul(zi,zi);
             float2 mag = dd_add(zr2,zi2);
