@@ -3,6 +3,60 @@
   import CoreGraphics
 
   extension TileDiagnostics {
+    /// Every redraw request goes through one call, and the springs use it as
+    /// their own clock.  The canvas answers `onRedrawNeeded` by unpausing and
+    /// marking the layer dirty; here a counter stands in for the layer.
+    static func checkRedrawRouting() async throws {
+      let model = ExplorerModel()
+      model.resize(CGSize(width: 800, height: 500), displayScale: 2)
+      var redraws = 0
+      model.onRedrawNeeded = { redraws += 1 }
+
+      // Tile completion, which is the case that left the screen stale: the work
+      // finishes with no viewport change to make some other view redraw.
+      redraws = 0
+      model.tiles.update(
+        viewport: model.viewport, size: model.size, pixelWidth: model.pixelWidth,
+        iterations: model.iterations, override: nil, colouring: model.colouring)
+      try await model.tiles.waitUntilReady()
+      try require(redraws > 0, "Tile completion did not ask for a frame")
+
+      // A palette change draws the same tiles in new colours.
+      redraws = 0
+      model.colouring = ColourSettings(palette: .fire)
+      try require(redraws > 0, "Changing the palette did not ask for a frame")
+
+      // Jumping to a bookmark: one viewport change, then silence.
+      redraws = 0
+      model.apply(Location.gallery[1])
+      try require(redraws > 0, "Moving to a location did not ask for a frame")
+
+      // The gentle bounds spring, driven by nothing but the frames it asks for.
+      model.stopMotion()
+      model.viewport = Viewport(center: CGPoint(x: 40, y: 25), scale: 8)
+      model.interactionActive = true
+      var pending = false
+      model.onRedrawNeeded = { pending = true }
+      model.interactionActive = false
+      try require(model.isAnimating, "Letting go outside the bounds started no spring")
+      try require(pending, "Ending the interaction did not ask for the spring's first frame")
+      var frames = 0
+      var now = ProcessInfo.processInfo.systemUptime
+      while pending, frames < 1200 {
+        pending = false
+        now += 1 / 120.0
+        model.advanceMotion(now: now)
+        frames += 1
+      }
+      try require(frames > 1, "The spring ran for one frame and then asked for no more")
+      try require(!model.isAnimating, "The spring stopped asking for frames before it settled")
+      let bounded = model.viewport.boundedCenter(size: model.size)
+      try require(
+        hypot(model.viewport.center.x - bounded.x, model.viewport.center.y - bounded.y)
+          < model.viewport.span * 1e-3,
+        "The self-driven spring left the set off screen")
+      model.setActive(false)
+    }
     /// Locations, history and bookmarks, driven through the model the UI uses.
     static func checkLocations() async throws {
       let defaults = UserDefaults(suiteName: "MandelbrotDiagnostics")!

@@ -9,12 +9,11 @@ import SwiftUI
     static func dismantleNSView(_ view: MTKView, coordinator: CanvasCoordinator) {
       view.isPaused = true
       view.delegate = nil
-      coordinator.model.tiles.onContentChange = nil
+      coordinator.model.onRedrawNeeded = nil
       coordinator.model.tiles.cancel()
     }
     func updateNSView(_ view: MTKView, context: Context) {
-      context.coordinator.model = model
-      context.coordinator.wake()
+      context.coordinator.adopt(model)
     }
   }
 #else
@@ -25,12 +24,11 @@ import SwiftUI
     static func dismantleUIView(_ view: MTKView, coordinator: CanvasCoordinator) {
       view.isPaused = true
       view.delegate = nil
-      coordinator.model.tiles.onContentChange = nil
+      coordinator.model.onRedrawNeeded = nil
       coordinator.model.tiles.cancel()
     }
     func updateUIView(_ view: MTKView, context: Context) {
-      context.coordinator.model = model
-      context.coordinator.wake()
+      context.coordinator.adopt(model)
     }
   }
 #endif
@@ -44,22 +42,44 @@ import SwiftUI
     let view = ScreenAwareMetalView(frame: .zero, device: GPUContext.shared?.device)
     self.view = view
     view.screenChanged = { [weak self] in self?.wake() }
-    model.tiles.onContentChange = { [weak self] in self?.wake() }
     view.enableSetNeedsDisplay = true
+    view.isPaused = true
     view.colorPixelFormat = .bgra8Unorm
     view.framebufferOnly = true
     view.clearColor = MTLClearColor(red: 0.01, green: 0.01, blue: 0.02, alpha: 1)
     view.delegate = self
+    adopt(model)
     return view
   }
+  /// SwiftUI hands the coordinator a fresh model value on every update; the
+  /// redraw route has to follow it, and the new model needs a frame.
+  func adopt(_ model: ExplorerModel) {
+    self.model = model
+    model.onRedrawNeeded = { [weak self] in self?.wake() }
+    wake()
+  }
+  /// The one call that puts a frame on screen.  An `MTKView` on
+  /// `enableSetNeedsDisplay` ignores its internal timer, so unpausing alone
+  /// draws nothing: the layer must also be marked dirty.  While something is
+  /// animating the view goes the other way and runs on the timer, which is the
+  /// clock the springs need — nothing else is redrawing to lend them one.
   func wake() {
     guard let view else { return }
-    view.isPaused = !model.isActive
+    guard model.isActive else {
+      view.isPaused = true
+      return
+    }
     #if os(macOS)
       view.preferredFramesPerSecond = view.window?.screen?.maximumFramesPerSecond ?? 60
     #else
       view.preferredFramesPerSecond = view.window?.screen.maximumFramesPerSecond ?? 60
     #endif
+    let animating =
+      model.isAnimating
+      || model.tiles.hasActiveFades(now: ProcessInfo.processInfo.systemUptime)
+    view.enableSetNeedsDisplay = !animating
+    view.isPaused = false
+    view.setNeedsDisplayCompat()
   }
   func mtkView(_ view: MTKView, drawableSizeWillChange size: CGSize) {}
   func draw(in view: MTKView) {
@@ -100,7 +120,9 @@ import SwiftUI
     #endif
     command.commit()
     model.tiles.retireFallback(now: now)
-    view.isPaused = !model.isAnimating && !model.tiles.hasActiveFades(now: now)
+    let animating = model.isAnimating || model.tiles.hasActiveFades(now: now)
+    view.enableSetNeedsDisplay = !animating
+    view.isPaused = !animating
   }
 }
 

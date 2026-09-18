@@ -12,8 +12,21 @@ import SwiftUI
     tileObservation = tiles.$statistics.receive(on: DispatchQueue.main).sink { [weak self] _ in
       MainActor.assumeIsolated { self?.observeDepth() }
     }
+    tiles.onContentChange = { [weak self] in self?.requestRedraw() }
   }
-  @Published var colouring = ColourSettings()
+  /// The single route to a frame.  Tile completion, a changed setting, a screen
+  /// change and waking all come through here, and the canvas answers by both
+  /// unpausing and marking itself dirty.  It is also the springs' clock:
+  /// `advanceMotion` asks for its own next frame instead of waiting for some
+  /// unrelated view to redraw.
+  var onRedrawNeeded: (() -> Void)?
+  private(set) var redrawRequests = 0
+  func requestRedraw() {
+    guard isActive else { return }
+    redrawRequests &+= 1
+    onRedrawNeeded?()
+  }
+  @Published var colouring = ColourSettings() { didSet { requestRedraw() } }
   @Published var isActive = true
   func setActive(_ active: Bool) {
     isActive = active
@@ -53,7 +66,12 @@ import SwiftUI
         updateDepth()
         observeDepth()
         // Springs run after the interaction, never during it.
-        if isAnimating { motionActive = true } else { recordHistory() }
+        if isAnimating {
+          motionActive = true
+          requestRedraw()
+        } else {
+          recordHistory()
+        }
       }
     }
   }
@@ -118,7 +136,7 @@ import SwiftUI
   @Published var showSettings = false
   @Published var showDeveloper = false
   @Published var showHUD = false
-  @Published var showTileOverlay = false
+  @Published var showTileOverlay = false { didSet { requestRedraw() } }
   @Published var selection: CGRect?
   @Published var showPlaces = false
   /// The Julia companion: the point it follows, its own shallow view, and which
@@ -263,6 +281,7 @@ import SwiftUI
     motionAnchor = anchor
     lastMotionTime = ProcessInfo.processInfo.systemUptime
     motionActive = motion.active
+    if motionActive { requestRedraw() }
   }
   /// Rotation, gentle bounds and the compass all animate here, so the display
   /// keeps drawing while any of them is still moving.
@@ -320,6 +339,7 @@ import SwiftUI
     guard angle != Viewport.normalised(nearest) else { return }
     rotationTarget = Viewport.normalised(nearest)
     motion.rotationVelocity = 0
+    requestRedraw()
     hapticTick()
   }
   /// Animates back to upright, for the compass button.
@@ -328,6 +348,7 @@ import SwiftUI
     motion.rotationVelocity = 0
     rotationTarget = 0
     motionActive = true
+    requestRedraw()
   }
   private func hapticTick() {
     #if os(iOS)
@@ -398,6 +419,7 @@ import SwiftUI
       approachRotationTarget(&companion, seconds: dt)
       juliaViewport = companion
       if motionActive != isAnimating { motionActive = isAnimating }
+      if isAnimating { requestRedraw() }
       return
     }
     var next = viewport
@@ -419,6 +441,7 @@ import SwiftUI
         recordHistory()
       }
     }
+    if isAnimating { requestRedraw() }
   }
   @Published var atPrecisionLimit = false
   /// Whether the resting view would spring: used to wake the display when an
@@ -511,6 +534,7 @@ import SwiftUI
   func requestRender() {
     renderTask?.cancel()
     guard isActive else { return }
+    requestRedraw()
     if renderer.isGPU {
       error = GPUContext.shared == nil ? "Metal is unavailable." : nil
       return
