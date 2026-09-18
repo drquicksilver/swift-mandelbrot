@@ -385,7 +385,7 @@ struct TileStatistics: Equatable, Codable {
     // get a little more.
     // Nothing zooms out past the minimum scale, so projecting further only
     // buys cells no frame can show.
-    let furthest = max(1, Int(ceil(viewport.logScale - Viewport.minimumLogScale)))
+    let furthest = max(1, Int(ceil(viewport.logScale - Viewport.minimumLogScale(size: size))))
     func group(offset: Int) -> (level: Int, keys: Set<TileKey>) {
       let maximumTiles = offset <= 2 ? 6 : 4
       var target = max(minimumLevel, detailLevel - offset - 2)

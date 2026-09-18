@@ -172,7 +172,7 @@ import Testing
     let view = try place.viewport()
     #expect(!place.name.isEmpty)
     #expect(abs(view.center.x) <= 4 && abs(view.center.y) <= 4)
-    #expect(view.logScale >= Viewport.minimumLogScale)
+    #expect(view.logScale >= Viewport.minimumLogScale(size: CGSize(width: 1600, height: 900)))
     #expect(try Location(url: place.url).real == place.real)
     #expect(seen.insert(place.name).inserted)
   }

@@ -362,9 +362,9 @@ import SwiftUI
   private func applyBounds(_ view: inout Viewport, seconds: Double) -> Bool {
     let rate = 9.0
     var sprung = false
-    if view.logScale < Viewport.restingLogScale - 1e-9 {
-      let next = Motion.approach(
-        from: view.logScale, to: Viewport.restingLogScale, rate: rate, seconds: seconds)
+    let resting = Viewport.restingLogScale(size: size)
+    if view.logScale < resting - 1e-9 {
+      let next = Motion.approach(from: view.logScale, to: resting, rate: rate, seconds: seconds)
       view.zoom(
         by: pow(2, next - view.logScale), at: centreOfView, in: size, pixelWidth: pixelWidth)
       motion.zoomVelocity = 0
@@ -447,7 +447,7 @@ import SwiftUI
   /// Whether the resting view would spring: used to wake the display when an
   /// interaction ends outside the gentle bounds.
   var boundsNeeded: Bool {
-    if viewport.logScale < Viewport.restingLogScale - 1e-9 { return true }
+    if viewport.logScale < Viewport.restingLogScale(size: size) - 1e-9 { return true }
     let bounded = viewport.boundedCenter(size: size)
     return hypot(bounded.x - viewport.center.x, bounded.y - viewport.center.y)
       > viewport.span * 1e-6

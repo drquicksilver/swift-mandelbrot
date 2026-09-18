@@ -967,6 +967,7 @@
         try checkNativeCommands()
         try await checkDemandWakeups()
         try await checkRedrawRouting()
+        try await checkRestingScale()
         try await checkIterationContinuity(gpu)
         try await checkFailureRecovery()
         try await checkColourBlend(gpu)

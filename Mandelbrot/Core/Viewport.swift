@@ -14,10 +14,19 @@ struct Viewport: Equatable, Sendable {
   var deepCenter: DeepPoint?
   var deepLogScale: Double?
   static let maximumLogScale = 13_000.0
+  /// The scale at which the whole set fits the view, in both dimensions.  The
+  /// view's width spans `3 / scale` of the plane, so width alone is satisfied at
+  /// scale 1; the height then covers `3 / scale` times the aspect ratio, which
+  /// has to reach the set's 2.4.  A window at least 0.8 as tall as it is wide
+  /// rests at scale 1, and a wider one pulls back until the top and bottom of
+  /// the set are on screen.
+  static func restingLogScale(size: CGSize) -> Double {
+    let aspect = max(1, size.height) / max(1, size.width)
+    return min(0, log2(setBounds.width / setBounds.height * aspect))
+  }
   /// The furthest zoom-out: the whole set with room around it.  Gentle bounds
-  /// spring back from there to `restingLogScale`, where the set spans the view.
-  static let minimumLogScale = -1.0
-  static let restingLogScale = 0.0
+  /// spring back from there to the resting scale, an octave in.
+  static func minimumLogScale(size: CGSize) -> Double { restingLogScale(size: size) - 1 }
   /// The whole set, with a small margin.  Gentle bounds keep the view centre
   /// within this box, expanded by most of the view's half-extents, so part of
   /// the set always stays on screen.
@@ -153,7 +162,8 @@ struct Viewport: Equatable, Sendable {
     let wantedLog = logScale + log2(factor)
     if deepCenter != nil || wantedLog > 30 {
       let fixed = preciseComplex(at: anchor, in: size)
-      deepLogScale = min(Self.maximumLogScale, max(Self.minimumLogScale, wantedLog))
+      deepLogScale = min(
+        Self.maximumLogScale, max(Self.minimumLogScale(size: size), wantedLog))
       // The offset back from the anchor to the centre is a plane offset, so it
       // carries the rotation; an unrotated one walks the centre off sideways.
       let offset = planeOffset(of: anchor, in: size)
@@ -170,7 +180,7 @@ struct Viewport: Equatable, Sendable {
     let fixedPoint = complex(at: anchor, in: size)
     let limit = maximumScale(pixelWidth: pixelWidth)
     let wanted = scale * factor
-    scale = min(limit, max(pow(2, Self.minimumLogScale), wanted))
+    scale = min(limit, max(pow(2, Self.minimumLogScale(size: size)), wanted))
     let movedPoint = complex(at: anchor, in: size)
     center.x += fixedPoint.x - movedPoint.x
     center.y += fixedPoint.y - movedPoint.y

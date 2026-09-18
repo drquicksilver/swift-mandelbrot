@@ -57,6 +57,57 @@
         "The self-driven spring left the set off screen")
       model.setActive(false)
     }
+    /// The resting scale follows the window: the whole set has to fit both
+    /// dimensions, and the spring has to be allowed to go far enough out to show
+    /// it.  A constant resting scale cropped the set on anything wider than 5:4.
+    static func checkRestingScale() async throws {
+      for size in [
+        CGSize(width: 500, height: 900),  // portrait
+        CGSize(width: 700, height: 700),  // square
+        CGSize(width: 1600, height: 900),  // landscape
+        CGSize(width: 2400, height: 800),  // very wide
+      ] {
+        let model = ExplorerModel()
+        model.resize(size, displayScale: 2)
+        // Start further out than the spring allows, so it settles at the rest.
+        model.viewport.zoom(
+          by: 0.02, at: CGPoint(x: size.width / 2, y: size.height / 2), in: size,
+          pixelWidth: model.pixelWidth)
+        var now = ProcessInfo.processInfo.systemUptime
+        for _ in 0..<600 {
+          now += 1 / 120
+          model.advanceMotion(now: now)
+        }
+        let view = model.viewport
+        try require(
+          abs(view.logScale - Viewport.restingLogScale(size: size)) < 1e-3,
+          "\(size) did not settle at its resting scale")
+        // The view is wide enough for the set's bounds in both dimensions, and no
+        // wider than one of them needs: the tighter dimension is snug.
+        let visible = (x: view.span, y: view.span * size.height / size.width)
+        let slack = (
+          x: visible.x / Viewport.setBounds.width, y: visible.y / Viewport.setBounds.height
+        )
+        try require(
+          slack.x > 1 - 1e-6 && slack.y > 1 - 1e-6,
+          "\(size) rested with the set cropped: \(slack.x)x by \(slack.y)x")
+        try require(
+          min(slack.x, slack.y) < 1.02, "\(size) rested further out than the set needed")
+        // And the set itself, not just the padded bounds, is on screen at the
+        // view the app opens with.
+        for corner in [
+          CGPoint(x: -2, y: -1.13), CGPoint(x: 0.25, y: 1.13), CGPoint(x: -2, y: 1.13),
+          CGPoint(x: 0.25, y: -1.13),
+        ] {
+          let point = view.screen(for: corner, in: size)
+          try require(
+            point.x > -1 && point.x < size.width + 1 && point.y > -1
+              && point.y < size.height + 1,
+            "\(size) cut off the set at \(corner): \(point)")
+        }
+        model.setActive(false)
+      }
+    }
     /// Locations, history and bookmarks, driven through the model the UI uses.
     static func checkLocations() async throws {
       let defaults = UserDefaults(suiteName: "MandelbrotDiagnostics")!
@@ -283,7 +334,7 @@
       out.viewport.zoom(
         by: 0.25, at: CGPoint(x: 400, y: 250), in: out.size, pixelWidth: out.pixelWidth)
       try require(
-        out.viewport.logScale <= Viewport.minimumLogScale + 1e-9,
+        out.viewport.logScale <= Viewport.minimumLogScale(size: out.size) + 1e-9,
         "Zooming out did not reach the furthest scale")
       var now = ProcessInfo.processInfo.systemUptime
       for _ in 0..<180 {
@@ -291,7 +342,7 @@
         out.advanceMotion(now: now)
       }
       try require(
-        abs(out.viewport.logScale - Viewport.restingLogScale) < 1e-3,
+        abs(out.viewport.logScale - Viewport.restingLogScale(size: out.size)) < 1e-3,
         "Zooming out past the set did not spring back to it")
       // The precision limit bounces rather than stopping dead.
       let deep = ExplorerModel()
