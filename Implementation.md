@@ -296,15 +296,24 @@ four commits with their own tests:
   panning with AppKit momentum; a single two-touch gesture on iOS that pins both
   fingers; a 10° twist threshold, ±3° snapping with a haptic tick, a compass
   button; rotation inertia; gentle bounds springs and a precision-limit bounce.
-  A 30° product golden validates rotation against the independent oracle.
+  A 30° product golden validates rotation against the independent oracle. Only
+  rotation that passed the twist threshold can be flung, and a fling does not
+  override a snap decided on release.
 - **2.6** `Location`, `mandelbrot://` links with the scheme registered on both
   platforms, back/forward history over settled views, bookmarks in user
-  defaults, and a nine-place starter gallery.
+  defaults, and a nine-place starter gallery. History records the view a jump
+  departs from, with the settings it was seen under, starts at the view the app
+  opens with, and records keyboard navigation, which settles at once.
 - **2.7** A live Julia companion (side by side, or inset on iPhone) with swap,
   checked against the mathematics: for c = 0 the set is exactly the unit disc.
+  It rotates with the main view — its kernel turns pixel offsets about the panel
+  centre — and while swapped, rotation, the snap and the compass drive it as pan
+  and zoom already did.
 - **2.8** `ZoomPath` plus keyframe rendering, affine frame composition and
   AVAssetWriter encoding, with a `--movie` CLI and a headless render read back
-  through AVAssetReader.
+  through AVAssetReader. The store takes the platform's own budget rather than a
+  flat 512 MiB, and bounding keyframe depth by observation was measured and
+  rejected (Performance.md 2.8).
 
 `make test`, `make ios` and strict formatting of the changed files pass. Phone
 hardware measurements remain outstanding (2.11).

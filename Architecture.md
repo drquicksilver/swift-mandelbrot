@@ -75,8 +75,10 @@ Each visible cell finds cached ancestors and blends the two nearest levels
 according to fractional LOD. New detail fades in over 125 ms. All filtering and
 level blending operates on colours, never interpolated escape counts. The debug
 overlay draws cell borders and base-level labels in the fragment shader.
-Iteration changes retain reusable records. Decreases recolour existing samples
-with the new cap and rebuild colour mipmaps. Increases lazily replace insufficient
+Iteration changes retain reusable records. A changed cap recolours only the
+records that can differ — those holding an escaped count at or above the lower of
+the old and new caps, since that is the only range in which capped-ness changes —
+and rebuilds colour mipmaps only above them. Increases lazily replace insufficient
 tiles, copying escaped samples byte-for-byte and recomputing only capped pixels.
 A two-word GPU summary records capped-pixel count and maximum escaped iteration;
 fully escaped tiles satisfy any later cap. Raw samples never lose their original
@@ -93,7 +95,9 @@ iterations or CPU pixel conversion; changing a palette is not literally free.
 
 Budgets are 150 MiB on iOS and 500 MiB on Mac. Accounting uses Metal's allocated
 texture sizes, including colour copies and gutters, rather than assuming a tile
-is only its 256 KiB raw payload. Two thirds of the budget, less scratch headroom,
+is only its 256 KiB raw payload, and counts records that only a running fade still
+refers to: a fade releases the record it replaced as soon as it completes, so such
+a record is either on screen or gone. Two thirds of the budget, less scratch headroom,
 are available for resident tiles; the rest covers recolouring, orbit state and
 transient replacements. This is a cache budget, not a cap on total app memory.
 
@@ -103,7 +107,9 @@ and 40 tiles from bytes left after the visible band, always including the root's
 direct root tile. It selects root, near and sparse groups in that order, while
 work within the selected set remains coarse-first. An over-budget coverage key is
 deferred from all scheduling sets, which guarantees that the main-actor worker
-makes progress. Coverage records are LRU-protected, can be recoloured, use their
+makes progress; deferred keys return as soon as a tile fits again, which is
+retried where memory eases — eviction and fallback retirement — as well as
+wherever work is driven. Coverage records are LRU-protected, can be recoloured, use their
 own level-appropriate iteration limit and are never extended for a later detail
 limit. They are selected through a small bounds-ordered index rather than the
 ordinary 62-level ancestor walk. An
@@ -253,8 +259,10 @@ history entries and a movie's ends.
 
 **Julia companion.** A separate small render, not a second tile cache: one
 compute pass per change, float or double-float, sharing the sample format,
-palette kernel and draw pipeline. Gestures route to whichever view fills the
-main area.
+palette kernel and draw pipeline. Its kernel walks out from the centre of the
+panel and turns the offset by the viewport's angle, so it rotates as the main view
+does. Gestures route to whichever view fills the main area — `mainViewport` —
+including rotation, the snap and the compass.
 
 **Zoom movies.** `ZoomPath` (in Core) defines the keyframe chain and the view at
 any moment; keyframes come from the ordinary tile store and compositor, and each
