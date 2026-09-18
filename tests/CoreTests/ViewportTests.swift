@@ -212,7 +212,8 @@ import Testing
   let first = try path.viewport(at: path.startLog).screen(for: destination, in: size)
   #expect(
     hypot(middle.x - 320, middle.y - 180) < hypot(first.x - 320, first.y - 180) * 0.75)
-  #expect(hypot(try path.viewport(at: path.endLog).screen(for: destination, in: size).x - 320, 0) < 0.01)
+  let arrival = try path.viewport(at: path.endLog).screen(for: destination, in: size)
+  #expect(abs(arrival.x - 320) < 0.01)
   // The ends are exactly the start and end views.
   let opening = try path.viewport(at: path.startLog)
   #expect(abs(opening.center.x - -0.5) < 1e-9 && abs(opening.center.y) < 1e-9)
@@ -226,7 +227,8 @@ import Testing
   #expect(path.level(at: 0.5) > path.startLog && path.level(at: 0.5) < path.endLog)
   #expect(path.level(at: 0.1) - path.startLog < (path.endLog - path.startLog) * 0.1)
   let linear = try ZoomPath(start: start, end: end, eased: false)
-  #expect(abs(linear.level(at: 0.25) - (linear.startLog + (linear.endLog - linear.startLog) / 4)) < 1e-9)
+  let quarter = linear.startLog + (linear.endLog - linear.startLog) / 4
+  #expect(abs(linear.level(at: 0.25) - quarter) < 1e-9)
   // Depth follows the automatic estimate unless the destination fixes it.
   #expect(path.iterations(at: 40) == IterationPolicy.estimate(logScale: 40))
   var fixed = end
