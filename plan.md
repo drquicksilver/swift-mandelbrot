@@ -324,7 +324,9 @@ exponential zoom and share it. ⌘M, or the toolbar button.
   offset follow the level.
 - *Composition.* Each frame samples the two bracketing keyframes through an
   affine map built from the two viewports (so rotation and drift both follow)
-  and cross-fades, in one draw call.
+  and cross-fades, in one draw call. A frame is wider than the deeper keyframe it
+  samples, so that keyframe's weight fades out where its sample leaves it; the
+  shallower one always covers the frame.
 - *Encoding.* AVAssetWriter, HEVC where the hardware takes it and H.264
   otherwise, drawn straight into the writer's pixel buffers through a Metal
   texture cache. Options: duration, 720p/1080p/4K, frame rate, palette cycles

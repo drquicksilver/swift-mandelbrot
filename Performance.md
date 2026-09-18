@@ -846,7 +846,16 @@ keyframe pair alone is 66 MB), and starting a render suspends the viewer's cache
 which is behind the sheet and wants the same GPU. A check renders a whole movie
 through a 24 MiB store and holds it to its budget.
 
-The headless check renders 320×180 at 15 fps, reads the file back with
+The headless check renders 320×180 at 30 fps, reads the file back with
 AVAssetReader and compares the first and last frames against direct renders of
-the start and end views: mean channel error **9.3/255** through HEVC
-compression and the keyframe resampling.
+the start and end views: mean channel error **3.5/255** through HEVC compression
+and the keyframe resampling.
+
+**Frame borders.** A frame between two keyframes is up to twice as wide as the
+deeper of them — 36% of its width lies outside that texture at the midpoint of an
+interval — so the deeper keyframe's weight fades to zero as its sample leaves it,
+rather than clamping and smearing its edge row across the band. The check picks
+the frame whose blend is nearest a half and measures its outer 8% alone: **19.1
+/255** before that fade, **5.5/255** after, against 3.3/255 for the whole frame.
+It renders the triple spiral rather than the seahorse valley, whose border is a
+smooth gradient that clamps to nearly the right colour and hid this.
