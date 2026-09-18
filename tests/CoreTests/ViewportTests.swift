@@ -76,6 +76,33 @@ import Testing
   #expect(abs(turned.center.y + 80 / 800 * 3) < 1e-12)
 }
 
+/// Deep zoom rebuilds the centre from the anchor rather than moving it, so a
+/// rotated view has to rotate that offset too.  Measured on screen, where a
+/// displacement is visible: the anchored point must stay under the cursor.
+@Test func rotatedDeepZoomKeepsTheAnchorUnderTheCursor() throws {
+  let size = CGSize(width: 800, height: 500)
+  let anchors = [
+    CGPoint(x: 700, y: 100), CGPoint(x: 0, y: 0), CGPoint(x: 400, y: 250),
+    CGPoint(x: 123, y: 456),
+  ]
+  for degrees in [0.0, 45, -30, 90, 179] {
+    for factor in [2.0, 0.5, 1.0, 64.0] {
+      for zoom in ["1e40", "1e300", "1e1000"] {
+        var view = try Viewport(real: "0", imag: "1", zoom: zoom)
+        view.angle = Viewport.normalised(degrees * .pi / 180)
+        for anchor in anchors {
+          var zoomed = view
+          let fixed = zoomed.preciseComplex(at: anchor, in: size)
+          zoomed.zoom(by: factor, at: anchor, in: size, pixelWidth: 800)
+          let after = zoomed.screen(for: fixed, in: size)
+          #expect(abs(after.x - anchor.x) < 0.01)
+          #expect(abs(after.y - anchor.y) < 0.01)
+        }
+      }
+    }
+  }
+}
+
 @Test func rotatedVisibleTilesCoverEveryScreenCorner() {
   var grid = TileGrid(anchor: CGPoint(x: -0.5, y: 0))
   let size = CGSize(width: 640, height: 400)

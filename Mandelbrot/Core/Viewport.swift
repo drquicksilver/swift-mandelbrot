@@ -154,9 +154,11 @@ struct Viewport: Equatable, Sendable {
     if deepCenter != nil || wantedLog > 30 {
       let fixed = preciseComplex(at: anchor, in: size)
       deepLogScale = min(Self.maximumLogScale, max(Self.minimumLogScale, wantedLog))
+      // The offset back from the anchor to the centre is a plane offset, so it
+      // carries the rotation; an unrotated one walks the centre off sideways.
+      let offset = planeOffset(of: anchor, in: size)
       deepCenter = fixed.offset(
-        x: wideSpan * (0.5 - anchor.x / max(1, size.width)),
-        y: wideSpan * ((anchor.y - size.height / 2) / max(1, size.width)), bits: precisionBits)
+        x: wideSpan * -offset.x, y: wideSpan * -offset.y, bits: precisionBits)
       center = deepCenter!.point
       scale = pow(2, min(logScale, 1023))
       if logScale < 28 {
