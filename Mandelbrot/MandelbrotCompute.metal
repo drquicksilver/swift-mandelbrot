@@ -10,9 +10,9 @@ using namespace metal;
 
 // FloatFloat's error-free transforms require the written rounding points.
 // Build with MTL_FAST_MATH=NO: reassociation can erase the low-word residuals.
-// Disable implicit multiply-add contraction as well; dd_mul explicitly uses
-// fma to recover the rounding error of an independently rounded product.
-#pragma clang fp contract(off)
+// Contraction is disabled per function in FloatFloat.h rather than here: a
+// file-scope pragma also covers mandelbrotIterations, which is plain Float and
+// wants its multiply-adds contracted.
 
 struct MandelbrotParams {
     uint width;

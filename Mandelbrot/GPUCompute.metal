@@ -2,7 +2,8 @@
 #include "FloatFloat.h"
 #include "SampleRecord.h"
 using namespace metal;
-#pragma clang fp contract(off)
+// Contraction is disabled per function in FloatFloat.h; a file-scope pragma
+// here would also cover the plain Float paths below, which want contraction.
 
 struct GPUParameters {
     float2 realMin, imagMax, stepX, stepY;

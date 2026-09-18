@@ -161,6 +161,44 @@ shader. Precision is required; keep safe math enabled. CPU-precomputed FloatFloa
 coordinates will be introduced with the shared GPU pipeline, with new measurements,
 rather than adding a second temporary parameter layout to the legacy lab kernels.
 
+**Correction (2026-09-18): the cause above was misattributed.** The Float kernel
+did slow by roughly that amount, but `MTL_FAST_MATH=NO` was not why. Measured in
+isolation, `-fno-fast-math` is *faster* for this kernel, not slower: 64.6 ms
+versus 74.5 ms at 3456×2234, scale 200, 1000 iterations. Safe math costs nothing
+here.
+
+The real cause was a file-scope `#pragma clang fp contract(off)`. It sat in
+`FloatFloat.h` above the `dd_*` helpers, and that header is included at the top
+of `MandelbrotCompute.metal`, `GPUCompute.metal` and `Perturbation.metal` — so it
+disabled multiply-add contraction for every plain Float kernel in those files,
+none of which needs it. `MandelbrotCompute.metal` carried a second, redundant
+copy of the same pragma.
+
+Confirmed by bisecting Feb (`1c02a1c`) against HEAD: swapping the two metallibs
+between the two Swift binaries moved the cost with the shader and not at all with
+the Swift, and the Float kernel source is byte-identical across the two versions.
+Contraction is now disabled per function inside the `dd_*` bodies instead, so the
+error-free transforms keep the semantics they need while the Float paths get
+their multiply-adds back.
+
+Measured after the fix, GPU compute only, 3456×2234, interleaved best-of-15:
+
+| Case | Feb | Before fix | After fix |
+| --- | ---: | ---: | ---: |
+| scale 1, 1000 iter | 34.7 ms | 36.7 ms | 30.8 ms |
+| scale 200, 1000 iter | 96.1 ms | 107.1 ms | 88.5 ms |
+| scale 5000, 5000 iter | 419.6 ms | 448.9 ms | 358.2 ms |
+| scale 1, 20000 iter | 537.1 ms | 573.5 ms | 443.0 ms |
+
+That is 16–23% faster than before the fix and 8–17% faster than February. These
+absolutes were taken on a thermally loaded machine and run high; the interleaved
+ratios are the meaningful part. The product pipeline (`--pipeline gpu --timing
+kernel`) improved about 10% on best-of-three at both 1000 and 20000 iterations.
+
+The lesson is procedural: this doc's predicted cost and the observed cost matched
+in size, which is why a real bug sat behind a plausible explanation for months.
+Isolate the variable before recording a cause.
+
 ## 1.4: GPU-resident product pipeline
 
 M1 Pro, Release, coverage disabled, same 1e7 viewport and 2000 iterations as the

@@ -2,7 +2,9 @@
 #include "FloatFloat.h"
 #include "SampleRecord.h"
 using namespace metal;
-#pragma clang fp contract(off)
+// Contraction is disabled per function in FloatFloat.h, where the error-free
+// transforms live; the XF helpers below delegate their delicate arithmetic to
+// dd_add/dd_mul and need no file-scope pragma of their own.
 
 struct XF { float2 m; int e; int pad; };
 struct XC { XF x,y; };
