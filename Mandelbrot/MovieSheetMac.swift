@@ -26,6 +26,24 @@
     var size: String
   }
 
+  /// AVKit's own player view, rather than SwiftUI's `VideoPlayer` wrapper
+  /// around it.  `VideoPlayer` reaches `AVPlayerView` through a system shim, so
+  /// nothing in the app referred to AVKit itself and the framework went
+  /// unlinked -- which the Swift runtime discovered at the moment the finished
+  /// movie appeared, by aborting.  Naming the class here is what links it.
+  private struct MoviePlayer: NSViewRepresentable {
+    let player: AVPlayer?
+    func makeNSView(context: Context) -> AVPlayerView {
+      let view = AVPlayerView()
+      view.controlsStyle = .inline
+      view.videoGravity = .resizeAspect
+      return view
+    }
+    func updateNSView(_ view: AVPlayerView, context: Context) {
+      if view.player !== player { view.player = player }
+    }
+  }
+
   struct MovieSheetMac: View {
     @ObservedObject var model: ExplorerModel
     /// The renderer publishes progress, the stage, completion and the finished
@@ -328,7 +346,7 @@
           .padding(.top, 4)
         }
         Spacer(minLength: 0)
-        VideoPlayer(player: player)
+        MoviePlayer(player: player)
           .frame(width: 160, height: 96)
           .clipShape(RoundedRectangle(cornerRadius: 6))
       }
