@@ -169,6 +169,7 @@ struct TileStatistics: Equatable, Codable {
   var allVisibleReady: Bool { !visible.isEmpty && visible.allSatisfy { !needsSampling($0) } }
   var residentBytes: Int {
     records.values.reduce(0) { $0 + $1.bytes } + fallback.reduce(0) { $0 + $1.bytes }
+      + fadingBytes
   }
   var coverageBytes: Int {
     records.values.filter(\.isCoverage).reduce(0) { $0 + $1.bytes }
@@ -311,6 +312,7 @@ struct TileStatistics: Equatable, Codable {
     }
     let live = Set(visible)
     baseTransitions = baseTransitions.filter { live.contains($0.key) }
+    retireFinishedFades(now: ProcessInfo.processInfo.systemUptime)
     configureCoverage(detailLevel: level)
     trimCoverageToReservation()
     prefetch =
@@ -746,7 +748,17 @@ struct TileStatistics: Equatable, Codable {
     previous: TileRecord?, fade: Float
   ) {
     if let existing = baseTransitions[key], existing.record === record {
-      return (existing.previous, TilePresentation.fade(readyAt: existing.since, now: now))
+      let fade = TilePresentation.fade(readyAt: existing.since, now: now)
+      // Once the fade is over the old record is not drawn again, and holding it
+      // keeps its textures alive for as long as the view stays still.
+      // Once the fade is over the old record is not drawn again, and holding it
+      // keeps its textures alive for as long as the view stays still.
+      // Once the fade is over the old record is not drawn again, and holding it
+      // keeps its textures alive for as long as the view stays still.
+      // Once the fade is over the old record is not drawn again, and holding it
+      // keeps its textures alive for as long as the view stays still.
+      if fade >= 1, existing.previous != nil { baseTransitions[key]?.previous = nil }
+      return (baseTransitions[key]?.previous, fade)
     }
     let previous = baseTransitions[key]?.record
     // A cell presented for the first time has nothing to fade from, so it keeps
@@ -755,6 +767,33 @@ struct TileStatistics: Equatable, Codable {
     let since = previous == nil ? record.readyAt : now
     baseTransitions[key] = BaseTransition(record: record, previous: previous, since: since)
     return (previous, TilePresentation.fade(readyAt: since, now: now))
+  }
+  /// Drops the records finished fades still hold.  `presentBase` does this for
+  /// a cell it is asked about; a cell that stops being drawn never asks again.
+  private func retireFinishedFades(now: Double) {
+    for (key, transition) in baseTransitions
+    where transition.previous != nil && now - transition.since >= TilePresentation.fadeDuration {
+      baseTransitions[key]?.previous = nil
+    }
+  }
+  /// Fades that are over and still hold the record they replaced: the thing that
+  /// must always be zero, since such a record is drawn no more.
+  func finishedFadeHolds(now: Double) -> Int {
+    baseTransitions.values.count {
+      $0.previous != nil && now - $0.since >= TilePresentation.fadeDuration
+    }
+  }
+  /// Bytes held by records that only a fade still refers to.  They are alive and
+  /// the budget has to see them, but they are no longer resident tiles.
+  var fadingBytes: Int {
+    var total = 0
+    for transition in baseTransitions.values {
+      guard let previous = transition.previous else { continue }
+      guard records[previous.key] !== previous, !fallback.contains(where: { $0 === previous })
+      else { continue }
+      total += previous.bytes
+    }
+    return total
   }
   func hasActiveFades(now: Double) -> Bool {
     if baseTransitions.values.contains(where: { now - $0.since < TilePresentation.fadeDuration }) {

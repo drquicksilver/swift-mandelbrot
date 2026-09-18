@@ -566,17 +566,36 @@
           switched += 1
           try require(cell.uniforms.baseMix < 1, "A change of base cut in with no fade")
         }
+        let settled = after + TilePresentation.fadeDuration
         for cell in TileCompositor.plan(
-          store: store, viewport: view, size: size, now: after + TilePresentation.fadeDuration)
+          store: store, viewport: view, size: size, now: settled)
         {
           try require(
             cell.uniforms.baseMix >= 1 || cell.coarse === cell.base,
             "A base fade did not settle")
         }
+        // A fade that is over must let go of the record it replaced: while it
+        // held one, those textures stayed alive for as long as the view stayed
+        // still, and the budget could not see them.
+        try require(
+          store.finishedFadeHolds(now: settled) == 0,
+          "\(store.finishedFadeHolds(now: settled)) finished fades still hold a record")
         presented.removeAll()
       }
       try require(standIns > 0, "Zoom-out never fell back to a stand-in; check is vacuous")
       try require(switched > 0, "No cell replaced its base; the fade check is vacuous")
+      // A finished fade must let its old record go.  While it held one, the
+      // textures stayed alive for as long as the view stayed still, and the
+      // budget could not see them.
+      let still = ProcessInfo.processInfo.systemUptime + TilePresentation.fadeDuration
+      _ = TileCompositor.plan(store: store, viewport: view, size: size, now: still)
+      store.update(
+        viewport: view, size: size, pixelWidth: 256, iterations: iterations, override: nil,
+        colouring: ColourSettings(), zoomDirection: -1)
+      try await store.waitUntilReady()
+      try require(
+        store.fadingBytes == 0 && store.residentBytes <= store.tileResidentLimit,
+        "A settled view holds \(store.fadingBytes) unbudgeted bytes behind fades")
     }
     static func checkNativeCommands() throws {
       func event(_ characters: String, code: UInt16, flags: NSEvent.ModifierFlags = []) -> NSEvent {
