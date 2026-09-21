@@ -472,12 +472,11 @@ which suits shallow views. At 1e100, counts in view run from about 22,000 to
 34,000, so the palette cycles hundreds of times and the structure disappears
 into noise. Choose density and offset from the distribution of escaped counts
 in view, using a log mapping or a histogram-based mapping, so deep views look
-good without opening Settings. Use the protected tiles' samples (already on the
-GPU) for the statistics. Recolouring itself is cheap: tiles cache iteration
-counts and the colour pass reads them, so a mapping that moves every frame
-costs a re-shade, not a re-render. The manual density and offset controls
-become adjustments on top of the automatic value, like the detail multiplier in
-2.3.
+good without opening Settings. The statistics come from what is on screen; the
+protected tiles are merely where those samples already live, on the GPU.
+Recolouring reuses cached iteration counts, so it is far cheaper than a
+re-render, but it is not free. The manual density and offset controls become
+adjustments on top of the automatic value, like the detail multiplier in 2.3.
 
 The mapping is a function of what is in view, so zooming re-colours iterations
 that were already on screen. Gradual drift is the point — it is what keeps
@@ -490,26 +489,44 @@ still determine an image.
   Hysteresis alone only delays such a jump. Drive the mapping from a statistic
   that survives these events — percentiles of the escaped counts rather than
   min and max, so one arriving tile cannot move the anchor — and then filter the
-  result over time.
+  result over time. The histogram represents on-screen pixels, weighted by their
+  current footprint; do not let prefetch, coverage-only or differently resolved
+  cached tiles change the fit merely because they happen to be resident.
+- *Rate-limit the re-shade.* Do not move the mapping at display-frame rate;
+  rate-limit a cancellable, transactional re-shade. Two things make this cost
+  more than it looks. `recolourFloor` repaints only the records whose colour
+  could differ, which is what makes an iteration raise cheap, but a changed
+  density changes every record, so auto colour takes the whole-cache path that
+  a palette change takes: a fresh texture and an awaited dispatch per resident
+  record, then colour mipmaps rebuilt above each one. And asking for a recolour
+  goes through `update`, which bumps the generation and cancels the sampling
+  worker — so a mapping that moves while the view moves starves tile production
+  exactly when tiles are most wanted. Rate-limiting is about that stall at
+  least as much as about the shading.
 - *Pin the offset.* Density rescales the banding; offset rotates the whole
   palette, so a wandering offset changes every hue for no visible reason. Derive
   it rather than fit it: anchor a chosen count, such as the low percentile, to a
   fixed palette phase, so offset moves only as a consequence of density.
 - *Record what was resolved.* `Location` stores density and offset and puts them
-  in the URL, so today a bookmark reproduces its picture exactly. Once those
-  values are adjustments, that stops being true unless the resolved pair is
-  stored alongside them, or the automatic mapping is a pure function of the
-  location alone — centre, scale and cap, not whichever tiles happened to be
-  ready. Pick one and say which; bookmarks, shared URLs, goldens and exported
-  stills all depend on it. Tests need to pin the mapping, so expose the resolved
-  colouring as a value they can assert on.
+  in the URL, so today a bookmark reproduces its picture exactly. Live
+  exploration can adapt from samples, but a bookmark, shared URL or export stores
+  the resolved automatic pair alongside the manual adjustments, making it an
+  exact visual snapshot rather than a result of whichever tiles happened to be
+  ready. Goldens use that resolved value too. Tests need to pin the mapping, so
+  expose the resolved colouring as a value they can assert on. Opening a
+  bookmark pins the mapping to its stored pair, and the automatic fit resumes
+  only once the view moves — otherwise "snapshot" is not what a bookmark
+  returns. Old URLs carry no resolved pair, and today an absent `density` means
+  the fixed 64 rather than a free fit, so a URL without one stays pinned; every
+  link shared so far keeps the picture it had.
 - *Movies get a schedule, not a fit.* This item was written as a prerequisite
   for zoom movies, which landed first (2.8): a movie crosses a huge range of
   depths and a fixed density will look wrong at one end. But fitting each frame
   to its own samples is how a movie flickers, since consecutive frames differ
-  slightly in which tiles are ready. A journey computes its mapping across the
-  whole zoom range up front and interpolates along it, and the movie defaults
-  are revisited in those terms.
+  slightly in which tiles are ready. A journey samples its planned route up
+  front — including travel, zoom, rotation and holds — and interpolates a
+  deterministic mapping schedule along it. The movie defaults are revisited in
+  those terms.
 - *Then 2.13.* Exported stills wait for this rather than baking in a fixed
   mapping, and their goldens are recorded once, against the resolved mapping.
 
