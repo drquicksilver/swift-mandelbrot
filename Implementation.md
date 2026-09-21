@@ -285,7 +285,7 @@ off, and moving preparation cost. See `Performance.md`.
   happens.
 
 Raising from data, the reference-orbit hint and resuming capped pixels move to
-2.10. `make test`, strict formatting of the changed files and `make ios` pass.
+2.14. `make test`, strict formatting of the changed files and `make ios` pass.
 
 ### 2.5–2.8
 
@@ -316,4 +316,4 @@ four commits with their own tests:
   rejected (Performance.md 2.8).
 
 `make test`, `make ios` and strict formatting of the changed files pass. Phone
-hardware measurements remain outstanding (2.11).
+hardware measurements remain outstanding (2.15).

@@ -804,7 +804,7 @@ estimate's slope.
 The depth-only slope is unchanged at 80 per level. At c=i, 1e1000 it overshoots
 about 100× (266,000 against about 2,700 needed). At the period-312 minibrot at
 1e100 it undershoots (about 26,800 against up to 60,000). Raising from pixel data
-needs periodicity checking (2.10).
+needs periodicity checking (2.14).
 
 **A changed limit repaints only what it can change.** Colour depends on counts,
 and on the limit only to mark counts at or above it as capped, so moving the limit
@@ -867,10 +867,10 @@ limit is not what a deep movie spends its time on, and the cost of a keyframe is
 not its iteration limit but its reference orbit and hierarchy. The CLI now reports
 `keyframeLimitSum`, which is the quantity any future depth policy has to move.
 
-Periodicity checking (2.10) and the orbit follow-up below are the levers. A
+Periodicity checking (2.14) and the orbit follow-up below are the levers. A
 shallow 720p movie is already quick.
 
-Two follow-ups the numbers point at, both listed under 2.13: each keyframe
+Two follow-ups the numbers point at, both listed under 2.16: each keyframe
 re-derives its reference orbit because the centre drifts between levels, so a
 descent recomputes hundreds of orbits that differ slightly; and keyframes are
 rendered strictly in order, so nothing overlaps the encode.

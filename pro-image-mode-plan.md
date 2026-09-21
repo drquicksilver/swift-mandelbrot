@@ -242,7 +242,7 @@ all three paths.
   three modes and diffs the smooth-escape, DE and angle buffers.
 
 - **Interior detection per path.** Period detection is straightforward in Float
-  and FloatFloat, but it is not free — it is `plan.md` 2.10, still outstanding,
+  and FloatFloat, but it is not free — it is `plan.md` 2.14, still outstanding,
   and needs its own benchmark variant. In perturbation, δ-based comparisons need
   care near the reference orbit, but this is where the speedup matters most,
   since deep interior pixels otherwise burn the full iteration budget.
@@ -549,7 +549,7 @@ Presets: Black Lacquer, Polished Onyx, Dark Ceramic, Hidden Period Glow.
 Debug: period field, convergence field, confirmed-interior / undetermined mask.
 
 Period detection can be pulled earlier if interior render times become a problem.
-If `plan.md` 2.10 has landed, much of this is already done (§7).
+If `plan.md` 2.14 has landed, much of this is already done (§7).
 
 ### Milestone 6B — Interior geometry (optional)
 
@@ -674,15 +674,15 @@ visual impact.
 This plan assumes the roadmap is mostly finished first, so several milestones
 start further along than they look:
 
-- **2.10 (periodicity checking)** is the same mathematics as Milestone 6A's
-  period detection, and `plan.md` 2.3 is already blocked on it. If 2.10 has
+- **2.14 (periodicity checking)** is the same mathematics as Milestone 6A's
+  period detection, and `plan.md` 2.3 is already blocked on it. If 2.14 has
   landed, Milestone 6A gets substantially cheaper.
-- **2.12 (automatic colour)** builds histogram and in-view statistics machinery
+- **2.11 (automatic colour)** builds histogram and in-view statistics machinery
   that Milestone 1's remap can borrow.
 - **2.5 (navigation feel)** adds `Viewport.angle`, which is what makes the
   rotation field in §1.7's recipe meaningful. `Viewport` has no angle today.
 - **2.6 (locations)** defines the `Location` type that recipes extend.
-- **2.14 (tidy-up)** removes the CPU path from the viewer and settles the
+- **2.17 (tidy-up)** removes the CPU path from the viewer and settles the
   pixel-mapping convention, both of which simplify a new render path.
 
 **One decision to make consciously: `plan.md` 2.9, high-resolution still

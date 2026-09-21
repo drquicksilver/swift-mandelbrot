@@ -158,7 +158,7 @@ Add debug overlays (tile borders and levels) to the Developer panel.
 - Golden tests at 1e50, 1e200 and 1e1000.
 
 **2.3 Automatic iteration depth.** ✅ Completed, except the parts that need
-periodicity checking, which move to 2.12. See the 2.3 sections in
+periodicity checking, which move to 2.14. See the 2.3 sections in
 `Performance.md` and `Implementation.md`.
 - *Starting guess from depth:* `maxIter ≈ 200 + 80·log2(scale)`, rounded to 200.
   Calibrated against the golden locations, no depth-only slope fits both: c = i
@@ -173,15 +173,15 @@ periodicity checking, which move to 2.12. See the 2.3 sections in
   and the old limit, so the picture is unchanged). Counts 1.5× those the ceiling
   came from release it; further zoom grows it at the estimate's slope. Decreases
   still wait 300 ms after input and motion stop.
-- *Raising from data (→ 2.12):* raise while more than about 0.1% of pixels are
+- *Raising from data (→ 2.14):* raise while more than about 0.1% of pixels are
   unresolved. Without interior detection a capped pixel may be inside the set,
   so this needs periodicity checking.
-- *Deep-zoom hint (→ 2.12):* the reference orbit's period or escape iteration.
+- *Deep-zoom hint (→ 2.14):* the reference orbit's period or escape iteration.
 - *Tile cache (done):* each tile stores its limit and highest escaped count.
   A decrease recomputes nothing. A raise re-samples only capped pixels and
   recolours only when a record holds a count the old limit coloured as capped.
   A tile with no capped pixels is exact at any higher limit. Capped pixels
-  restart from iteration 0 instead of resuming (→ 2.12, re-measure): once
+  restart from iteration 0 instead of resuming (→ 2.14, re-measure): once
   periodicity marks interior pixels, few genuinely unresolved pixels remain, and
   retained orbit state would cost 1–3 MB per tile.
 - *Colouring (done):* palette phase depends on counts; the limit only marks
@@ -252,7 +252,7 @@ bounded pyramid of coarse tiles keeps zooming out drawable after cold jumps.
   rotated-compositor check, and a frame-by-frame model check of the twist
   threshold, snap, compass, inertia, springs at two refresh rates and the bounce.
 - *Deviation.* The lab renderers (`--pipeline legacy`/`gpu`) sample axis-aligned
-  rows and reject `--rotation`; 2.15 removes that path from the viewer anyway.
+  rows and reject `--rotation`; 2.17 removes that path from the viewer anyway.
 - *Found in use, fixed in 2.9(a) and 2.9(b).* The gentle bounds were right in
   the model and wrong on screen. The resting scale was a constant that assumed a
   window at least 0.8 as tall as it is wide, so a typical Mac window could not
@@ -357,8 +357,8 @@ exponential zoom and share it. ⌘M, or the toolbar button.
   object, so progress, the stage, completion and the share link never
   republished. There was also no way to watch the result before sharing it, and
   a finished movie stayed in the temporary directory.
-- *Deviation.* 2.10's automatic colour was meant to land first, and did not; see
-  2.10.
+- *Deviation.* 2.11's automatic colour was meant to land first, and did not; see
+  2.11.
 
 **2.9 Playtest fixes.** ✅ Completed. A session of hands-on use found ten things
 wrong, nearly all of them in the view layer rather than the renderer, and two of
@@ -401,7 +401,7 @@ before it.
   reached the screen; it observes the renderer directly now. The finished movie
   plays in the sheet before it is offered anywhere. On macOS renders go to a
   folder chosen once and kept as a security-scoped bookmark — which survives the
-  sandbox 2.16 will want as well as a relaunch — defaulting to `~/Movies`, with
+  sandbox 2.18 will want as well as a relaunch — defaulting to `~/Movies`, with
   Reveal in Finder beside the `ShareLink`; iOS keeps the share sheet. Renders
   used to land in `temporaryDirectory`, one purge from gone.
 - *(e) Tooltips and the help.* ✅ `ToolbarAction` defines each button once —
@@ -428,7 +428,16 @@ before it.
   unlike the main view's: the panel is small and deliberately shallow, and a
   fling there is not worth a second motion model.
 
-**2.10 Automatic colour.** Palette density is fixed at 64 iterations per cycle,
+**2.10 Movie sheet: preview and a much better flow.** The sheet from 2.8 (d)
+renders correctly, but it is a form, not a tool. Give it a live preview of the
+chosen path — the start and end frames side by side, and a scrub through the
+descent — so the shot is chosen by eye rather than by typing numbers. Rework
+the flow around that: sensible presets for length and size, the estimated
+render time and file size shown before starting, progress that says which
+keyframe is in flight, and cancel and re-render without losing the settings.
+Tidy the layout to match the rest of the app, and check it on both platforms.
+
+**2.11 Automatic colour.** Palette density is fixed at 64 iterations per cycle,
 which suits shallow views. At 1e100, counts in view run from about 22,000 to
 34,000. Choose density and offset from the range of escaped counts in view,
 using a log mapping or a histogram-based mapping. Deep views then look good
@@ -438,15 +447,24 @@ don't pulse while moving. The manual density and offset controls become
 adjustments on top of the automatic value, like the detail multiplier in 2.3.
 This was written as a prerequisite for zoom movies, which then landed first
 (2.8): a movie crosses a huge range of depths, and a fixed density will look
-wrong at one end. So it also revisits the movie defaults, and 2.11 waits for it
+wrong at one end. So it also revisits the movie defaults, and 2.13 waits for it
 rather than baking a fixed mapping into exported stills.
 
-**2.11 High-resolution still export.** Tiled supersampled render at any size.
+**2.12 Review every sheet and screen for UX and UI.** The app grew one feature
+at a time, and each sheet was designed on its own: Settings, the Julia
+companion, bookmarks and history, the movie sheet, the help overlay and the
+developer panel. Go through them together and make them feel like one app —
+consistent spacing, titles, controls and dismissal, sensible defaults, states
+for empty, busy and failed, and keyboard and pointer support on the Mac
+alongside touch on iOS. Fix what the pass finds, and note anything too large
+for it as its own item.
+
+**2.13 High-resolution still export.** Tiled supersampled render at any size.
 PNG with the location embedded in the metadata. Shares code with the CLI
-`--render`. After 2.10, so that what a still bakes in is the mapping the app
+`--render`. After 2.11, so that what a still bakes in is the mapping the app
 has settled on and its goldens are recorded once.
 
-**2.12 Cheap performance wins.** Skip the main cardioid and the period-2 bulb,
+**2.14 Cheap performance wins.** Skip the main cardioid and the period-2 bulb,
 and use periodicity checking for points inside the set. Measure each as a
 benchmark variant. Then finish 2.3, which needs interior detection:
 - *Raise from data:* raise the limit (to about 2× the current one) while more
@@ -458,7 +476,7 @@ benchmark variant. Then finish 2.3, which needs interior detection:
   pixels are resolved. Only add bounded state retention if it is still
   significant.
 
-**2.13 Device validation and resilience.** Hands-on testing found problems the
+**2.15 Device validation and resilience.** Hands-on testing found problems the
 headless tests missed, so real devices get a dedicated pass. The iPhone 11 Pro
 is the floor.
 - *Profile both phones in Instruments* (Metal System Trace, Allocations):
@@ -484,7 +502,7 @@ is the floor.
   asserts that after navigation settles the presented image matches the tiles
   the store holds.
 
-**2.14 Deep-zoom performance, round two.** Only if the 2.13 measurements show
+**2.16 Deep-zoom performance, round two.** Only if the 2.15 measurements show
 cold deep views are too slow on the phones.
 - *Boost reference backend.* Boost measured 5.3–5.7× faster per iteration for
   saved reference orbits. Put reference computation behind a protocol, add a
@@ -501,7 +519,7 @@ cold deep views are too slow on the phones.
   keyframes render strictly in order, so nothing overlaps the encode. A 101-
   keyframe descent to 1e30 took 439 s at 640×360.
 
-**2.15 Tidy up before shipping.** Employers will read this repository.
+**2.17 Tidy up before shipping.** Employers will read this repository.
 - One pixel-mapping convention everywhere: the full-frame CLI and GPU paths
   still sample at endpoints, while tiles use pixel centres. Re-record the
   affected goldens deliberately.
@@ -510,8 +528,15 @@ cold deep views are too slow on the phones.
 - Split `Performance.md` into current results plus a history appendix, and fold
   `Implementation.md` into `Architecture.md` and the README.
 - Remove dead code and stale comments.
+- Revisit the directory structure: the source, test and evidence trees grew by
+  accretion, so group files by the part of the app they belong to and give the
+  folders names a stranger would predict.
+- Review the documentation as a whole, including the comments at the head of
+  each file: every document should still describe what the code does, say why
+  it exists rather than restate its contents, and there should be an obvious
+  place to start reading.
 
-**2.16 Ready for the App Store and for employers.**
+**2.18 Ready for the App Store and for employers.**
 - *App Store:* iPhone and iPad layouts, app icon variants, launch screen,
   first-run hint ("pinch to zoom"), the privacy label (no data collected),
   and TestFlight for friends and family first.
@@ -560,15 +585,16 @@ cold deep views are too slow on the phones.
    changes are safe) → 1.6.
 2. **Looks and feel:** 1.4 → 1.5 → 1.7 → 1.8. At this point you can ship to
    friends on TestFlight.
-3. **Smooth motion:** 2.1 (a–d); 2.12 (periodicity checking) → 2.3 → 2.4
+3. **Smooth motion:** 2.1 (a–d); 2.14 (periodicity checking) → 2.3 → 2.4
    (coverage pyramid).
    The depth-based starting guess from 2.3 can land at any time, even now.
 4. **Deep:** 2.2 (library spike first).
 5. **Feel:** 2.5 (Mac panning, rotation, gentle bounds). Do it before 2.6, so
    bookmarks store the angle from the start.
-6. **Validate:** 2.13 on both phones, then 2.14 only if the measurements call
+6. **Validate:** 2.15 on both phones, then 2.16 only if the measurements call
    for it.
 7. **Share:** 2.6 → 2.8 → 2.7, which is where playtesting came in: 2.9 (the
-   fixes it found, now done) → 2.10 (automatic colour, which should have
-   preceded the movies and now follows them) → 2.11.
-8. **Ship:** 2.15 → 2.16 → App Store.
+   fixes it found, now done) → 2.10 (the movie sheet) → 2.11 (automatic colour,
+   which should have preceded the movies and now follows them) → 2.12 (the UX
+   and UI pass over every screen) → 2.13.
+8. **Ship:** 2.17 → 2.18 → App Store.

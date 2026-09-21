@@ -160,7 +160,7 @@ and requires a limit <=65,535. Output destinations must differ.
 Automatic depth is the depth estimate, capped by an observed ceiling: twice the
 highest escaped count once every visible tile is complete (`IterationPolicy.observe`).
 Raising from data, periodicity checking and selective extension of capped samples
-belong to 2.10.
+belong to 2.14.
 Extending capped tiles should preserve escaped samples, but retaining a full orbit
 buffer costs about 1 MiB per tile. Design bounded/selective state retention with
 2.3; storing coordinates alone only enables recomputation. Larger GPU batches and
@@ -227,7 +227,7 @@ after the old worker stops, deep references and spare state buffers are released
 HUD CPU preparation timing is separate from GPU timing.
 Full-image benchmarks create fresh streamed references, so end-to-end results
 include the reference prefix actually needed, without cache hits. Iteration state retention and raising the limit
-from pixel data belong to 2.10.
+from pixel data belong to 2.14.
 
 Settings → About → Acknowledgements displays the bundled BigInt MIT notice and
 algorithm credits. The existing licence resource is verified in built iOS apps.
