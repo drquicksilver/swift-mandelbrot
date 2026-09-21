@@ -469,16 +469,49 @@ not a dissolve that disguises an impossible jump.
 
 **2.11 Automatic colour.** Palette density is fixed at 64 iterations per cycle,
 which suits shallow views. At 1e100, counts in view run from about 22,000 to
-34,000. Choose density and offset from the range of escaped counts in view,
-using a log mapping or a histogram-based mapping. Deep views then look good
-without opening Settings. Use the protected tiles' samples (already on the GPU)
-for the statistics, and change the mapping smoothly with hysteresis so colours
-don't pulse while moving. The manual density and offset controls become
-adjustments on top of the automatic value, like the detail multiplier in 2.3.
-This was written as a prerequisite for zoom movies, which then landed first
-(2.8): a movie crosses a huge range of depths, and a fixed density will look
-wrong at one end. So it also revisits the movie defaults, and 2.13 waits for it
-rather than baking a fixed mapping into exported stills.
+34,000, so the palette cycles hundreds of times and the structure disappears
+into noise. Choose density and offset from the distribution of escaped counts
+in view, using a log mapping or a histogram-based mapping, so deep views look
+good without opening Settings. Use the protected tiles' samples (already on the
+GPU) for the statistics. Recolouring itself is cheap: tiles cache iteration
+counts and the colour pass reads them, so a mapping that moves every frame
+costs a re-shade, not a re-render. The manual density and offset controls
+become adjustments on top of the automatic value, like the detail multiplier in
+2.3.
+
+The mapping is a function of what is in view, so zooming re-colours iterations
+that were already on screen. Gradual drift is the point — it is what keeps
+contrast alive as the counts climb — but jumps are not, and a location must
+still determine an image.
+- *Move smoothly, not just slowly.* Statistics drift under a zoom but jump when
+  a tile joins the sample set, when the iteration cap rises (2.14 raises it from
+  data, which moves the top of the escaped range), when a large interior region
+  enters or leaves view, or when the protected set changes resolution.
+  Hysteresis alone only delays such a jump. Drive the mapping from a statistic
+  that survives these events — percentiles of the escaped counts rather than
+  min and max, so one arriving tile cannot move the anchor — and then filter the
+  result over time.
+- *Pin the offset.* Density rescales the banding; offset rotates the whole
+  palette, so a wandering offset changes every hue for no visible reason. Derive
+  it rather than fit it: anchor a chosen count, such as the low percentile, to a
+  fixed palette phase, so offset moves only as a consequence of density.
+- *Record what was resolved.* `Location` stores density and offset and puts them
+  in the URL, so today a bookmark reproduces its picture exactly. Once those
+  values are adjustments, that stops being true unless the resolved pair is
+  stored alongside them, or the automatic mapping is a pure function of the
+  location alone — centre, scale and cap, not whichever tiles happened to be
+  ready. Pick one and say which; bookmarks, shared URLs, goldens and exported
+  stills all depend on it. Tests need to pin the mapping, so expose the resolved
+  colouring as a value they can assert on.
+- *Movies get a schedule, not a fit.* This item was written as a prerequisite
+  for zoom movies, which landed first (2.8): a movie crosses a huge range of
+  depths and a fixed density will look wrong at one end. But fitting each frame
+  to its own samples is how a movie flickers, since consecutive frames differ
+  slightly in which tiles are ready. A journey computes its mapping across the
+  whole zoom range up front and interpolates along it, and the movie defaults
+  are revisited in those terms.
+- *Then 2.13.* Exported stills wait for this rather than baking in a fixed
+  mapping, and their goldens are recorded once, against the resolved mapping.
 
 **2.12 Review every sheet and screen for UX and UI.** The app grew one feature
 at a time, and each sheet was designed on its own: Settings, the Julia
