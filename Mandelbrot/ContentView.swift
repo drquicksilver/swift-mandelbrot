@@ -139,6 +139,7 @@ struct ContentView: View {
       // where a sheet fills a phone.
       #if os(macOS)
         MovieSheetMac(model: model)
+          .presentationSizing(.form.fitted(horizontal: true, vertical: true))
       #else
         MovieView(model: model)
       #endif

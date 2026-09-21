@@ -1,4 +1,5 @@
 #if os(macOS)
+  import AppKit
   import AVKit
   import SwiftUI
 
@@ -35,20 +36,31 @@
     @ObservedObject private var library = MovieLibrary.shared
     @StateObject private var fromImage = LocationThumbnail()
     @StateObject private var toImage = LocationThumbnail()
+    @StateObject private var preview = JourneyPreviewRenderer()
     @Environment(\.dismiss) private var dismiss
-    @State private var startChoice: UUID?
+    @State private var startChoice: UUID? = Location.gallery[0].id
     @State private var settings = MovieSettings()
     @State private var outcome: MovieOutcome?
     @State private var problem: String?
     @State private var player: AVPlayer?
     @State private var explaining = false
+    @State private var journey: Journey?
+    @State private var journeyProblem: String?
+    @State private var editingJourney = false
+    @State private var previewExpanded = true
+    @State private var suggestedOverviewLog: Double?
+    @State private var maximumSheetHeight = MovieSheetSizePolicy.initialMaximumHeight
 
-    /// `movies` and `outcome` are the seams the previews pose a state through;
-    /// the app passes neither.
-    init(model: ExplorerModel, movies: MovieRenderer? = nil, outcome: MovieOutcome? = nil) {
+    /// `movies`, `outcome` and `startingAt` are seams the previews pose a state
+    /// through; the app passes none of them.
+    init(
+      model: ExplorerModel, movies: MovieRenderer? = nil, outcome: MovieOutcome? = nil,
+      startingAt: Location? = nil
+    ) {
       _model = ObservedObject(wrappedValue: model)
       _movies = ObservedObject(wrappedValue: movies ?? model.movies)
       _outcome = State(initialValue: outcome)
+      _startChoice = State(initialValue: startingAt?.id)
     }
 
     // MARK: The journey
@@ -58,8 +70,18 @@
       places.first { $0.id == startChoice } ?? Location.gallery[0]
     }
     private var end: Location { model.location }
-    private var path: ZoomPath? {
-      try? ZoomPath(start: start, end: end, eased: settings.eased)
+    private var requiredDuration: Double { journey?.requestedDuration ?? 0 }
+    private var durationIsTooShort: Bool {
+      journey != nil && settings.duration + 0.001 < requiredDuration
+    }
+    private var previewKey: String {
+      guard let journey, !isRendering, outcome == nil else { return "no-preview" }
+      let segments = journey.segments.map {
+        "\($0.kind.rawValue)|\(LocationThumbnail.key($0.from))|\(LocationThumbnail.key($0.to))"
+          + "|\($0.duration)|\($0.holdDuration)"
+      }
+      return segments.joined(separator: ";") + "|\(settings.duration)|\(settings.eased)"
+        + "|\(settings.paletteCycles)"
     }
     private var phase: MoviePhase {
       if movies.isRendering { return .rendering }
@@ -74,35 +96,55 @@
     var body: some View {
       VStack(spacing: 0) {
         header
-        VStack(alignment: .leading, spacing: 18) {
-          section("Journey") { journeyCard }
-          section("Movie Settings") { settingsCard }
-          section("Output") { outputCard }
-          if case .complete(let outcome) = phase { completionCard(outcome) }
+        ScrollView {
+          VStack(alignment: .leading, spacing: 18) {
+            section("Journey") { journeyCard }
+            section("Movie Settings") { settingsCard }
+            section("Output") { outputCard }
+            if case .complete(let outcome) = phase { completionCard(outcome) }
+          }
+          .padding(.horizontal, 20)
+          .padding(.bottom, 18)
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
         .disabled(isRendering)
         // A render dims what it is rendering from, so the settings stay
         // readable without looking live.
         .opacity(isRendering ? 0.45 : 1)
-        .padding(.horizontal, 20)
-        .padding(.bottom, 18)
         Divider()
         footer
       }
-      .frame(width: 620)
+      .frame(
+        minWidth: 600, idealWidth: 620, maxWidth: 680,
+        minHeight: MovieSheetSizePolicy.minimumContentHeight,
+        idealHeight: maximumSheetHeight,
+        maxHeight: maximumSheetHeight
+      )
       .background(Color(nsColor: .windowBackgroundColor))
-      .onAppear { startChoice = startChoice ?? Location.gallery[0].id }
+      .background(MovieSheetSizePolicy(maximumHeight: $maximumSheetHeight))
+      .onAppear {
+        refreshJourney()
+      }
+      .onChange(of: startChoice) { _, _ in refreshJourney() }
       .task(id: LocationThumbnail.key(start)) {
         await fromImage.render(start, width: 232, height: 140)
       }
       .task(id: LocationThumbnail.key(end)) {
         await toImage.render(end, width: 232, height: 140)
       }
+      .task(id: previewKey) {
+        guard let journey, !isRendering, outcome == nil else {
+          preview.cancel()
+          return
+        }
+        preview.start(journey: journey, settings: settings, colouring: model.colouring)
+      }
       .onChange(of: movies.output) { _, url in adopt(url) }
       .onDisappear {
         player?.pause()
         fromImage.release()
         toImage.release()
+        preview.cancel()
       }
     }
 
@@ -133,35 +175,130 @@
     // MARK: Journey
 
     private var journeyCard: some View {
-      HStack(spacing: 14) {
-        thumbnail(fromImage, caption: start.name.isEmpty ? "Starting place" : start.name)
-        VStack(alignment: .leading, spacing: 8) {
-          HStack(spacing: 8) {
-            Text("From:").frame(width: 52, alignment: .trailing)
-            Picker("", selection: $startChoice) {
-              ForEach(places) { place in
-                Text(place.name.isEmpty ? "\(place.scale)×" : place.name).tag(place.id as UUID?)
+      VStack(alignment: .leading, spacing: 12) {
+        HStack(spacing: 14) {
+          thumbnail(fromImage, caption: start.name.isEmpty ? "Starting place" : start.name)
+          VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 8) {
+              Text("From:").frame(width: 52, alignment: .trailing)
+              Picker("", selection: $startChoice) {
+                ForEach(places) { place in
+                  Text(place.name.isEmpty ? "\(place.scale)×" : place.name).tag(place.id as UUID?)
+                }
               }
+              .labelsHidden()
             }
-            .labelsHidden()
-          }
-          HStack(alignment: .firstTextBaseline, spacing: 8) {
-            Text("To:").frame(width: 52, alignment: .trailing)
-            VStack(alignment: .leading, spacing: 2) {
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+              Text("To:").frame(width: 52, alignment: .trailing)
               Text("Current view (\(MovieSheetMac.zoom(end)))")
-              Text(
-                path == nil
-                  ? "Zoom in further than the starting place."
-                  : "Zooms in from the starting place."
-              )
-              .font(.caption)
-              .foregroundStyle(path == nil ? Color.orange : Color.secondary)
+            }
+            if let journey {
+              Text(journey.description())
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+            } else if let journeyProblem {
+              Text(journeyProblem).font(.caption).foregroundStyle(.orange)
+            }
+          }
+          .frame(maxWidth: .infinity, alignment: .leading)
+          thumbnail(toImage, caption: "Current view")
+        }
+        if journey != nil {
+          DisclosureGroup("Journey Preview", isExpanded: $previewExpanded) {
+            journeyPreview
+          }
+          .font(.callout)
+        }
+        if let journey, !journey.isDirectDescent {
+          DisclosureGroup("Edit Journey", isExpanded: $editingJourney) {
+            timeline(journey)
+          }
+          .font(.callout)
+        }
+      }
+    }
+
+    private var journeyPreview: some View {
+      VStack(alignment: .leading, spacing: 7) {
+        HStack {
+          Spacer()
+          Text("480 × 270 · 12 fps")
+            .font(.caption.monospacedDigit()).foregroundStyle(.secondary)
+        }
+        ZStack {
+          RoundedRectangle(cornerRadius: 8).fill(.black)
+          if let player = preview.player {
+            VideoPlayer(player: player)
+          } else {
+            VStack(spacing: 8) {
+              if preview.isRendering { ProgressView().controlSize(.small) }
+              Text(preview.isRendering ? "Preparing preview movie…" : "Preview unavailable")
+                .font(.caption).foregroundStyle(.secondary)
             }
           }
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        thumbnail(toImage, caption: "Current view")
+        .frame(maxWidth: .infinity)
+        .aspectRatio(16.0 / 9.0, contentMode: .fit)
+        .clipShape(RoundedRectangle(cornerRadius: 8))
+        if let error = preview.error {
+          Text(error).font(.caption).foregroundStyle(.red)
+        } else {
+          Text("Play, pause and scrub this low-resolution version of the exact journey.")
+            .font(.caption).foregroundStyle(.secondary)
+        }
       }
+    }
+
+    private func timeline(_ route: Journey) -> some View {
+      VStack(alignment: .leading, spacing: 8) {
+        if let suggestedOverviewLog, let overviewLog = overviewLog(route) {
+          VStack(alignment: .leading, spacing: 4) {
+            HStack {
+              Text("Overview").font(.callout.weight(.medium))
+              Spacer()
+              Text(overviewScaleDescription(overviewLog))
+                .font(.caption.monospacedDigit()).foregroundStyle(.secondary)
+            }
+            Slider(value: overviewScale, in: (suggestedOverviewLog - 4)...suggestedOverviewLog)
+            Text(
+              "Pull back for more context; the right end is the closest overview that keeps both places in view."
+            )
+            .font(.caption).foregroundStyle(.secondary)
+          }
+          .padding(8)
+          .background(Color.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: 7))
+        }
+        ForEach(Array(route.segments.indices), id: \.self) { index in
+          let segment = route.segments[index]
+          HStack(spacing: 10) {
+            Image(systemName: segment.kind == .zoom ? "magnifyingglass" : "arrow.left.and.right")
+              .frame(width: 18).foregroundStyle(.secondary)
+            VStack(alignment: .leading, spacing: 1) {
+              Text(segment.kind.title).font(.callout.weight(.medium))
+              Text("At least \(seconds(segment.minimum))")
+                .font(.caption).foregroundStyle(.secondary)
+            }
+            Spacer()
+            Stepper(
+              "\(seconds(segment.duration))", value: segmentDuration(index),
+              in: segment.minimum...120, step: 1
+            )
+            .labelsHidden()
+            Text(seconds(segment.duration)).font(.caption.monospacedDigit())
+          }
+          .padding(8)
+          .background(Color.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: 7))
+        }
+        HStack {
+          Button("Add hold") { addHold() }
+          Button("Reset suggested journey") { refreshJourney() }
+          Spacer()
+          Text("The timeline cannot make a camera move faster than its safe pace.")
+            .font(.caption).foregroundStyle(.secondary)
+        }
+      }
+      .padding(.top, 6)
     }
 
     private func thumbnail(_ source: LocationThumbnail, caption: String) -> some View {
@@ -233,10 +370,6 @@
       }
     }
 
-    /// Only what is known rather than guessed.  Keyframes are the whole cost of
-    /// a render -- one full render per zoom level, with the frames between them
-    /// resampled from the pair on either side -- so the count stands here in
-    /// place of a render-time estimate we have no way to make.
     private var statistics: some View {
       VStack(alignment: .leading, spacing: 10) {
         VStack(alignment: .leading, spacing: 2) {
@@ -245,12 +378,26 @@
         }
         Divider()
         VStack(alignment: .leading, spacing: 2) {
-          Text("Zoom range").font(.caption).foregroundStyle(.secondary)
-          Text("\(MovieSheetMac.zoom(start)) → \(MovieSheetMac.zoom(end))")
+          Text("Route").font(.caption).foregroundStyle(.secondary)
+          Text(journey.map { "\($0.segments.count) segments" } ?? "—")
         }
         VStack(alignment: .leading, spacing: 2) {
-          Text("Keyframes").font(.caption).foregroundStyle(.secondary)
-          Text(path.map { "\($0.keyframeLevels.count)" } ?? "—")
+          Text("Minimum smooth duration").font(.caption).foregroundStyle(.secondary)
+          Text(journey.map { seconds($0.minimumDuration) } ?? "—")
+        }
+        if let journey, journey.requestedDuration > journey.minimumDuration + 0.001 {
+          VStack(alignment: .leading, spacing: 2) {
+            Text("Edited route duration").font(.caption).foregroundStyle(.secondary)
+            Text(seconds(journey.requestedDuration))
+          }
+        }
+        VStack(alignment: .leading, spacing: 2) {
+          Text("Estimated file size").font(.caption).foregroundStyle(.secondary)
+          Text(estimatedFileSize)
+        }
+        VStack(alignment: .leading, spacing: 2) {
+          Text("Estimated render time").font(.caption).foregroundStyle(.secondary)
+          Text(estimatedRenderTime)
         }
       }
       .font(.callout)
@@ -359,6 +506,19 @@
         .padding(.vertical, 14)
       case .settings, .complete:
         VStack(alignment: .leading, spacing: 8) {
+          if durationIsTooShort {
+            HStack(spacing: 6) {
+              Image(systemName: "clock.badge.exclamationmark").foregroundStyle(.orange)
+              Text(
+                "This journey needs at least \(seconds(requiredDuration)) for a smooth camera move."
+              )
+              .font(.caption).foregroundStyle(.secondary)
+              Button("Use \(seconds(requiredDuration))") {
+                settings.duration = ceil(requiredDuration)
+              }
+              .font(.caption)
+            }
+          }
           if let error = movies.error ?? problem {
             Text(error).font(.caption).foregroundStyle(.red)
           }
@@ -378,9 +538,9 @@
               Button("Render Another Movie") { reset() }.buttonStyle(.borderedProminent)
             } else {
               Button("Cancel") { dismiss() }
-              Button("Render Movie") { render() }
+              Button("Render Journey") { render() }
                 .buttonStyle(.borderedProminent)
-                .disabled(path == nil)
+                .disabled(journey == nil || durationIsTooShort)
             }
           }
         }
@@ -410,14 +570,13 @@
 
     private var explanation: some View {
       VStack(alignment: .leading, spacing: 8) {
-        Text("Zoom movies").font(.headline)
+        Text("Mandelbrot journeys").font(.headline)
         Text(
-          "The movie descends from the starting place to the view behind this sheet, holding "
-            + "the destination still while everything else flows outward.")
+          "Choose two views and the app makes a continuous route between them. A nested "
+            + "destination is a direct zoom; separate places zoom out, travel, then zoom in.")
         Text(
-          "A keyframe is a full render, one per zoom level of the descent, and the frames "
-            + "between them are blended from the pair on either side. The keyframe count is "
-            + "what a render spends its time on.")
+          "The suggested duration is the fastest comfortable pace. Edit Journey can slow "
+            + "individual legs or add a hold, but cannot rush a camera move past that pace.")
         Text("Cancelling stops the render. A finished movie stays where it was saved.")
       }
       .font(.callout)
@@ -435,6 +594,7 @@
           else { return }
           settings.width = option.width
           settings.height = option.height
+          refreshJourney()
         })
     }
     private var duration: Binding<Int> {
@@ -453,13 +613,19 @@
       outcome = nil
       movies.output = nil
       do {
-        let path = try ZoomPath(start: start, end: end, eased: settings.eased)
+        guard let journey else {
+          throw PrecisionError(journeyProblem ?? "Could not plan this journey")
+        }
+        guard !durationIsTooShort else {
+          throw PrecisionError("This journey needs at least \(seconds(requiredDuration))")
+        }
         // Nothing behind the sheet is on screen, and a render wants the GPU and
         // the memory: stop the viewer's cache competing for both.  The
         // compositor resumes it on the first frame after the sheet closes.
         model.tiles.cancel()
+        preview.cancel()
         movies.start(
-          path: path, settings: settings, colouring: model.colouring,
+          journey: journey, settings: settings, colouring: model.colouring,
           to: library.destination(named: MovieNaming.fileName()))
       } catch {
         problem = error.localizedDescription
@@ -491,6 +657,206 @@
         seconds: Int(settings.duration),
         size: bytes.map { ByteCountFormatter.string(fromByteCount: $0, countStyle: .file) } ?? "")
     }
+
+    private func refreshJourney() {
+      do {
+        let route = try Journey.planned(
+          start: start, end: end, aspectRatio: Double(settings.width) / Double(settings.height))
+        journey = route
+        suggestedOverviewLog = overviewLog(route)
+        journeyProblem = nil
+        // A new, long route should not inherit the old sheet default and appear
+        // broken.  Longer user choices are sacred; only lift an unsafe one.
+        if settings.duration < route.minimumDuration {
+          settings.duration = ceil(route.minimumDuration)
+        }
+      } catch {
+        journey = nil
+        journeyProblem = error.localizedDescription
+      }
+    }
+
+    private func segmentDuration(_ index: Int) -> Binding<Double> {
+      Binding(
+        get: { journey?.segments[index].duration ?? 0 },
+        set: { value in
+          guard var route = journey else { return }
+          route.segments[index].duration = max(route.segments[index].minimum, value)
+          journey = route
+          if settings.duration < route.requestedDuration {
+            settings.duration = ceil(route.requestedDuration)
+          }
+        })
+    }
+
+    private func addHold() {
+      guard var route = journey else { return }
+      route.segments.append(
+        Journey.Segment(
+          kind: .hold, from: route.end, to: route.end, minimumDuration: 1,
+          duration: 1, holdDuration: 1))
+      journey = route
+      if settings.duration < route.requestedDuration {
+        settings.duration = ceil(route.requestedDuration)
+      }
+    }
+
+    private var overviewScale: Binding<Double> {
+      Binding(
+        get: { journey.flatMap { overviewLog($0) } ?? suggestedOverviewLog ?? 0 },
+        set: { value in
+          guard let suggestedOverviewLog else { return }
+          do {
+            let route = try Journey.planned(
+              start: start, end: end,
+              aspectRatio: Double(settings.width) / Double(settings.height),
+              overviewLogScale: min(value, suggestedOverviewLog))
+            journey = route
+            if settings.duration < route.minimumDuration {
+              settings.duration = ceil(route.minimumDuration)
+            }
+          } catch {
+            journeyProblem = error.localizedDescription
+          }
+        })
+    }
+
+    private func overviewLog(_ route: Journey) -> Double? {
+      guard let travel = route.segments.first(where: { $0.kind == .travel }) else { return nil }
+      return try? travel.from.viewport().logScale
+    }
+
+    private func overviewScaleDescription(_ logScale: Double) -> String {
+      if logScale >= 0 {
+        return "\(pow(2, logScale).formatted(.number.precision(.fractionLength(1))))×"
+      }
+      return "\(pow(2, -logScale).formatted(.number.precision(.fractionLength(1))))× wider"
+    }
+
+    private func seconds(_ value: Double) -> String {
+      "\(Int(ceil(value))) s"
+    }
+
+    /// A deliberately coarse local estimate, not a promise about a particular
+    /// codec or Mac.  The file figure is a conservative HEVC average for the
+    /// highly detailed images this app makes; travel is more expensive because
+    /// it renders every output view exactly rather than resampling keyframes.
+    private var estimatedFileSize: String {
+      let bytes = Int64(Double(settings.width * settings.height * settings.frameCount) * 0.16)
+      return ByteCountFormatter.string(fromByteCount: bytes, countStyle: .file)
+    }
+
+    private var estimatedRenderTime: String {
+      let pixelFactor = Double(settings.width * settings.height) / Double(1920 * 1080)
+      let units: Double
+      if let journey, journey.isDirectDescent {
+        units = settings.duration / 2.4
+      } else {
+        units = Double(settings.frameCount) * 0.11
+      }
+      return "about \(seconds(max(1, units * pixelFactor))) on this Mac"
+    }
+  }
+
+  /// Keeps the sheet useful on a large display without letting its ideal
+  /// content height run under the Dock or off a smaller notebook screen.
+  /// The window remains vertically resizable between these bounds; only the
+  /// central form scrolls, so the footer actions never leave the screen.
+  private struct MovieSheetSizePolicy: NSViewRepresentable {
+    static let minimumContentHeight: CGFloat = 520
+    static let initialMaximumHeight: CGFloat = 680
+    static let comfortableMaximumHeight: CGFloat = 820
+    static let minimumWidth: CGFloat = 600
+    static let maximumWidth: CGFloat = 680
+
+    @Binding var maximumHeight: CGFloat
+
+    static func maximumContentHeight(forVisibleHeight height: CGFloat) -> CGFloat {
+      min(
+        comfortableMaximumHeight,
+        max(minimumContentHeight, floor(height * 0.82)))
+    }
+
+    func makeCoordinator() -> Coordinator { Coordinator(self) }
+
+    func makeNSView(context: Context) -> ProbeView {
+      let probe = ProbeView()
+      probe.windowChanged = { [weak coordinator = context.coordinator] window in
+        coordinator?.attach(to: window)
+      }
+      return probe
+    }
+
+    func updateNSView(_ view: ProbeView, context: Context) {
+      context.coordinator.policy = self
+      context.coordinator.attach(to: view.window)
+    }
+
+    final class Coordinator {
+      var policy: MovieSheetSizePolicy
+      private weak var window: NSWindow?
+      private var observations: [NSObjectProtocol] = []
+
+      init(_ policy: MovieSheetSizePolicy) {
+        self.policy = policy
+      }
+
+      deinit {
+        observations.forEach(NotificationCenter.default.removeObserver)
+      }
+
+      func attach(to window: NSWindow?) {
+        guard self.window !== window else {
+          apply()
+          return
+        }
+        observations.forEach(NotificationCenter.default.removeObserver)
+        observations = []
+        self.window = window
+        guard let window else { return }
+        let centre = NotificationCenter.default
+        observations = [
+          centre.addObserver(
+            forName: NSWindow.didMoveNotification, object: window, queue: .main
+          ) { [weak self] _ in self?.apply() },
+          centre.addObserver(
+            forName: NSApplication.didChangeScreenParametersNotification, object: nil, queue: .main
+          ) { [weak self] _ in self?.apply() },
+        ]
+        apply()
+      }
+
+      private func apply() {
+        guard let window else { return }
+        let visibleHeight =
+          window.screen?.visibleFrame.height
+          ?? NSScreen.main?.visibleFrame.height
+          ?? policy.maximumHeight
+        let maximum = MovieSheetSizePolicy.maximumContentHeight(forVisibleHeight: visibleHeight)
+        if policy.maximumHeight != maximum {
+          policy.maximumHeight = maximum
+        }
+        window.contentMinSize = NSSize(
+          width: MovieSheetSizePolicy.minimumWidth,
+          height: MovieSheetSizePolicy.minimumContentHeight)
+        window.contentMaxSize = NSSize(
+          width: MovieSheetSizePolicy.maximumWidth,
+          height: maximum)
+        let size = window.contentLayoutRect.size
+        if size.height > maximum {
+          window.setContentSize(NSSize(width: size.width, height: maximum))
+        }
+      }
+    }
+
+    final class ProbeView: NSView {
+      var windowChanged: ((NSWindow?) -> Void)?
+
+      override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        windowChanged?(window)
+      }
+    }
   }
 
   #if DEBUG
@@ -500,8 +866,19 @@
       return model
     }
 
+    @MainActor private func journeyPreviewModel() -> ExplorerModel {
+      let model = ExplorerModel()
+      model.apply(Location.gallery[3], record: false)
+      return model
+    }
+
     #Preview("Settings") {
       MovieSheetMac(model: previewModel(), movies: .posed())
+    }
+
+    #Preview("Planned journey") {
+      MovieSheetMac(
+        model: journeyPreviewModel(), movies: .posed(), startingAt: Location.gallery[1])
     }
 
     #Preview("Rendering") {

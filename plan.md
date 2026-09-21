@@ -428,14 +428,44 @@ before it.
   unlike the main view's: the panel is small and deliberately shallow, and a
   fling there is not worth a second motion model.
 
-**2.10 Movie sheet: preview and a much better flow.** The sheet from 2.8 (d)
-renders correctly, but it is a form, not a tool. Give it a live preview of the
-chosen path — the start and end frames side by side, and a scrub through the
-descent — so the shot is chosen by eye rather than by typing numbers. Rework
-the flow around that: sensible presets for length and size, the estimated
-render time and file size shown before starting, progress that says which
-keyframe is in flight, and cancel and re-render without losing the settings.
-Tidy the layout to match the rest of the app, and check it on both platforms.
+**2.10 Mandelbrot journeys: a preview and a much better movie flow.** A movie
+is not only a nested descent. Generalise `ZoomPath` into a `Journey`: an
+ordered, renderable route made of zoom, pan (and, where useful, rotation) and
+hold segments. Keep the ordinary interaction magical and small — choose From
+and To, then let a pure, testable planner make the route. If the destination
+fits in the start, it remains the current direct exponential zoom. Otherwise,
+zoom out to the smallest comfortable shared overview, travel across it, and
+zoom into the destination; fall back to the whole set as the bridge when there
+is no useful smaller overview. Every default route is a continuous camera move,
+not a dissolve that disguises an impossible jump.
+
+- *Pace honestly.* Each segment has a minimum duration: bound logarithmic zoom,
+  screen-distance panning and rotation by a maximum comfortable velocity, and
+  keep keyframes sufficiently spaced for good reconstruction. The planner
+  reports the route's `minimumDuration`, selects a pleasant default above it,
+  and never silently speeds it up. A shorter requested duration explains the
+  lower bound and offers to use it; extra time is distributed across the route,
+  not left as dead air.
+- *Show the journey before committing.* The default sheet says plainly what it
+  chose (for example, “Zoom out from Seahorse Valley, travel across the set,
+  then descend to Triple Spiral”), previews the start and end frames, and lets
+  the user scrub through the route. It uses sensible length and size presets,
+  gives the estimated render time and file size before starting, reports the
+  keyframe in flight while rendering, and supports cancel and re-render without
+  losing the settings. Tidy the layout to match the rest of the app and check it
+  on both platforms.
+- *Let enthusiasts edit the suggestion.* An unobtrusive Edit Journey disclosure
+  reveals a compact, ordered timeline of segment cards — zoom out, travel,
+  zoom in, plus optional holds. It can adjust timings and the chosen overview,
+  add or remove holds, and restore the suggested route. This changes the
+  planner's result, not the rendering mode; the renderer stays segment-based
+  and retains the existing two-keyframe compositor for zooms, with suitably
+  placed keyframes for pans and rotations. Do not begin with a free-form curve
+  editor.
+- *Tests.* Cover direct nested descents; a deep start and an unrelated deep
+  destination routed through an overview or the whole set; minimum-duration
+  refusal and its explanation; endpoint and intermediate-frame agreement with
+  direct renders; and edited timelines returning to the suggested route.
 
 **2.11 Automatic colour.** Palette density is fixed at 64 iterations per cycle,
 which suits shallow views. At 1e100, counts in view run from about 22,000 to

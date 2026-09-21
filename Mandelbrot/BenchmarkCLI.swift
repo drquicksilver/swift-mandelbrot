@@ -494,21 +494,25 @@
         let start =
           try options.movieFrom.flatMap { URL(string: $0) }.map { try Location(url: $0) }
           ?? Location(real: "-0.5", imag: "0", scale: "1")
-        let path = try ZoomPath(start: start, end: end, eased: options.movieSettings.eased)
+        let journey = try Journey.planned(
+          start: start, end: end,
+          aspectRatio: Double(options.movieSettings.width) / Double(options.movieSettings.height))
         let renderer = MovieRenderer()
         let url = URL(fileURLWithPath: options.output!)
         let began = ProcessInfo.processInfo.systemUptime
         _ = try await renderer.render(
-          path: path, settings: options.movieSettings, colouring: end.colouring, to: url)
+          journey: journey, settings: options.movieSettings, colouring: end.colouring, to: url)
         // The movie's total iteration budget: the sum of its keyframes' limits,
         // which is what a depth policy for keyframes would have to move.
         let report: [String: Any] = [
           "frames": options.movieSettings.frameCount,
-          "keyframes": path.keyframeLevels.count,
+          "keyframes": renderer.counts.keyframes,
+          "journey": journey.segments.map(\.kind.rawValue),
+          "minimumDuration": journey.requestedDuration,
           "keyframeLimitSum": renderer.keyframeLimits.reduce(0) { $0 + $1.limit },
           "width": options.movieSettings.width, "height": options.movieSettings.height,
           "duration": options.movieSettings.duration,
-          "startLog": path.startLog, "endLog": path.endLog,
+          "startLog": try start.viewport().logScale, "endLog": try end.viewport().logScale,
           "seconds": ProcessInfo.processInfo.systemUptime - began,
           "output": url.path,
         ]

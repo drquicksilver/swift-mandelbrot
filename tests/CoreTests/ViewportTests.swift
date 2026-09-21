@@ -260,3 +260,33 @@ import Testing
   // The last frame is the destination itself, to well under a pixel.
   #expect(last < 0.01)
 }
+
+@Test func journeyPlannerKeepsNestedDescentsSimpleAndRoutesSeparatePlaces() throws {
+  let whole = Location.gallery[0]
+  let seahorse = Location.gallery[1]
+  let direct = try Journey.planned(start: whole, end: seahorse)
+  #expect(direct.isDirectDescent)
+  #expect(direct.segments.count == 1)
+
+  // This is the failure mode the old sheet accepted: it treated a different,
+  // deeper gallery place as a Seahorse descent merely because its scale grew.
+  let unrelated = Location.gallery[3]
+  let routed = try Journey.planned(start: seahorse, end: unrelated)
+  #expect(!routed.isDirectDescent)
+  #expect(routed.segments.map(\.kind) == [.zoom, .travel, .zoom])
+  #expect(routed.minimumDuration > 1)
+  #expect(routed.minimumDuration < routed.segments.reduce(0) { $0 + $1.minimum })
+  let overview = try #require(
+    routed.segments.first { $0.kind == .travel }?.from.viewport().logScale)
+  let wider = try Journey.planned(
+    start: seahorse, end: unrelated, overviewLogScale: overview - 2)
+  #expect(wider.minimumDuration > routed.minimumDuration)
+  let first = try routed.viewport(at: 0, duration: routed.minimumDuration)
+  let last = try routed.viewport(at: 1, duration: routed.minimumDuration)
+  let expectedFirst = try seahorse.viewport()
+  let expectedLast = try unrelated.viewport()
+  #expect(abs(first.logScale - expectedFirst.logScale) < 1e-9)
+  #expect(abs(last.logScale - expectedLast.logScale) < 1e-9)
+  #expect(abs((first.preciseCenter.x - expectedFirst.preciseCenter.x).wide.double) < 1e-12)
+  #expect(abs((last.preciseCenter.y - expectedLast.preciseCenter.y).wide.double) < 1e-12)
+}

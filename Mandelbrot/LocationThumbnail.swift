@@ -15,6 +15,11 @@ import SwiftUI
   private var store: TileStore?
   /// What the last render drew, so repeated body evaluations do not redraw it.
   private var drawn: String?
+  /// SwiftUI cancels the previous `.task(id:)` while a slider is being
+  /// scrubbed.  A thumbnail render has several suspension points, so an older
+  /// cancelled request must never blank the image or finish after the newer
+  /// request and claim that rendering has stopped.
+  private var generation = 0
 
   static let budgetBytes = 24 * 1024 * 1024
 
@@ -28,8 +33,12 @@ import SwiftUI
   func render(_ location: Location, width: Int, height: Int) async {
     let key = Self.key(location)
     guard key != drawn else { return }
+    generation &+= 1
+    let request = generation
     isRendering = true
-    defer { isRendering = false }
+    defer {
+      if request == generation { isRendering = false }
+    }
     do {
       let view = try location.viewport()
       let size = CGSize(width: width, height: height)
@@ -44,20 +53,29 @@ import SwiftUI
         viewport: view, size: size, pixelWidth: size.width, iterations: limit,
         override: nil, colouring: colouring)
       try await store.waitUntilReady()
+      try Task.checkCancellation()
+      guard request == generation else { return }
       let texture = try await TileCompositor.snapshot(
         store: store, viewport: view, width: width, height: height,
         now: ProcessInfo.processInfo.systemUptime + TilePresentation.fadeDuration)
       guard let gpu = GPUContext.shared else { return }
-      image = try await gpu.image(texture)
+      let rendered = try await gpu.image(texture)
+      try Task.checkCancellation()
+      guard request == generation else { return }
+      image = rendered
       drawn = key
+    } catch is CancellationError {
+      // The next slider position owns the thumbnail now.  Keep the last
+      // successful image visible while it is prepared.
     } catch {
-      // A thumbnail is decoration: a failure leaves the placeholder in place.
-      image = nil
+      // A thumbnail is decoration.  Preserve the last good image rather than
+      // turning the preview black if a transient tile/GPU request fails.
     }
   }
 
   /// Gives back the store's memory once the sheet that wanted the picture goes.
   func release() {
+    generation &+= 1
     store?.cancel()
     store = nil
   }

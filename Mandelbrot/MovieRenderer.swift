@@ -245,6 +245,133 @@ struct MovieCounts: Equatable, Sendable {
     output = url
     return url
   }
+
+  /// Renders an arbitrary camera journey.  A direct descent keeps the much
+  /// cheaper two-keyframe compositor above.  A journey containing lateral
+  /// travel instead snapshots each output view: a pan is not contained by its
+  /// neighbouring keyframe, so pretending it is would clamp and smear an edge
+  /// across the movie.  The tile store keeps the overlapping work warm; this is
+  /// deliberately the correct baseline before a panning compositor is added.
+  func render(
+    journey: Journey, settings: MovieSettings, colouring: ColourSettings, to url: URL,
+    store: TileStore? = nil
+  ) async throws -> URL {
+    guard settings.duration >= journey.requestedDuration else {
+      throw PrecisionError(
+        "This journey needs at least \(Int(ceil(journey.requestedDuration))) seconds for a smooth camera move"
+      )
+    }
+    if journey.isDirectDescent {
+      let path = try ZoomPath(
+        start: journey.start, end: journey.end, eased: settings.eased)
+      return try await render(
+        path: path, settings: settings, colouring: colouring, to: url, store: store)
+    }
+    guard let gpu = GPUContext.shared else { throw GPUFailure("GPU unavailable") }
+    isRendering = true
+    progress = 0
+    error = nil
+    counts = MovieCounts()
+    keyframeLimits = []
+    defer {
+      isRendering = false
+      stage = ""
+    }
+    try? FileManager.default.removeItem(at: url)
+    let writer = try AVAssetWriter(outputURL: url, fileType: .mov)
+    func makeInput(_ codec: AVVideoCodecType) -> AVAssetWriterInput {
+      AVAssetWriterInput(
+        mediaType: .video,
+        outputSettings: [
+          AVVideoCodecKey: codec, AVVideoWidthKey: settings.width,
+          AVVideoHeightKey: settings.height,
+        ])
+    }
+    var input = makeInput(.hevc)
+    if !writer.canAdd(input) { input = makeInput(.h264) }
+    let adaptor = AVAssetWriterInputPixelBufferAdaptor(
+      assetWriterInput: input,
+      sourcePixelBufferAttributes: [
+        kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA,
+        kCVPixelBufferWidthKey as String: settings.width,
+        kCVPixelBufferHeightKey as String: settings.height,
+        kCVPixelBufferMetalCompatibilityKey as String: true,
+      ])
+    guard writer.canAdd(input) else { throw GPUFailure("The movie writer rejected its input") }
+    writer.add(input)
+    guard writer.startWriting() else {
+      throw GPUFailure(writer.error?.localizedDescription ?? "The movie writer failed")
+    }
+    writer.startSession(atSourceTime: .zero)
+    var cache: CVMetalTextureCache?
+    CVMetalTextureCacheCreate(nil, nil, gpu.device, nil, &cache)
+    guard let cache else { throw GPUFailure("No Metal texture cache for the movie") }
+
+    let size = CGSize(width: settings.width, height: settings.height)
+    let tiles = store ?? TileStore(budgetBytes: Self.defaultBudgetBytes)
+    let frames = settings.frameCount
+    for frame in 0..<frames {
+      try Task.checkCancellation()
+      let time = Double(frame) / Double(frames - 1)
+      let view = try journey.viewport(
+        at: time,
+        duration: settings.duration,
+        eased: settings.eased
+      )
+      let limit = journey.end.iterations ?? IterationPolicy.estimate(logScale: view.logScale)
+      var frameColouring = colouring
+      frameColouring.offset += Float(settings.paletteCycles * time)
+      counts = MovieCounts(
+        frame: frame, frames: frames, keyframe: frame + 1, keyframes: frames,
+        onKeyframe: true)
+      stage = "Journey frame \(frame + 1) of \(frames)"
+      tiles.update(
+        viewport: view, size: size, pixelWidth: size.width, iterations: limit, override: nil,
+        colouring: frameColouring)
+      try await tiles.waitUntilReady()
+      let source = try await TileCompositor.snapshot(
+        store: tiles, viewport: view, width: settings.width, height: settings.height,
+        now: ProcessInfo.processInfo.systemUptime + TilePresentation.fadeDuration)
+      while !input.isReadyForMoreMediaData {
+        try await Task.sleep(for: .milliseconds(5))
+      }
+      guard let pool = adaptor.pixelBufferPool else {
+        throw GPUFailure("The movie writer has no pixel buffers")
+      }
+      var buffer: CVPixelBuffer?
+      CVPixelBufferPoolCreatePixelBuffer(nil, pool, &buffer)
+      guard let buffer else { throw GPUFailure("Out of movie pixel buffers") }
+      var metalTexture: CVMetalTexture?
+      CVMetalTextureCacheCreateTextureFromImage(
+        nil, cache, buffer, nil, .bgra8Unorm, settings.width, settings.height, 0, &metalTexture)
+      guard let metalTexture, let target = CVMetalTextureGetTexture(metalTexture) else {
+        throw GPUFailure("Could not draw into a movie frame")
+      }
+      guard let command = gpu.displayQueue.makeCommandBuffer(),
+        let blit = command.makeBlitCommandEncoder()
+      else { throw GPUFailure("GPU queue unavailable for the movie") }
+      blit.copy(
+        from: source, sourceSlice: 0, sourceLevel: 0, sourceOrigin: MTLOriginMake(0, 0, 0),
+        sourceSize: MTLSize(width: settings.width, height: settings.height, depth: 1), to: target,
+        destinationSlice: 0, destinationLevel: 0, destinationOrigin: MTLOriginMake(0, 0, 0))
+      blit.endEncoding()
+      _ = try await gpu.submit(command)
+      let stamp = CMTime(
+        value: CMTimeValue(frame), timescale: CMTimeScale(settings.framesPerSecond))
+      guard adaptor.append(buffer, withPresentationTime: stamp) else {
+        throw GPUFailure(writer.error?.localizedDescription ?? "A movie frame was rejected")
+      }
+      progress = Double(frame + 1) / Double(frames)
+      counts.frame = frame + 1
+      counts.onKeyframe = false
+    }
+    input.markAsFinished()
+    await writer.finishWriting()
+    if let failure = writer.error { throw GPUFailure(failure.localizedDescription) }
+    tiles.cancel()
+    output = url
+    return url
+  }
   /// Renders in the background, reporting progress, for the sheet's button.
   func start(path: ZoomPath, settings: MovieSettings, colouring: ColourSettings, to url: URL) {
     task?.cancel()
@@ -261,6 +388,22 @@ struct MovieCounts: Equatable, Sendable {
       } catch {
         // `String(describing:)` prints a whole NSError -- domain, code, nested
         // userInfo -- where the sentence people can act on is one field of it.
+        self.error = error.localizedDescription
+      }
+    }
+  }
+
+  func start(journey: Journey, settings: MovieSettings, colouring: ColourSettings, to url: URL) {
+    task?.cancel()
+    task = Task { [weak self] in
+      guard let self else { return }
+      do {
+        _ = try await self.render(
+          journey: journey, settings: settings, colouring: colouring, to: url)
+      } catch is CancellationError {
+        try? FileManager.default.removeItem(at: url)
+        self.error = nil
+      } catch {
         self.error = error.localizedDescription
       }
     }

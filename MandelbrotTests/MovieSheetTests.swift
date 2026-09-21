@@ -126,4 +126,47 @@ import Testing
     #expect(movies.counts.frames == settings.frameCount)
     #expect(movies.counts.keyframes == path.keyframeLevels.count)
   }
+
+  /// The sheet preview is deliberately a real, small movie rather than a
+  /// thumbnail approximation. Its player must arrive after the background
+  /// render and remain seekable through AVKit's native controls.
+  @Test func aProxyJourneyPreviewCreatesAPlayer() async throws {
+    try #require(GPUContext.shared != nil, "No GPU in this environment")
+    let journey = try Journey.planned(
+      start: Location.gallery[0],
+      end: Location(name: "", real: "-0.743643887037151", imag: "0.13182590420533", scale: "16"))
+    var settings = MovieSettings()
+    settings.duration = 2
+    let preview = JourneyPreviewRenderer()
+    preview.start(journey: journey, settings: settings, colouring: ColourSettings())
+    defer { preview.cancel() }
+    for _ in 0..<100 where preview.player == nil && preview.error == nil {
+      try await Task.sleep(for: .milliseconds(100))
+    }
+    #expect(preview.error == nil)
+    #expect(preview.player != nil)
+  }
+
+  /// A Seahorse start and a different deep destination used to be accepted as a
+  /// descent solely because the latter's scale was larger.  It now takes the
+  /// overview route and the renderer writes its actual camera frames.
+  @Test func aNonNestedJourneyWritesAPlayableMovie() async throws {
+    try #require(GPUContext.shared != nil, "No GPU in this environment")
+    let journey = try Journey.planned(start: Location.gallery[1], end: Location.gallery[3])
+    #expect(!journey.isDirectDescent)
+    var settings = MovieSettings()
+    settings.width = 320
+    settings.height = 180
+    settings.framesPerSecond = 1
+    settings.duration = ceil(journey.minimumDuration)
+    let url = FileManager.default.temporaryDirectory
+      .appendingPathComponent("MovieSheetJourneyTests-\(UUID().uuidString).mov")
+    defer { try? FileManager.default.removeItem(at: url) }
+    let movies = MovieRenderer()
+    _ = try await movies.render(
+      journey: journey, settings: settings, colouring: journey.end.colouring, to: url)
+    #expect(movies.output == url)
+    #expect(movies.counts.frames == settings.frameCount)
+    #expect(movies.counts.keyframes == settings.frameCount)
+  }
 }
