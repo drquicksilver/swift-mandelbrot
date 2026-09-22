@@ -149,7 +149,19 @@ import Testing
   // Automatic depth stays automatic, and the default palette stays out of the link.
   let shallow = Location(viewport: Viewport(), iterations: nil)
   #expect(shallow.url.absoluteString == "mandelbrot://view?re=-0.5&im=0.0&zoom=1.0")
-  #expect(try Location(url: shallow.url).iterations == nil)
+  let historic = try Location(url: shallow.url)
+  #expect(historic.iterations == nil && historic.automaticColour != true)
+  // New snapshot links carry both the resolved pair and the user's offsets.
+  let automatic = Location(
+    viewport: Viewport(), colouring: ColourSettings(density: 321, offset: -0.4),
+    automaticColour: true, densityAdjustment: 1.5, offsetAdjustment: -0.2)
+  let restoredAutomatic = try Location(url: automatic.url)
+  #expect(restoredAutomatic.colouring == automatic.colouring)
+  #expect(restoredAutomatic.automaticColour == true)
+  #expect(restoredAutomatic.densityAdjustment == 1.5 && restoredAutomatic.offsetAdjustment == -0.2)
+  let depth = Location(viewport: Viewport(), automaticColour: false)
+  let restoredDepth = try Location(url: depth.url)
+  #expect(restoredDepth.automaticColour == false)
   // A universal-link form parses the same way.
   let web = try Location(
     url: URL(string: "https://example.com/mandelbrot/view?re=-0.5&im=0&zoom=1e6&rot=90")!)
@@ -289,4 +301,29 @@ import Testing
   #expect(abs(last.logScale - expectedLast.logScale) < 1e-9)
   #expect(abs((first.preciseCenter.x - expectedFirst.preciseCenter.x).wide.double) < 1e-12)
   #expect(abs((last.preciseCenter.y - expectedLast.preciseCenter.y).wide.double) < 1e-12)
+}
+
+@Test func automaticColourUsesRobustPercentilesAndPinsItsPhase() throws {
+  var histogram = EscapedHistogram()
+  var counts = Array(repeating: UInt32(0), count: EscapedHistogram.binCount)
+  counts[80] = 10_000
+  counts[96] = 10_000
+  counts[255] = 1  // An outlier must not decide the fit.
+  histogram.add(counts)
+  let fit = try #require(AutomaticColourFit.resolve(histogram: histogram))
+  #expect(fit.density > 16)
+  #expect(fit.density < 100_000)
+  let low = pow(2, (80.5) / EscapedHistogram.binsPerOctave)
+  #expect(abs(Double(low) / Double(fit.density) + Double(fit.offset) - 0.12) < 0.02)
+}
+
+@Test func depthColouringIsDeterministicAndIndependentOfIterationLimit() {
+  let view = Viewport(center: CGPoint(x: -0.74, y: 0.13), scale: 1e20)
+  let first = DepthColouring.resolve(viewport: view, contrast: 1.5)
+  let second = DepthColouring.resolve(viewport: view, contrast: 1.5)
+  #expect(first == second && first.logarithmic)
+  var deeper = view
+  deeper.zoom(
+    by: 2, at: CGPoint(x: 0.5, y: 0.5), in: CGSize(width: 1, height: 1), pixelWidth: 1)
+  #expect(DepthColouring.resolve(viewport: deeper, contrast: 1.5) != first)
 }

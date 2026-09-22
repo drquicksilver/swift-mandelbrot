@@ -19,10 +19,28 @@ struct AppearanceView: View {
               Color(red: Double(rgb.x), green: Double(rgb.y), blue: Double(rgb.z))
             }
           }.frame(height: 32).clipShape(RoundedRectangle(cornerRadius: 8))
-          LabeledContent("Colour spacing", value: String(format: "%.0f", model.colouring.density))
-          Slider(value: $model.colouring.density, in: 8...512)
-          Text("Colour offset")
-          Slider(value: $model.colouring.offset, in: 0...1)
+          LabeledContent(
+            "Exterior contrast",
+            value: String(format: "×%.2g", model.densityAdjustment))
+          Slider(value: $model.densityAdjustment, in: 0.25...4)
+          Text("Palette phase adjustment")
+          Slider(value: $model.offsetAdjustment, in: -1...1)
+          Picker(
+            "Colour mode",
+            selection: Binding(
+              get: { model.isDepthColouring ? 0 : 1 },
+              set: { $0 == 0 ? model.useDepthColouring() : () }))
+          {
+            Text("Depth").tag(0)
+            Text("Pinned").tag(1)
+          }.pickerStyle(.segmented)
+          Button("Auto-contrast this view") { model.autoContrastThisView() }
+            .disabled(!model.canAutoContrast)
+          Text(
+            model.isDepthColouring
+              ? "Colour follows zoom depth deterministically; it never waits for tiles."
+              : "Colour is pinned for this location. Select Depth to resume deterministic colour."
+          ).font(.caption)
         }
         Section("Detail") {
           Toggle("Automatic iteration limit", isOn: $model.automaticIterations)

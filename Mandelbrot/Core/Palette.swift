@@ -2,9 +2,12 @@ import Foundation
 
 struct ColourSettings: Equatable, Sendable {
   var palette = Palette.blueGold
+  /// Iterations per palette cycle for historic and explicitly auto-contrasted
+  /// locations; logarithmic octaves per cycle for depth-adaptive colouring.
   var density: Float = 64
   var offset: Float = 0
   var smooth = true
+  var logarithmic = false
 }
 
 enum Palette: String, CaseIterable, Identifiable, Sendable, Codable {

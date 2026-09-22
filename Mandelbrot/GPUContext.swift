@@ -58,6 +58,7 @@ final class GPUContext: @unchecked Sendable {
   let computeQueue: MTLCommandQueue
   let displayQueue: MTLCommandQueue
   let summaryPipeline: MTLComputePipelineState
+  let histogramPipeline: MTLComputePipelineState
   let samplePipeline: MTLComputePipelineState
   let perturbPipeline: MTLComputePipelineState
   let resumePipeline: MTLComputePipelineState
@@ -86,6 +87,8 @@ final class GPUContext: @unchecked Sendable {
     self.library = library
     summaryPipeline = try device.makeComputePipelineState(
       function: library.makeFunction(name: "summariseSamples")!)
+    histogramPipeline = try device.makeComputePipelineState(
+      function: library.makeFunction(name: "histogramSamples")!)
     samplePipeline = try device.makeComputePipelineState(
       function: library.makeFunction(name: "renderSamples")!)
     perturbPipeline = try device.makeComputePipelineState(
@@ -248,6 +251,23 @@ final class GPUContext: @unchecked Sendable {
     let words = buffer.contents().assumingMemoryBound(to: UInt32.self)
     return (Int(words[0]), Int(words[1]))
   }
+  func sampleHistogram(_ samples: MTLTexture) async throws -> [UInt32] {
+    let length = EscapedHistogram.binCount * MemoryLayout<UInt32>.stride
+    guard let buffer = device.makeBuffer(length: length, options: .storageModeShared),
+      let command = computeQueue.makeCommandBuffer(),
+      let encoder = command.makeComputeCommandEncoder()
+    else { throw GPUFailure("Sample histogram unavailable") }
+    memset(buffer.contents(), 0, length)
+    encoder.setTexture(samples, index: 0)
+    encoder.setBuffer(buffer, offset: 0, index: 0)
+    dispatch(encoder, pipeline: histogramPipeline, width: samples.width, height: samples.height)
+    encoder.endEncoding()
+    _ = try await submit(command)
+    return Array(
+      UnsafeBufferPointer(
+        start: buffer.contents().assumingMemoryBound(to: UInt32.self),
+        count: EscapedHistogram.binCount))
+  }
   func average(children: [MTLTexture], parent: MTLTexture) async throws -> MTLTexture {
     precondition(children.count == 4)
     let output = try texture(width: 258, height: 258, format: .rgba8Unorm)
@@ -293,11 +313,12 @@ final class GPUContext: @unchecked Sendable {
       var density: Float
       var offset: Float
       var smooth: UInt32
+      var logarithmic: UInt32
       var limit: UInt32
     }
     var parameters = Parameters(
       density: settings.density, offset: settings.offset, smooth: settings.smooth ? 1 : 0,
-      limit: UInt32(iterations))
+      logarithmic: settings.logarithmic ? 1 : 0, limit: UInt32(iterations))
     encoder.setBytes(&parameters, length: MemoryLayout<Parameters>.stride, index: 0)
     encoder.setTexture(try paletteTexture(settings.palette), index: 2)
     encoder.setTexture(samples, index: 0)

@@ -114,15 +114,28 @@ struct TileDrawUniforms {
     defer { store.recordPreparation(seconds: ProcessInfo.processInfo.systemUptime - start) }
     let cells = plan(store: store, viewport: viewport, size: size, now: now, overlay: overlay)
     guard !cells.isEmpty else { return }
+    struct ColourParameters {
+      var density: Float
+      var offset: Float
+      var smooth: UInt32
+      var logarithmic: UInt32
+      var limit: UInt32
+    }
+    let settings = store.colouring
+    var colour = ColourParameters(
+      density: settings.density, offset: settings.offset, smooth: settings.smooth ? 1 : 0,
+      logarithmic: settings.logarithmic ? 1 : 0, limit: UInt32(store.iterations))
     encoder.setRenderPipelineState(gpu.tilePipeline)
+    encoder.setFragmentBytes(&colour, length: MemoryLayout<ColourParameters>.stride, index: 1)
+    encoder.setFragmentTexture(try! gpu.paletteTexture(settings.palette), index: 4)
     for cell in cells {
       var params = cell.uniforms
       encoder.setVertexBytes(&params, length: MemoryLayout<TileDrawUniforms>.stride, index: 0)
       encoder.setFragmentBytes(&params, length: MemoryLayout<TileDrawUniforms>.stride, index: 0)
-      encoder.setFragmentTexture(cell.coarse.colour, index: 0)
-      encoder.setFragmentTexture(cell.base.colour, index: 1)
-      encoder.setFragmentTexture(cell.fine.colour, index: 2)
-      encoder.setFragmentTexture(cell.previousFine.colour, index: 3)
+      encoder.setFragmentTexture(cell.coarse.samples, index: 0)
+      encoder.setFragmentTexture(cell.base.samples, index: 1)
+      encoder.setFragmentTexture(cell.fine.samples, index: 2)
+      encoder.setFragmentTexture(cell.previousFine.samples, index: 3)
       encoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 6)
     }
   }

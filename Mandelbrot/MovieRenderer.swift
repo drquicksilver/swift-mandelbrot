@@ -13,6 +13,12 @@ struct MovieSettings: Equatable, Sendable {
   /// Palette cycles across the whole descent; zero keeps one mapping.
   var paletteCycles = 0.0
   var eased = true
+  /// Snapshot locations can opt into a deterministic automatic-colour
+  /// schedule. Old URLs leave this false and retain their historic 64 mapping.
+  var automaticColour = false
+  var depthAdaptiveColour = false
+  var densityAdjustment: Float = 1
+  var offsetAdjustment: Float = 0
   var frameCount: Int { max(2, Int((duration * Double(framesPerSecond)).rounded())) }
   /// A phone renders a movie beside the viewer's own cache, on a third of the
   /// memory a Mac has, and a 4K keyframe pair alone is 66 MB, so it stops at
@@ -97,7 +103,7 @@ struct MovieCounts: Equatable, Sendable {
   }
   func render(
     path: ZoomPath, settings: MovieSettings, colouring: ColourSettings, to url: URL,
-    store: TileStore? = nil
+    store: TileStore? = nil, colourSchedule: MovieColourSchedule? = nil
   ) async throws -> URL {
     guard let gpu = GPUContext.shared else { throw GPUFailure("GPU unavailable") }
     isRendering = true
@@ -157,10 +163,30 @@ struct MovieCounts: Equatable, Sendable {
       counts.keyframe = index + 1
       counts.onKeyframe = true
       defer { counts.onKeyframe = false }
-      var settingsForLevel = colouring
-      settingsForLevel.offset = Float(
-        path.paletteOffset(at: level, cycles: settings.paletteCycles))
+      let fraction =
+        (level - path.startLog) / max(.leastNonzeroMagnitude, path.endLog - path.startLog)
       let view = path.viewport(at: level)
+      var settingsForLevel: ColourSettings
+      if let colourSchedule {
+        settingsForLevel = colourSchedule.colouring(at: fraction, base: colouring)
+      } else if settings.depthAdaptiveColour {
+        settingsForLevel = DepthColouring.resolve(
+          viewport: view, contrast: settings.densityAdjustment,
+          offsetAdjustment: settings.offsetAdjustment, palette: colouring.palette,
+          smooth: colouring.smooth)
+      } else {
+        settingsForLevel = colouring
+      }
+      if colourSchedule != nil || settings.depthAdaptiveColour {
+        // The scheduled offset is already anchored to its sampled percentile;
+        // depth-adaptive colour is too. Palette cycling is the only additional
+        // phase movement.
+        settingsForLevel.offset += Float(settings.paletteCycles * fraction)
+      } else {
+        // Preserve pre-2.11 movie output bit-for-bit for legacy locations.
+        settingsForLevel.offset = Float(
+          path.paletteOffset(at: level, cycles: settings.paletteCycles))
+      }
       let limit = path.iterations(at: level)
       keyframeLimits.append((level, limit))
       tiles.update(
@@ -261,11 +287,14 @@ struct MovieCounts: Equatable, Sendable {
         "This journey needs at least \(Int(ceil(journey.requestedDuration))) seconds for a smooth camera move"
       )
     }
+    let schedule = try await makeColourSchedule(
+      for: journey, settings: settings, colouring: colouring)
     if journey.isDirectDescent {
       let path = try ZoomPath(
         start: journey.start, end: journey.end, eased: settings.eased)
       return try await render(
-        path: path, settings: settings, colouring: colouring, to: url, store: store)
+        path: path, settings: settings, colouring: colouring, to: url, store: store,
+        colourSchedule: schedule)
     }
     guard let gpu = GPUContext.shared else { throw GPUFailure("GPU unavailable") }
     isRendering = true
@@ -319,7 +348,17 @@ struct MovieCounts: Equatable, Sendable {
         eased: settings.eased
       )
       let limit = journey.end.iterations ?? IterationPolicy.estimate(logScale: view.logScale)
-      var frameColouring = colouring
+      var frameColouring: ColourSettings
+      if let schedule {
+        frameColouring = schedule.colouring(at: time, base: colouring)
+      } else if settings.depthAdaptiveColour {
+        frameColouring = DepthColouring.resolve(
+          viewport: view, contrast: settings.densityAdjustment,
+          offsetAdjustment: settings.offsetAdjustment, palette: colouring.palette,
+          smooth: colouring.smooth)
+      } else {
+        frameColouring = colouring
+      }
       frameColouring.offset += Float(settings.paletteCycles * time)
       counts = MovieCounts(
         frame: frame, frames: frames, keyframe: frame + 1, keyframes: frames,
@@ -371,6 +410,37 @@ struct MovieCounts: Equatable, Sendable {
     tiles.cancel()
     output = url
     return url
+  }
+  /// Render a small, fixed set of planned camera positions before opening the
+  /// writer. These are real escaped-count samples, not a heuristic based on
+  /// scale, and include travel, rotation and holds through `Journey.viewport`.
+  private func makeColourSchedule(
+    for journey: Journey, settings: MovieSettings, colouring: ColourSettings
+  ) async throws -> MovieColourSchedule? {
+    guard settings.automaticColour else { return nil }
+    let probes = min(17, max(5, Int(ceil(settings.duration)) + 1))
+    let probeSize = CGSize(width: 320, height: 180)
+    let tiles = TileStore(budgetBytes: 48 * 1024 * 1024)
+    defer { tiles.cancel() }
+    var stops: [MovieColourSchedule.Stop] = []
+    for index in 0..<probes {
+      try Task.checkCancellation()
+      stage = "Analysing colour (index + 1) of (probes)"
+      let time = Double(index) / Double(probes - 1)
+      let view = try journey.viewport(at: time, duration: settings.duration, eased: settings.eased)
+      let limit = journey.end.iterations ?? IterationPolicy.estimate(logScale: view.logScale)
+      tiles.update(
+        viewport: view, size: probeSize, pixelWidth: probeSize.width, iterations: limit,
+        override: nil, colouring: colouring)
+      try await tiles.waitUntilReady(timeout: .seconds(20))
+      if let fit = AutomaticColourFit.resolve(
+        histogram: tiles.visibleHistogram(), densityMultiplier: settings.densityAdjustment,
+        offsetAdjustment: settings.offsetAdjustment)
+      {
+        stops.append(.init(time: time, fit: fit))
+      }
+    }
+    return stops.isEmpty ? nil : MovieColourSchedule(stops: stops)
   }
   /// Renders in the background, reporting progress, for the sheet's button.
   func start(path: ZoomPath, settings: MovieSettings, colouring: ColourSettings, to url: URL) {

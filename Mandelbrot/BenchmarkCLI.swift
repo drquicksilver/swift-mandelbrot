@@ -491,6 +491,13 @@
           throw CLIError("--to needs a mandelbrot:// link")
         }
         let end = try Location(url: destination)
+        // Post-2.11 locations opt into a preplanned mapping schedule; old
+        // links deliberately retain their fixed density and offset.
+        var movieSettings = options.movieSettings
+        movieSettings.automaticColour = end.automaticColour == true
+        movieSettings.depthAdaptiveColour = end.automaticColour == false
+        movieSettings.densityAdjustment = Float(end.densityAdjustment ?? 1)
+        movieSettings.offsetAdjustment = Float(end.offsetAdjustment ?? 0)
         let start =
           try options.movieFrom.flatMap { URL(string: $0) }.map { try Location(url: $0) }
           ?? Location(real: "-0.5", imag: "0", scale: "1")
@@ -501,17 +508,17 @@
         let url = URL(fileURLWithPath: options.output!)
         let began = ProcessInfo.processInfo.systemUptime
         _ = try await renderer.render(
-          journey: journey, settings: options.movieSettings, colouring: end.colouring, to: url)
+          journey: journey, settings: movieSettings, colouring: end.colouring, to: url)
         // The movie's total iteration budget: the sum of its keyframes' limits,
         // which is what a depth policy for keyframes would have to move.
         let report: [String: Any] = [
-          "frames": options.movieSettings.frameCount,
+          "frames": movieSettings.frameCount,
           "keyframes": renderer.counts.keyframes,
           "journey": journey.segments.map(\.kind.rawValue),
           "minimumDuration": journey.requestedDuration,
           "keyframeLimitSum": renderer.keyframeLimits.reduce(0) { $0 + $1.limit },
-          "width": options.movieSettings.width, "height": options.movieSettings.height,
-          "duration": options.movieSettings.duration,
+          "width": movieSettings.width, "height": movieSettings.height,
+          "duration": movieSettings.duration,
           "startLog": try start.viewport().logScale, "endLog": try end.viewport().logScale,
           "seconds": ProcessInfo.processInfo.systemUptime - began,
           "output": url.path,

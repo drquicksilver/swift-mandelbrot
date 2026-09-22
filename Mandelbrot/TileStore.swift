@@ -32,6 +32,7 @@ struct TileStatistics: Equatable, Codable {
   var cappedPixels = TileGrid.textureSize * TileGrid.textureSize
   /// The highest escaped count in the samples, or zero when none escaped.
   var maximumEscaped = 0
+  var histogram = Array(repeating: UInt32(0), count: EscapedHistogram.binCount)
   var lastUsed: UInt64 = 0
   var isMip = false
   /// Coverage tiles are deliberately retained across ordinary LRU pressure.
@@ -177,6 +178,84 @@ struct TileStatistics: Equatable, Codable {
   var coverageBytes: Int {
     records.values.filter(\.isCoverage).reduce(0) { $0 + $1.bytes }
       + fallback.filter(\.isCoverage).reduce(0) { $0 + $1.bytes }
+  }
+  /// Escaped-count statistics for the tiles currently drawn at the detail
+  /// level. Coverage and prefetch records are intentionally excluded.  A tile
+  /// at an edge contributes only the portion of its rotated square actually
+  /// on screen, rather than getting a vote simply for being resident.
+  func visibleHistogram() -> EscapedHistogram {
+    var result = EscapedHistogram()
+    guard let first = visible.first else { return result }
+    let projection = TileProjection(origin: bounds(first), viewport: viewport, size: size)
+    let screen = CGRect(origin: .zero, size: size)
+    for key in visible {
+      guard let record = records[key] else { continue }
+      let bounds = record.bounds
+      let side = bounds.wideSpan / projection.origin.wideSpan * projection.pixelSpan
+      guard side.isFinite, side > 0 else { continue }
+      let centre = projection.center(of: bounds)
+      let half = side / 2
+      let corners = [
+        CGPoint(x: -half, y: -half), CGPoint(x: half, y: -half),
+        CGPoint(x: half, y: half), CGPoint(x: -half, y: half),
+      ].map {
+        CGPoint(
+          x: centre.x + $0.x * projection.cosAngle - $0.y * projection.sinAngle,
+          y: centre.y + $0.x * projection.sinAngle + $0.y * projection.cosAngle)
+      }
+      let visibleArea = clippedArea(corners, to: screen)
+      result.add(record.histogram, weight: visibleArea / (side * side))
+    }
+    return result
+  }
+  private func clippedArea(_ polygon: [CGPoint], to rect: CGRect) -> Double {
+    typealias Edge = (CGPoint) -> Bool
+    func clip(
+      _ input: [CGPoint], inside: @escaping Edge, intersection: (CGPoint, CGPoint) -> CGPoint
+    )
+      -> [CGPoint]
+    {
+      guard var previous = input.last else { return [] }
+      var output: [CGPoint] = []
+      for point in input {
+        let pointInside = inside(point)
+        let previousInside = inside(previous)
+        if pointInside != previousInside { output.append(intersection(previous, point)) }
+        if pointInside { output.append(point) }
+        previous = point
+      }
+      return output
+    }
+    func intersection(_ a: CGPoint, _ b: CGPoint, vertical value: Double) -> CGPoint {
+      let t = (value - a.x) / (b.x - a.x)
+      return CGPoint(x: value, y: a.y + (b.y - a.y) * t)
+    }
+    func intersection(_ a: CGPoint, _ b: CGPoint, horizontal value: Double) -> CGPoint {
+      let t = (value - a.y) / (b.y - a.y)
+      return CGPoint(x: a.x + (b.x - a.x) * t, y: value)
+    }
+    var clipped = polygon
+    clipped = clip(
+      clipped, inside: { $0.x >= rect.minX },
+      intersection: { intersection($0, $1, vertical: rect.minX) })
+    clipped = clip(
+      clipped, inside: { $0.x <= rect.maxX },
+      intersection: { intersection($0, $1, vertical: rect.maxX) })
+    clipped = clip(
+      clipped, inside: { $0.y >= rect.minY },
+      intersection: { intersection($0, $1, horizontal: rect.minY) })
+    clipped = clip(
+      clipped, inside: { $0.y <= rect.maxY },
+      intersection: { intersection($0, $1, horizontal: rect.maxY) })
+    guard clipped.count > 2 else { return 0 }
+    var twiceArea = 0.0
+    for index in clipped.indices {
+      let next = clipped[
+        clipped.index(after: index) == clipped.endIndex
+          ? clipped.startIndex : clipped.index(after: index)]
+      twiceArea += clipped[index].x * next.y - next.x * clipped[index].y
+    }
+    return abs(twiceArea) / 2
   }
   var coverageBudgetBytes: Int { coverageReservation }
   var tileResidentLimit: Int { residentLimit }
@@ -339,12 +418,14 @@ struct TileStatistics: Equatable, Codable {
       iterations != previousLimit
       && (records.values.contains { $0.maximumEscaped >= floor }
         || fallback.contains { $0.maximumEscaped >= floor })
-    let paletteChanged = self.colouring != colouring
-    if paletteChanged || limitChangesColour {
-      self.colouring = colouring
-      // A palette change repaints everything; a limit change repaints only the
-      // records that can differ.  A pending recolour keeps the wider floor.
-      recolourFloor = paletteChanged ? 0 : (needsRecolour ? min(recolourFloor, floor) : floor)
+    self.colouring = colouring
+    // Colour is now applied from sample records in the compositor. Changing a
+    // depth-only mapping is a display uniform, never a cache-wide re-shade or
+    // a reason to cancel tile production.
+    if limitChangesColour {
+      // A limit change repaints only records that can differ. A pending
+      // recolour keeps the wider floor.
+      recolourFloor = needsRecolour ? min(recolourFloor, floor) : floor
       needsRecolour = true
       generation &+= 1
       worker?.cancel()
@@ -1004,10 +1085,12 @@ struct TileStatistics: Equatable, Codable {
             key: key, bounds: bounds, samples: samples, colour: colour,
             readyAt: ProcessInfo.processInfo.systemUptime, iterations: limit)
           let summary = try await gpu.sampleSummary(samples)
+          let histogram = try await gpu.sampleHistogram(samples)
           try Task.checkCancellation()
           guard self.generation == generation else { throw CancellationError() }
           record.cappedPixels = summary.capped
           record.maximumEscaped = summary.maximumEscaped
+          record.histogram = histogram
           record.isCoverage = isCoverage
           self.counters.sampledPixels += previous?.cappedPixels ?? (resolution * resolution)
           if isCoverage {
@@ -1101,8 +1184,14 @@ struct TileStatistics: Equatable, Codable {
       !isPlaceholder($0) && $0.key.level >= best.key.level - Self.placeholderBlurTolerance
     }.max { $0.key.level < $1.key.level } ?? best
   }
-  func waitUntilReady() async throws {
-    while !isIdle || retryBlocked { try await Task.sleep(for: .milliseconds(2)) }
+  func waitUntilReady(timeout: Duration? = nil) async throws {
+    let started = ContinuousClock.now
+    while !isIdle || retryBlocked {
+      if let timeout, ContinuousClock.now - started > timeout {
+        throw GPUFailure("Tile refinement timed out")
+      }
+      try await Task.sleep(for: .milliseconds(2))
+    }
     if let error { throw GPUFailure(error) }
     guard allVisibleReady else { throw GPUFailure("Tile refinement incomplete") }
   }

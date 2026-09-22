@@ -71,6 +71,14 @@
     }
     private var end: Location { model.location }
     private var requiredDuration: Double { journey?.requestedDuration ?? 0 }
+    private var movieSettings: MovieSettings {
+      var result = settings
+      result.automaticColour = model.colourSnapshotPinned
+      result.depthAdaptiveColour = model.isDepthColouring
+      result.densityAdjustment = model.densityAdjustment
+      result.offsetAdjustment = model.offsetAdjustment
+      return result
+    }
     private var durationIsTooShort: Bool {
       journey != nil && settings.duration + 0.001 < requiredDuration
     }
@@ -81,7 +89,8 @@
           + "|\($0.duration)|\($0.holdDuration)"
       }
       return segments.joined(separator: ";") + "|\(settings.duration)|\(settings.eased)"
-        + "|\(settings.paletteCycles)"
+        + "|\(settings.paletteCycles)|\(model.colourSnapshotPinned)|\(model.densityAdjustment)"
+        + "|\(model.offsetAdjustment)|\(model.colouring.density)|\(model.colouring.offset)"
     }
     private var phase: MoviePhase {
       if movies.isRendering { return .rendering }
@@ -137,7 +146,7 @@
           preview.cancel()
           return
         }
-        preview.start(journey: journey, settings: settings, colouring: model.colouring)
+        preview.start(journey: journey, settings: movieSettings, colouring: model.colouring)
       }
       .onChange(of: movies.output) { _, url in adopt(url) }
       .onDisappear {
@@ -625,7 +634,7 @@
         model.tiles.cancel()
         preview.cancel()
         movies.start(
-          journey: journey, settings: settings, colouring: model.colouring,
+          journey: journey, settings: movieSettings, colouring: model.colouring,
           to: library.destination(named: MovieNaming.fileName()))
       } catch {
         problem = error.localizedDescription

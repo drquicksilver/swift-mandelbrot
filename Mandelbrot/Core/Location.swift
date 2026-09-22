@@ -16,6 +16,11 @@ struct Location: Codable, Equatable, Sendable, Identifiable {
   var palette = Palette.blueGold
   var density = 64.0
   var offset = 0.0
+  /// Present only on post-2.11 snapshots. Old locations remain deliberately
+  /// pinned to their historic density/offset.
+  var automaticColour: Bool?
+  var densityAdjustment: Double?
+  var offsetAdjustment: Double?
   var created = Date()
 
   static let scheme = "mandelbrot"
@@ -24,7 +29,8 @@ struct Location: Codable, Equatable, Sendable, Identifiable {
   init(
     name: String = "", real: String, imag: String, scale: String, rotationDegrees: Double = 0,
     iterations: Int? = nil, palette: Palette = .blueGold, density: Double = 64,
-    offset: Double = 0, id: UUID = UUID(), created: Date = Date()
+    offset: Double = 0, automaticColour: Bool? = nil, densityAdjustment: Double? = nil,
+    offsetAdjustment: Double? = nil, id: UUID = UUID(), created: Date = Date()
   ) {
     self.name = name
     self.real = real
@@ -35,12 +41,16 @@ struct Location: Codable, Equatable, Sendable, Identifiable {
     self.palette = palette
     self.density = density
     self.offset = offset
+    self.automaticColour = automaticColour
+    self.densityAdjustment = densityAdjustment
+    self.offsetAdjustment = offsetAdjustment
     self.id = id
     self.created = created
   }
   init(
     viewport: Viewport, iterations: Int? = nil, colouring: ColourSettings = ColourSettings(),
-    name: String = "", id: UUID = UUID(), created: Date = Date()
+    name: String = "", automaticColour: Bool? = nil, densityAdjustment: Double? = nil,
+    offsetAdjustment: Double? = nil, id: UUID = UUID(), created: Date = Date()
   ) {
     let centre = viewport.centerDescription.components(separatedBy: ", ")
     self.init(
@@ -48,7 +58,9 @@ struct Location: Codable, Equatable, Sendable, Identifiable {
       scale: viewport.scaleDescription,
       rotationDegrees: viewport.angle * 180 / .pi, iterations: iterations,
       palette: colouring.palette, density: Double(colouring.density),
-      offset: Double(colouring.offset), id: id, created: created)
+      offset: Double(colouring.offset), automaticColour: automaticColour,
+      densityAdjustment: densityAdjustment, offsetAdjustment: offsetAdjustment,
+      id: id, created: created)
   }
   func viewport() throws -> Viewport {
     var view = try Viewport(real: real, imag: imag, zoom: scale)
@@ -77,6 +89,15 @@ struct Location: Codable, Equatable, Sendable, Identifiable {
     if palette != .blueGold { items.append(URLQueryItem(name: "palette", value: palette.rawValue)) }
     if density != 64 { items.append(URLQueryItem(name: "density", value: String(density))) }
     if offset != 0 { items.append(URLQueryItem(name: "offset", value: String(offset))) }
+    if let automaticColour {
+      items.append(URLQueryItem(name: "colour", value: automaticColour ? "auto" : "depth"))
+      if let densityAdjustment, densityAdjustment != 1 {
+        items.append(URLQueryItem(name: "density-adjust", value: String(densityAdjustment)))
+      }
+      if let offsetAdjustment, offsetAdjustment != 0 {
+        items.append(URLQueryItem(name: "offset-adjust", value: String(offsetAdjustment)))
+      }
+    }
     if !name.isEmpty { items.append(URLQueryItem(name: "name", value: name)) }
     components.queryItems = items
     return components.url!
@@ -125,7 +146,13 @@ struct Location: Codable, Equatable, Sendable, Identifiable {
       name: values["name"] ?? "", real: real, imag: imag, scale: scale,
       rotationDegrees: try number("rot", default: 0, range: -360...360), iterations: iterations,
       palette: palette, density: try number("density", default: 64, range: 1...100_000),
-      offset: try number("offset", default: 0, range: -1000...1000))
+      offset: try number("offset", default: 0, range: -1000...1000),
+      automaticColour: values["colour"] == "auto"
+        ? true : (values["colour"] == "depth" ? false : nil),
+      densityAdjustment: values["colour"] == "auto" || values["colour"] == "depth"
+        ? try number("density-adjust", default: 1, range: 0.125...16) : nil,
+      offsetAdjustment: values["colour"] == "auto" || values["colour"] == "depth"
+        ? try number("offset-adjust", default: 0, range: -1000...1000) : nil)
     // Reject centres and scales the renderer cannot represent, at parse time.
     _ = try self.viewport()
   }

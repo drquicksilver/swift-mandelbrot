@@ -10,9 +10,13 @@ import SwiftUI
     // Settled views report their escaped counts; each report may lower the
     // automatic limit.  Delivered after the publishing call returns.
     tileObservation = tiles.$statistics.receive(on: DispatchQueue.main).sink { [weak self] _ in
-      MainActor.assumeIsolated { self?.observeDepth() }
+      MainActor.assumeIsolated {
+        self?.observeDepth()
+        self?.canAutoContrast = self?.tiles.allVisibleReady ?? false
+      }
     }
     tiles.onContentChange = { [weak self] in self?.requestRedraw() }
+    updateDepthColouring()
   }
   /// The single route to a frame.  Tile completion, a changed setting, a screen
   /// change and waking all come through here, and the canvas answers by both
@@ -32,6 +36,15 @@ import SwiftUI
       requestJuliaRedraw()
     }
   }
+  /// Contrast adjusts a scale-only logarithmic transfer. It never samples
+  /// tiles, so it remains motionless whenever the camera is motionless.
+  @Published var densityAdjustment: Float = 1 { didSet { updateDepthColouring() } }
+  @Published var offsetAdjustment: Float = 0 { didSet { updateDepthColouring() } }
+  @Published private(set) var colourSnapshotPinned = false
+  @Published private(set) var canAutoContrast = false
+  private var usesDepthColouring = true
+  var isDepthColouring: Bool { usesDepthColouring }
+  private var applyingLocation = false
   @Published var isActive = true
   func setActive(_ active: Bool) {
     isActive = active
@@ -49,6 +62,7 @@ import SwiftUI
   @Published var viewport = Viewport() {
     didSet {
       if viewport != oldValue {
+        if usesDepthColouring { updateDepthColouring() }
         updateDepth()
         requestRender()
         // The crosshair is drawn from this view, and the panel shows it while
@@ -56,6 +70,30 @@ import SwiftUI
         if juliaSwapped { requestJuliaRedraw() }
       }
     }
+  }
+  private func updateDepthColouring() {
+    guard usesDepthColouring, !applyingLocation else { return }
+    colouring = DepthColouring.resolve(
+      viewport: viewport, contrast: densityAdjustment, offsetAdjustment: offsetAdjustment,
+      palette: colouring.palette, smooth: colouring.smooth)
+  }
+  /// Histogram fitting is deliberately one-shot: the result pins immediately.
+  func autoContrastThisView() {
+    guard
+      let fit = AutomaticColourFit.resolve(
+        histogram: tiles.visibleHistogram(), densityMultiplier: densityAdjustment,
+        offsetAdjustment: offsetAdjustment)
+    else { return }
+    usesDepthColouring = false
+    colourSnapshotPinned = true
+    colouring.density = fit.density
+    colouring.offset = fit.offset
+    colouring.logarithmic = true
+  }
+  func useDepthColouring() {
+    usesDepthColouring = true
+    colourSnapshotPinned = false
+    updateDepthColouring()
   }
   @Published private(set) var iterations = 200 {
     didSet {
@@ -289,7 +327,10 @@ import SwiftUI
   private var recorded: Viewport? = Viewport()
   var location: Location {
     Location(
-      viewport: viewport, iterations: automaticIterations ? nil : iterations, colouring: colouring)
+      viewport: viewport, iterations: automaticIterations ? nil : iterations, colouring: colouring,
+      automaticColour: usesDepthColouring ? false : true,
+      densityAdjustment: Double(densityAdjustment),
+      offsetAdjustment: Double(offsetAdjustment))
   }
   private func differsFromRecord(_ view: Viewport) -> Bool {
     guard let recorded else { return true }
@@ -306,7 +347,10 @@ import SwiftUI
   /// The view being left, with the settings it was seen under.
   private func record(of view: Viewport) -> Location {
     Location(
-      viewport: view, iterations: automaticIterations ? nil : iterations, colouring: colouring)
+      viewport: view, iterations: automaticIterations ? nil : iterations, colouring: colouring,
+      automaticColour: usesDepthColouring ? false : true,
+      densityAdjustment: Double(densityAdjustment),
+      offsetAdjustment: Double(offsetAdjustment))
   }
   /// Records the view it is leaving, once the current one has come to rest and
   /// moved far enough to be a different place.
@@ -343,7 +387,14 @@ import SwiftUI
     // `self`, because the parameter shadows the computed property.
     if record, viewport != view { push(self.location) }
     stopMotion()
+    applyingLocation = true
     colouring = location.colouring
+    // Missing is a historic fixed-colour URL. `depth` is the new deterministic
+    // mapping and `auto` is the explicit one-shot histogram override.
+    usesDepthColouring = location.automaticColour == false
+    densityAdjustment = Float(location.densityAdjustment ?? 1)
+    offsetAdjustment = Float(location.offsetAdjustment ?? 0)
+    colourSnapshotPinned = location.automaticColour == true
     if let limit = location.iterations {
       automaticIterations = false
       manualIterations = limit
@@ -351,6 +402,8 @@ import SwiftUI
       automaticIterations = true
     }
     viewport = view
+    applyingLocation = false
+    updateDepthColouring()
     recorded = view
     canGoBack = !history.isEmpty
     canGoForward = !future.isEmpty
