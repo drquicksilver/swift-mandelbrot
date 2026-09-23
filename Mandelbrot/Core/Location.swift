@@ -171,17 +171,18 @@ struct Location: Codable, Equatable, Sendable, Identifiable {
     Location(
       name: "Scepter Valley", real: "-1.7499", imag: "0", scale: "3e4", palette: .ice),
     Location(
-      name: "Mini Mandelbrot", real: "-1.7690", imag: "0.00427", scale: "2e5", palette: .forest),
+      name: "Mini Mandelbrot", real: "-1.768122587728", imag: "0.006252132362",
+      scale: "8e4", palette: .forest),
     Location(
-      name: "Feather", real: "-0.1592", imag: "-1.0317", scale: "1e4", palette: .orbit),
+      name: "Feather", real: "-0.1631", imag: "-1.0320", scale: "5e3", palette: .orbit),
     Location(
       name: "The point i", real: "0", imag: "1", scale: "1e12", palette: .ink),
     Location(
-      name: "Period-312 minibrot",
+      name: "Period-312 satellite",
       real:
-        "-0.743643913093782735685578505664327465580278375890843525936608151593603260913826197894187695636482037827706527269578155881715384063045188162790549910747393313377742787435621225854959",
+        "-0.74364446677499950770653780732947227038",
       imag:
-        "0.131825901829795556285614749363184601026644941156177737705885863783243014933509791041022680018090649355924958877245256720566473131420650939107528723995056981067345028457750564285687",
-      scale: "1e100", iterations: 60_000, palette: .ink, density: 512),
+        "0.13182589800194177628521553600165270872",
+      scale: "3e5", palette: .ink, density: 512),
   ]
 }

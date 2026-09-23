@@ -255,7 +255,9 @@ import Testing
 }
 
 @Test func zoomPathStaysPreciseAtExtremeDepth() throws {
-  let deep = Location.gallery.first { $0.scale == "1e100" }!
+  let deep = Location(
+    real: "-0.743643887037158704752191506114774",
+    imag: "0.131825904205311970493132056385139", scale: "1e100")
   let path = try ZoomPath(start: Location(real: "-0.5", imag: "0", scale: "1"), end: deep)
   #expect(path.keyframeLevels.count > 330)
   let destination = try deep.viewport().preciseCenter
