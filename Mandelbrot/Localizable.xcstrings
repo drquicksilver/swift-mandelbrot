@@ -104,7 +104,7 @@
     "Acknowledgements" : {
 
     },
-    "Across to %@" : {
+    "Across the set" : {
 
     },
     "Add hold" : {
@@ -641,10 +641,13 @@
     "The graphics processor isn’t available, so the movie couldn’t be rendered." : {
 
     },
+    "The movie couldn’t be rendered. Try again." : {
+
+    },
     "The movie couldn’t be saved in that folder. Choose another folder, then try again." : {
 
     },
-    "The movie couldn’t be written. Check there is room on the disk, then try again." : {
+    "The movie couldn’t be written. Try again." : {
 
     },
     "The movie ran out of memory. Try a lower resolution, then try again." : {
@@ -653,7 +656,13 @@
     "The movie will be saved as a QuickTime .mov file." : {
 
     },
+    "The movie’s frames couldn’t be drawn. Try again." : {
+
+    },
     "the overview" : {
+
+    },
+    "The preview couldn’t be made." : {
 
     },
     "The set couldn’t be drawn. Try again, or restart the app." : {
@@ -671,7 +680,13 @@
     "The whole set · %@" : {
 
     },
+    "There isn’t room on the disk for the movie. Free some space, then try again." : {
+
+    },
     "These colours are kept as they are. Choose Match to let them follow the zoom again." : {
+
+    },
+    "This device can’t encode a movie with these settings. Try a lower resolution." : {
 
     },
     "This device’s graphics processor isn’t available, so the set can’t be drawn." : {
@@ -684,6 +699,9 @@
 
     },
     "This journey needs at least %@." : {
+
+    },
+    "This journey needs at least %lld seconds for a smooth camera move." : {
 
     },
     "this view" : {

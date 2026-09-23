@@ -86,7 +86,7 @@ struct Journey: Sendable {
       from.logScale != to.logScale || from.preciseCenter != to.preciseCenter
         || from.angle != to.angle
     else {
-      throw PrecisionError(
+      throw UserError(
         String(localized: "The starting place is this view, so there is nowhere to go."))
     }
 
@@ -232,12 +232,15 @@ struct Journey: Sendable {
       ? String(localized: "1 part") : String(localized: "\(segments.count) parts")
   }
 
-  /// A part of the journey named by its ends, “Seahorse Valley to the
-  /// overview”, rather than by the kind of move it makes.
+  /// A part of the journey named by where it goes, “Out from “Seahorse
+  /// Valley””, “Across the set”, “In to this view”, rather than by the kind
+  /// of move it makes.
   func title(of segment: Segment) -> String {
     switch segment.kind {
     case .hold: return String(localized: "Hold on \(label(segment.from))")
-    case .travel: return String(localized: "Across to \(label(end))")
+    // It runs between two overviews, so its ends name nothing; what it
+    // crosses does.
+    case .travel: return String(localized: "Across the set")
     case .zoom:
       let outward =
         (try? segment.to.viewport().logScale < segment.from.viewport().logScale) ?? false
@@ -247,17 +250,20 @@ struct Journey: Sendable {
     }
   }
 
-  /// A named place by its name; the destination, which the app always takes
-  /// from the view on screen, as “this view”; anything else by what it is.
+  /// A named place by its name, quoted, since names such as “The whole set”
+  /// are capitalised as titles and stand mid-sentence here; the destination,
+  /// which the app always takes from the view on screen, as “this view”.
+  /// The planner makes only three kinds of location -- the two ends and the
+  /// overviews between them -- so identity tells them apart.
   private func label(_ location: Location) -> String {
-    let overview = String(localized: "the overview")
+    let named = "“\(location.name)”"
     if location.id == end.id {
-      return location.name.isEmpty ? String(localized: "this view") : location.name
+      return location.name.isEmpty ? String(localized: "this view") : named
     }
-    if location.name.isEmpty {
-      return location.id == start.id ? String(localized: "the starting place") : overview
+    if location.id == start.id {
+      return location.name.isEmpty ? String(localized: "the starting place") : named
     }
-    return location.name == "Overview" ? overview : location.name
+    return String(localized: "the overview")
   }
 
   private static func contains(_ outer: Viewport, _ inner: Viewport, aspectRatio: Double) -> Bool {

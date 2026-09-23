@@ -27,8 +27,7 @@ private let english = Locale(identifier: "en_GB")
 
 @Test func zoomOfALocationIgnoresItsExactDecimal() {
   let place = Location(real: "-0.75", imag: "0.1", scale: "2.0000000000000004e9")
-  #expect(place.zoomDescription.hasPrefix("2"))
-  #expect(!place.zoomDescription.contains("0000000000000004"))
+  #expect(place.zoomDescription(locale: english) == "2,000,000,000×")
   #expect(ZoomFormat.string(logScale: .nan) == "—")
 }
 
@@ -36,22 +35,23 @@ private let english = Locale(identifier: "en_GB")
   let seahorse = Location.gallery[1]
   var nearby = seahorse
   nearby.scale = "8e3"
-  #expect(nearby.suggestedName.hasPrefix("Near Seahorse Valley · "))
-  #expect(Location.gallery[0].suggestedName == "The whole set · 1×")
+  #expect(nearby.suggestedName(locale: english) == "Near Seahorse Valley · 8,000×")
+  #expect(Location.gallery[0].suggestedName(locale: english) == "The whole set · 1×")
   let elsewhere = Location(real: "-0.2", imag: "-0.7", scale: "50")
-  #expect(elsewhere.suggestedName.hasPrefix("-0.2 − 0.7i · "))
+  // True minus signs on both parts.
+  #expect(elsewhere.suggestedName(locale: english) == "−0.2 − 0.7i · 50×")
 }
 
 @Test func journeysAreDescribedByTheirPlaces() throws {
   let here = Location(real: "0.2821", imag: "0.01", scale: "2e3")
   let nested = try Journey.planned(start: Location.gallery[0], end: here)
-  #expect(nested.description() == "Zoom from The whole set into this view.")
+  #expect(nested.description() == "Zoom from “The whole set” into this view.")
   #expect(nested.summary == "A single zoom")
   let apart = try Journey.planned(start: Location.gallery[1], end: here)
   #expect(apart.summary == "3 parts")
   #expect(
     apart.segments.map { apart.title(of: $0) } == [
-      "Out from Seahorse Valley", "Across to this view", "In to this view",
+      "Out from “Seahorse Valley”", "Across the set", "In to this view",
     ])
   #expect(!apart.description().contains("starting view"))
 }

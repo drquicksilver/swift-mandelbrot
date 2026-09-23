@@ -33,16 +33,30 @@ enum ZoomFormat {
   }
 }
 
+/// A point in the plane as a person reads it: `−0.7436 + 0.1318i`, with a
+/// true minus sign on both parts.
+enum PointFormat {
+  static func string(x: Double, y: Double, style: FloatingPointFormatStyle<Double>) -> String {
+    let minus = "−"
+    let real = x.formatted(style).replacingOccurrences(of: "-", with: minus)
+    return "\(real) \(y < 0 ? minus : "+") \(abs(y).formatted(style))i"
+  }
+}
+
 extension Viewport {
   /// The zoom as a person reads it; `scaleDescription` is the exact form.
-  var zoomDescription: String { ZoomFormat.string(logScale: logScale) }
+  var zoomDescription: String { zoomDescription(locale: .current) }
+  func zoomDescription(locale: Locale) -> String {
+    ZoomFormat.string(logScale: logScale, locale: locale)
+  }
 }
 
 extension Location {
   /// The zoom as a person reads it, or the stored text if it does not parse.
-  var zoomDescription: String {
+  var zoomDescription: String { zoomDescription(locale: .current) }
+  func zoomDescription(locale: Locale) -> String {
     guard let view = try? viewport() else { return scale + "×" }
-    return view.zoomDescription
+    return view.zoomDescription(locale: locale)
   }
 }
 
@@ -50,8 +64,9 @@ extension Location {
   /// A name for a bookmark nobody named: the famous place it is close to, or
   /// failing that where it is, and either way how far in.  “Near Seahorse
   /// Valley · 4,000×” says more than any number alone.
-  var suggestedName: String {
-    let zoom = zoomDescription
+  var suggestedName: String { suggestedName(locale: .current) }
+  func suggestedName(locale: Locale) -> String {
+    let zoom = zoomDescription(locale: locale)
     guard let x = Double(real), let y = Double(imag) else { return zoom }
     // Distance measured in the famous place's own view widths, so a deep
     // place only claims views that are close to it at its own scale.
@@ -68,8 +83,8 @@ extension Location {
     if let view = try? viewport(), view.logScale < 1 {
       return String(localized: "The whole set · \(zoom)")
     }
-    let digits = FloatingPointFormatStyle<Double>.number.precision(.significantDigits(1...4))
-    let sign = y < 0 ? "−" : "+"
-    return "\(x.formatted(digits)) \(sign) \(abs(y).formatted(digits))i · \(zoom)"
+    let style = FloatingPointFormatStyle<Double>.number.precision(.significantDigits(1...4))
+      .locale(locale)
+    return "\(PointFormat.string(x: x, y: y, style: style)) · \(zoom)"
   }
 }

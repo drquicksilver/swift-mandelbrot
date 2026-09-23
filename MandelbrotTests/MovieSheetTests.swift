@@ -35,10 +35,11 @@ import Testing
   }
 
   @Test func galleryZoomsReadPlainlyUntilTheDigitsStopMeaningAnything() throws {
-    #expect(Location.gallery[0].zoomDescription == "1×")
-    #expect(Location.gallery[1].zoomDescription.hasPrefix("4"))
+    let english = Locale(identifier: "en_GB")
+    #expect(Location.gallery[0].zoomDescription(locale: english) == "1×")
+    #expect(Location.gallery[1].zoomDescription(locale: english) == "4,000×")
     // A 1e100 descent: an exponent, not a hundred digits.
-    #expect(Location.gallery.last!.zoomDescription.hasSuffix("e100×"))
+    #expect(Location.gallery.last!.zoomDescription(locale: english) == "1.0e100×")
   }
 
   #if os(macOS)
