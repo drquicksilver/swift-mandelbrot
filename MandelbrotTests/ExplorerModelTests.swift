@@ -56,6 +56,16 @@ final class MemoryDefaults: UserDefaults, @unchecked Sendable {
     }
   }
 
+  @Test func aRepeatedShortcutLeavesItsSheetOpen() {
+    // Key repeat on an iPad keyboard can deliver a shortcut twice.
+    let model = model()
+    for command in [ExplorerCommand.places, .help, .benchmark] {
+      model.perform(command)
+      model.perform(command)
+    }
+    #expect(model.showPlaces && model.showHelp && model.showBenchmark)
+  }
+
   // MARK: Travel
 
   @Test func travelArrivesAndRecordsOnlyTheOrigin() throws {

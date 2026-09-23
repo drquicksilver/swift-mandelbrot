@@ -829,13 +829,16 @@ import SwiftUI
     case .resetRotation: resetRotation()
     case .back: goBack()
     case .forward: goForward()
-    case .places: showPlaces.toggle()
+    // Opening, not toggling: key repeat on an iPad keyboard delivered the
+    // shortcut twice and closed the sheet it had just opened.  A sheet closes
+    // with Done, and the command is disabled while one is up.
+    case .places: showPlaces = true
     case .bookmark: bookmarkCurrentView()
     case .julia: toggleJulia()
     case .swapJulia: swapJulia()
     case .movie: showMovie = true
-    case .benchmark: showBenchmark.toggle()
-    case .help: showHelp.toggle()
+    case .benchmark: showBenchmark = true
+    case .help: showHelp = true
     }
   }
   func requestRender() {

@@ -34,8 +34,16 @@ import XCTest
 
       // In a sheet's text field the arrows are the field's.
       app.typeKey("l", modifierFlags: .command)
+      // Under load the sheet is still settling when its field first appears,
+      // and a tap then finds nothing: wait for the sheet, then for the field
+      // to take a tap.
+      XCTAssertTrue(
+        app.navigationBars["Places"].waitForExistence(timeout: 10), "Places did not open")
       let field = app.textFields.firstMatch
-      XCTAssertTrue(field.waitForExistence(timeout: 5))
+      let settled = XCTNSPredicateExpectation(
+        predicate: NSPredicate(format: "exists == true AND hittable == true"), object: field)
+      XCTAssertEqual(
+        XCTWaiter().wait(for: [settled], timeout: 10), .completed, "Places closed again")
       field.tap()
       field.typeText("ab")
       app.typeKey(.leftArrow, modifierFlags: [])

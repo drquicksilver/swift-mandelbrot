@@ -43,7 +43,20 @@ strings-check: build ios
 IPAD ?= $(shell xcrun simctl list devices available | grep -m1 -E '^ +iPad' | grep -oE '[0-9A-F-]{36}')
 apptests:
 	xcodebuild -quiet -project Mandelbrot.xcodeproj -scheme Mandelbrot -destination 'platform=macOS' -derivedDataPath $(BUILD_DIR)-apptests CODE_SIGNING_ALLOWED=NO test -only-testing:MandelbrotTests
-	xcodebuild -quiet -project Mandelbrot.xcodeproj -scheme Mandelbrot -destination 'platform=iOS Simulator,id=$(IPAD)' -derivedDataPath $(BUILD_DIR)-apptests-ios test -only-testing:MandelbrotTests -only-testing:MandelbrotUITests/KeyboardUITests
+	# One bundle at a time, on one simulator: run together, xcodebuild puts the
+	# unit and UI bundles on two clones at once, and every test ran about five
+	# times slower, past the deadlines of the render tests.
+	xcodebuild -quiet -project Mandelbrot.xcodeproj -scheme Mandelbrot -destination 'platform=iOS Simulator,id=$(IPAD)' -derivedDataPath $(BUILD_DIR)-apptests-ios -parallel-testing-enabled NO build-for-testing
+	# The UI test goes first: straight after the unit tests, SpringBoard
+	# refused to launch its runner ("Busy", "failed preflight checks") every
+	# time.  That failure, and only that, is also retried once; a test that
+	# fails is never retried.
+	@log=$$(mktemp); ui="xcodebuild -quiet -project Mandelbrot.xcodeproj -scheme Mandelbrot -destination platform=iOS\ Simulator,id=$(IPAD) -derivedDataPath $(BUILD_DIR)-apptests-ios -parallel-testing-enabled NO test-without-building -only-testing:MandelbrotUITests/KeyboardUITests"; \
+	if ! eval $$ui > $$log 2>&1; then \
+	  if grep -q "failed preflight checks" $$log; then echo "The simulator was busy launching the UI runner; retrying once"; eval $$ui; \
+	  else cat $$log; exit 1; fi; \
+	fi
+	xcodebuild -quiet -project Mandelbrot.xcodeproj -scheme Mandelbrot -destination 'platform=iOS Simulator,id=$(IPAD)' -derivedDataPath $(BUILD_DIR)-apptests-ios -parallel-testing-enabled NO test-without-building -only-testing:MandelbrotTests
 
 format:
 	rg --files -g '*.swift' -g '!Mandelbrot/Core/Vendor/**' -0 | xargs -0 xcrun swift-format format --configuration .swift-format --in-place
