@@ -1,0 +1,2089 @@
+<!DOCTYPE html>
+<html lang="en-GB">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mandelbrot App — UI/UX Audit</title>
+<style>
+:root{
+  --bg:#ffffff; --bg-alt:#f6f7f9; --bg-card:#ffffff; --fg:#1a1d21; --fg-dim:#5b636d;
+  --rule:#dfe3e8; --rule-soft:#eceff2; --accent:#2b5fb8; --accent-soft:#e8eefb;
+  --p0-bg:#fdecea; --p0-fg:#8c1d13; --p0-br:#f0b5ae;
+  --p1-bg:#fdf3e2; --p1-fg:#7a4c04; --p1-br:#eccf99;
+  --p2-bg:#eef4ee; --p2-fg:#2f5d3a; --p2-br:#bcd6c2;
+  --ok-bg:#eaf3ec; --ok-fg:#245b33;
+  --warn-bg:#fdf6e6; --warn-fg:#7a5a06;
+  --bad-bg:#fbecea; --bad-fg:#8a241a;
+  --max:60rem;
+}
+@media (prefers-color-scheme: dark){
+  :root{
+    --bg:#15171a; --bg-alt:#1b1e22; --bg-card:#1f2327; --fg:#e6e8ea; --fg-dim:#a0a7b0;
+    --rule:#343a41; --rule-soft:#282d33; --accent:#8db2f0; --accent-soft:#232b38;
+    --p0-bg:#3a1e1b; --p0-fg:#f2b3aa; --p0-br:#6b322b;
+    --p1-bg:#352a15; --p1-fg:#efcb8c; --p1-br:#634d20;
+    --p2-bg:#1d2c22; --p2-fg:#a8d5b5; --p2-br:#365a41;
+    --ok-bg:#1d2c22; --ok-fg:#a8d5b5;
+    --warn-bg:#332a13; --warn-fg:#e8c98c;
+    --bad-bg:#37201d; --bad-fg:#efaba1;
+  }
+}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{
+  margin:0; background:var(--bg); color:var(--fg);
+  font:16px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,sans-serif;
+}
+.layout{display:block;max-width:100rem;margin:0 auto;padding:0 1rem}
+nav.toc{display:none}
+main{max-width:var(--max);margin:0 auto;padding:0 0 6rem}
+header.page{
+  max-width:var(--max);margin:0 auto;padding:3rem 0 1.5rem;border-bottom:1px solid var(--rule);
+}
+header.page h1{font-size:2rem;line-height:1.2;margin:0 0 .4rem;letter-spacing:-.02em}
+header.page .sub{color:var(--fg-dim);margin:0 0 1.5rem}
+dl.meta{display:grid;grid-template-columns:max-content 1fr;gap:.25rem 1.25rem;margin:0;font-size:.875rem}
+dl.meta dt{color:var(--fg-dim)}
+dl.meta dd{margin:0}
+h2{font-size:1.45rem;margin:3.5rem 0 .75rem;padding-top:.5rem;letter-spacing:-.015em;scroll-margin-top:1rem}
+h3{font-size:1.15rem;margin:2.5rem 0 .5rem;scroll-margin-top:1rem}
+h4{font-size:.8rem;text-transform:uppercase;letter-spacing:.07em;color:var(--fg-dim);margin:1.5rem 0 .4rem}
+p,li{max-width:100%}
+ul,ol{padding-left:1.25rem}
+li{margin:.3rem 0}
+code{font:0.86em ui-monospace,SFMono-Regular,Menlo,monospace;background:var(--bg-alt);padding:.1em .35em;border-radius:4px}
+a{color:var(--accent)}
+hr{border:0;border-top:1px solid var(--rule);margin:3rem 0}
+.lede{font-size:1.06rem;color:var(--fg-dim)}
+
+/* Figures */
+figure{margin:1.25rem 0;padding:0}
+figure img{
+  display:block;width:100%;height:auto;border-radius:8px;border:1px solid var(--rule);
+  background:var(--bg-alt);cursor:zoom-in;
+}
+figcaption{font-size:.82rem;color:var(--fg-dim);margin-top:.5rem;line-height:1.45}
+.shots{display:grid;gap:1.25rem;grid-template-columns:1fr}
+@media(min-width:48rem){
+  .shots.two{grid-template-columns:1fr 1fr;align-items:start}
+  .shots.two.wide-left{grid-template-columns:2fr 1fr}
+  .shots.three{grid-template-columns:1fr 1fr 1fr;align-items:start}
+}
+.shots figure{margin:0}
+.plat{
+  display:inline-block;font-size:.7rem;text-transform:uppercase;letter-spacing:.06em;
+  color:var(--fg-dim);border:1px solid var(--rule);border-radius:999px;padding:.05rem .45rem;margin-right:.4rem;
+}
+
+/* Priority chips and lists */
+.pri{display:inline-block;font-size:.72rem;font-weight:700;letter-spacing:.04em;
+  padding:.1rem .45rem;border-radius:4px;border:1px solid;vertical-align:.08em;white-space:nowrap}
+.p0{background:var(--p0-bg);color:var(--p0-fg);border-color:var(--p0-br)}
+.p1{background:var(--p1-bg);color:var(--p1-fg);border-color:var(--p1-br)}
+.p2{background:var(--p2-bg);color:var(--p2-fg);border-color:var(--p2-br)}
+ul.pris{list-style:none;padding:0;margin:.75rem 0}
+ul.pris li{display:flex;gap:.6rem;align-items:flex-start;margin:.45rem 0;
+  padding:.5rem .65rem;border:1px solid var(--rule-soft);border-radius:7px;background:var(--bg-alt)}
+ul.pris li .pri{flex:0 0 auto;margin-top:.1rem}
+
+/* Observation tags */
+.tag{display:inline-block;font-size:.72rem;font-weight:600;padding:.05rem .4rem;border-radius:4px;margin-right:.4rem}
+.t-str{background:var(--ok-bg);color:var(--ok-fg)}
+.t-con{background:var(--warn-bg);color:var(--warn-fg)}
+.t-prb{background:var(--bad-bg);color:var(--bad-fg)}
+.ev{display:inline-block;font-size:.7rem;color:var(--fg-dim);border:1px dashed var(--rule);
+  border-radius:4px;padding:0 .35rem;margin-left:.35rem;white-space:nowrap}
+
+.card{background:var(--bg-alt);border:1px solid var(--rule-soft);border-radius:9px;padding:1rem 1.15rem;margin:1.25rem 0}
+.card h4{margin-top:0}
+table{border-collapse:collapse;width:100%;font-size:.9rem;margin:1rem 0;display:block;overflow-x:auto}
+th,td{text-align:left;padding:.45rem .6rem;border-bottom:1px solid var(--rule-soft);vertical-align:top}
+th{color:var(--fg-dim);font-weight:600;font-size:.8rem;text-transform:uppercase;letter-spacing:.05em}
+
+/* Table of contents */
+@media(min-width:70rem){
+  .layout{display:grid;grid-template-columns:16rem minmax(0,1fr);gap:3rem;padding:0 2rem}
+  nav.toc{display:block;position:sticky;top:0;align-self:start;max-height:100vh;overflow-y:auto;
+    padding:3rem 0 3rem;font-size:.84rem;line-height:1.45}
+  nav.toc strong{display:block;font-size:.72rem;text-transform:uppercase;letter-spacing:.08em;
+    color:var(--fg-dim);margin:1.25rem 0 .4rem}
+  nav.toc a{display:block;color:var(--fg-dim);text-decoration:none;padding:.16rem 0}
+  nav.toc a:hover{color:var(--accent)}
+  header.page,main{max-width:var(--max);margin:0}
+}
+
+/* Lightbox */
+#lb{position:fixed;inset:0;background:rgba(0,0,0,.88);display:none;z-index:99;
+  align-items:center;justify-content:center;padding:2rem;cursor:zoom-out}
+#lb.on{display:flex}
+#lb img{max-width:100%;max-height:100%;border-radius:6px;box-shadow:0 8px 40px rgba(0,0,0,.6)}
+
+@media print{
+  nav.toc,#lb{display:none!important}
+  body{background:#fff;color:#000;font-size:11pt}
+  .layout{display:block;padding:0}
+  header.page,main{max-width:none}
+  h2{page-break-after:avoid}
+  figure,ul.pris li,.card{page-break-inside:avoid}
+  figure img{border:1px solid #bbb;cursor:default}
+  a{color:#000;text-decoration:none}
+}
+</style>
+</head>
+<body>
+
+<div class="layout">
+<nav class="toc" aria-label="Contents">
+  <strong>Contents</strong>
+  <a href="#summary">Executive summary</a>
+  <a href="#map">Application map</a>
+  <a href="#method">How this was produced</a>
+  <strong>Screen by screen</strong>
+  <a href="#s-explorer">1. Main exploration view</a>
+  <a href="#s-mac-toolbar">2. macOS toolbar</a>
+  <a href="#s-ios-cluster">3. iPhone control cluster</a>
+  <a href="#s-menus">4. Menus &amp; keyboard</a>
+  <a href="#s-gestures">5. Gestures &amp; manipulation</a>
+  <a href="#s-julia">6. Julia companion</a>
+  <a href="#s-places">7. Places</a>
+  <a href="#s-bookmark">8. Bookmark creation</a>
+  <a href="#s-share">9. Share</a>
+  <a href="#s-settings-colour">10. Settings — Colour</a>
+  <a href="#s-settings-detail">11. Settings — Detail</a>
+  <a href="#s-settings-rest">12. Settings — companion &amp; About</a>
+  <a href="#s-ack">13. Acknowledgements</a>
+  <a href="#s-controls">14. Controls (help)</a>
+  <a href="#s-movie-mac">15. Zoom Movie — macOS</a>
+  <a href="#s-movie-ios">16. Zoom Movie — iPhone</a>
+  <a href="#s-progress">17. Render progress &amp; completion</a>
+  <a href="#s-dev">18. Developer tools</a>
+  <a href="#s-states">19. Error &amp; boundary states</a>
+  <a href="#s-resize">20. Resizing &amp; orientation</a>
+  <a href="#s-icon">21. App icon &amp; first run</a>
+  <strong>Analysis</strong>
+  <a href="#workflows">Workflow review</a>
+  <a href="#crossplat">Cross-platform consistency</a>
+  <a href="#a11y">Accessibility &amp; resilience</a>
+  <a href="#system">Design-system findings</a>
+  <a href="#recs">Prioritised recommendations</a>
+  <a href="#sequence">Next-pass sequence</a>
+  <a href="#coverage">Coverage &amp; limitations</a>
+</nav>
+
+<div>
+<header class="page">
+  <h1>Mandelbrot App — UI/UX Audit</h1>
+  <p class="sub">A full review of the exploration, bookmarking, Julia, movie and export experience on macOS and iPhone.</p>
+  <dl class="meta">
+    <dt>Audit date</dt><dd>22 September 2026</dd>
+    <dt>Commit</dt><dd><code>a463931</code> — “Milestone 2.11: deterministic depth-adaptive colour”</dd>
+    <dt>macOS</dt><dd>26.6 (25G72), MacBookPro18,1 · Apple M1 Pro</dd>
+    <dt>iPhone</dt><dd>iPhone 17 Pro simulator (402 × 874 pt, @3×), iOS 27.0 (24A434)</dd>
+    <dt>Toolchain</dt><dd>Xcode 27.0</dd>
+    <dt>Build</dt><dd><code>make build</code> and <code>make ios</code> — Release configuration, unsigned, <code>-derivedDataPath /tmp/mandelbrot-development{,-ios}</code></dd>
+    <dt>Scope</dt><dd>21 review areas covering 42 inventory items · 45 screenshots · 56 actionable issues</dd>
+  </dl>
+</header>
+
+<main>
+
+<h2 id="summary">Executive summary</h2>
+
+<p class="lede">This is a genuinely good fractal explorer wrapped in an unfinished application. The parts
+that touch the fractal directly — the canvas, the gestures, the palettes, the Julia companion, the
+Mac movie dialog — are excellent and in places better than commercial equivalents. Almost everything
+that surrounds them is a single generic SwiftUI <code>Form</code> inside a <code>NavigationStack</code>,
+shipped unchanged to both platforms, and on the Mac that shared chrome is visibly broken.</p>
+
+<h4>What already works well</h4>
+<ul>
+<li><strong>The fractal is the hero.</strong> On both platforms the canvas is edge to edge, the chrome is a
+single translucent cluster, and nothing competes with the image. Launching the app and pinching is
+exactly the experience the vision document asks for.</li>
+<li><strong>Direct manipulation is first class.</strong> One transform solves pan, zoom and rotate together from
+the raw touches, so the point under each finger stays pinned; the Mac gets trackpad pinch, twist,
+scroll-to-zoom-at-pointer, shift-drag framing and inertial flings. This is the hardest part of the
+product and it is done properly.</li>
+<li><strong>The Julia companion on macOS is a delight.</strong> The crosshair follows the pointer and the companion
+re-renders live. It makes the relationship between the two sets tangible in a way few apps manage.</li>
+<li><strong>The Mac Zoom Movie dialog is a model of what the rest of the app should look like</strong> — a real
+dialog with a title, cards, thumbnails of both endpoints, a live low-resolution preview movie you can
+scrub, an editable journey timeline, measured statistics, a help popover, and Cancel / default-button
+footer that swaps cleanly between settings, rendering and completion states.</li>
+<li><strong>The help content is unusually good.</strong> Every toolbar button is defined once together with the
+sentence that explains it, so a button cannot exist without an explanation, and the same sentence is
+the Mac tooltip, the iOS accessibility hint and the row in Controls.</li>
+</ul>
+
+<h4>The major themes needing work</h4>
+<ol>
+<li><strong>One shared sheet chrome, used unchanged on macOS.</strong> Places, Settings, Controls, Developer and
+Benchmarks are all <code>NavigationStack { Form }.toolbar { Button("Done") }</code>. On the Mac this
+produces a fixed ~380&nbsp;pt panel that ignores the window, puts <em>Done</em> at the bottom <em>left</em>,
+offers no Cancel and no default button, does not respond to <kbd>Escape</kbd>, clips its content, and
+renders section headers as unstyled body text. One cause, five screens, a dozen symptoms.</li>
+<li><strong>The iPhone Zoom Movie sheet is a different, much weaker product</strong> than the Mac one — a different
+route model (direct descent only), no preview, no endpoint thumbnails, no minimum-duration guard,
+no completion confirmation, and its settings stay fully interactive while a render is running.</li>
+<li><strong>The app never tells you where you are.</strong> There is no zoom or coordinate readout anywhere in the
+exploration view on either platform; the only place to find it is inside the Places sheet, which covers
+the view you are asking about.</li>
+<li><strong>Success is silent.</strong> Bookmarking gives no acknowledgement at all, and finishing a movie on iPhone
+gives none either. These are the two classic “did that work?” moments in the app.</li>
+<li><strong>Accessibility falls over at large text sizes</strong> and the fractal itself is invisible to VoiceOver on
+both platforms.</li>
+<li><strong>Half the shareable product is missing.</strong> There is no still-image export in the UI on either
+platform (only in the headless CLI), and <em>Share</em> shares a raw <code>mandelbrot://</code> URL that
+nobody without the app can open.</li>
+</ol>
+
+<h4>Issue counts</h4>
+<p>These are the deduplicated actionable items in <a href="#recs">Prioritised recommendations</a>. The
+per-section Priority lists total 2 / 34 / 44 because a systemic issue is flagged in every screen it shows up
+in; the recommendations collapse those to one item each.</p>
+<table>
+<tr><th>Priority</th><th>Count</th><th>Character</th></tr>
+<tr><td><span class="pri p0">P0</span></td><td>2</td><td>Visibly broken settings layout on macOS; accessibility text sizes destroy the iPhone controls.</td></tr>
+<tr><td><span class="pri p1">P1</span></td><td>28</td><td>Platform conventions, missing feedback, cross-platform divergence, accessibility, missing export.</td></tr>
+<tr><td><span class="pri p2">P2</span></td><td>26</td><td>Microcopy, formatting, spacing, icon choices, estimate accuracy, transitions.</td></tr>
+</table>
+
+<h4>The systemic finding</h4>
+<p>Roughly two thirds of the individual P1/P2 items resolve to four systemic causes: the shared sheet
+chrome, the absence of a form-layout convention on macOS, an unspecified slider/label pattern, and an
+unspecified way of formatting a zoom scale (this audit observed the same quantity printed as
+<code>1.0</code>, <code>1×</code>, <code>4e3×</code>, <code>4000.0</code>, <code>4,000×</code> and
+<code>2.0000000000000004e9×</code>). Fixing those four things once is worth more than fixing the
+symptoms screen by screen — see <a href="#system">Design-system findings</a>.</p>
+
+<h2 id="map">Application map</h2>
+<p>Everything below was located by reading the view composition and navigation paths, then confirmed by
+running the app. Items marked <span class="ev">not exercised</span> could not be reached in this session
+and are reviewed from source only.</p>
+
+<table>
+<tr><th>Area</th><th>macOS</th><th>iPhone</th><th>Source</th></tr>
+<tr><td>Main exploration canvas</td><td>✓</td><td>✓</td><td><code>ContentView</code>, <code>ViewerView</code>, <code>GPUCanvas</code></td></tr>
+<tr><td>Input surface (pan/zoom/rotate/select/marker)</td><td>✓</td><td>✓</td><td><code>PlatformInput</code></td></tr>
+<tr><td>Window toolbar (10 items)</td><td>✓</td><td>—</td><td><code>ContentView.toolbar</code></td></tr>
+<tr><td>Floating control cluster (6–7 items)</td><td>—</td><td>✓</td><td><code>ContentView.overlay</code></td></tr>
+<tr><td>Toolbar overflow menu</td><td>✓</td><td>—</td><td>AppKit</td></tr>
+<tr><td>Explore menu, File menu, app menu</td><td>✓</td><td>—</td><td><code>ExplorerCommands</code></td></tr>
+<tr><td>Keyboard shortcuts (21 commands)</td><td>✓</td><td>hardware kbd</td><td><code>ExplorerCommand</code></td></tr>
+<tr><td>Rotation compass + Upright toolbar item</td><td>✓</td><td>✓ (source)</td><td><code>RotationCompass</code></td></tr>
+<tr><td>Julia companion — side-by-side</td><td>✓</td><td>—</td><td><code>CompanionPanel</code></td></tr>
+<tr><td>Julia companion — corner inset</td><td>—</td><td>✓</td><td><code>CompanionPanel</code></td></tr>
+<tr><td>Julia crosshair marker / pinning</td><td>✓</td><td>✓</td><td><code>JuliaMarker</code></td></tr>
+<tr><td>Julia swapped mode</td><td>✓ (source)</td><td>✓</td><td><code>MandelbrotThumbnail</code></td></tr>
+<tr><td>Places — empty bookmarks</td><td>✓</td><td>✓</td><td><code>PlacesView</code></td></tr>
+<tr><td>Places — populated</td><td>✓</td><td>✓</td><td><code>PlacesView</code></td></tr>
+<tr><td>Bookmark creation (sheet field, ⌘D, toolbar)</td><td>✓</td><td>✓</td><td><code>ExplorerModel.bookmarkCurrentView</code></td></tr>
+<tr><td>Swipe-to-delete a bookmark</td><td>n/a</td><td><span class="ev">not exercised</span></td><td><code>PlacesView.onDelete</code></td></tr>
+<tr><td>Share link (system share sheet)</td><td>✓</td><td>✓ (entry point)</td><td><code>ShareLink</code></td></tr>
+<tr><td>Settings — Colour</td><td>✓</td><td>✓</td><td><code>AppearanceView</code></td></tr>
+<tr><td>Settings — Detail</td><td>✓</td><td>✓</td><td><code>AppearanceView</code></td></tr>
+<tr><td>Settings — Julia companion</td><td>✓</td><td>✓</td><td><code>AppearanceView</code></td></tr>
+<tr><td>Settings — About + 7-tap unlock</td><td>✓</td><td>✓</td><td><code>AppearanceView</code></td></tr>
+<tr><td>Acknowledgements</td><td>✓</td><td>✓ (equivalent)</td><td><code>AcknowledgementsView</code></td></tr>
+<tr><td>Controls (help)</td><td>✓</td><td>✓</td><td><code>HelpView</code>, <code>HelpContent</code></td></tr>
+<tr><td>Zoom Movie — journey card, endpoint thumbnails</td><td>✓</td><td>— (no equivalent)</td><td><code>MovieSheetMac</code></td></tr>
+<tr><td>Zoom Movie — live journey preview</td><td>✓</td><td>— (no equivalent)</td><td><code>JourneyPreviewRenderer</code></td></tr>
+<tr><td>Zoom Movie — Edit Journey timeline + overview slider</td><td>✓</td><td>— (no equivalent)</td><td><code>MovieSheetMac.timeline</code></td></tr>
+<tr><td>Zoom Movie — settings &amp; statistics</td><td>✓</td><td>✓ (reduced)</td><td><code>MovieSheetMac</code> / <code>MovieView</code></td></tr>
+<tr><td>Zoom Movie — output folder picker</td><td>✓</td><td>— (share sheet only)</td><td><code>MovieLibrary</code></td></tr>
+<tr><td>Zoom Movie — help popover</td><td>✓</td><td>— (no equivalent)</td><td><code>MovieSheetMac.explanation</code></td></tr>
+<tr><td>Render progress + cancel</td><td>✓</td><td>✓</td><td><code>MovieRenderer</code></td></tr>
+<tr><td>Render completion / playback / share</td><td>✓</td><td>✓ (reduced)</td><td>both sheets</td></tr>
+<tr><td>Render failure message</td><td><span class="ev">not exercised</span></td><td><span class="ev">not exercised</span></td><td><code>movies.error</code></td></tr>
+<tr><td>Developer panel</td><td>✓</td><td>✓ (equivalent)</td><td><code>DeveloperPanel</code></td></tr>
+<tr><td>Performance HUD + tile overlay</td><td>✓</td><td>✓ (equivalent)</td><td><code>TileHUD</code></td></tr>
+<tr><td>Benchmarks — empty and complete</td><td>✓</td><td>✓ (equivalent)</td><td><code>BenchmarkView</code></td></tr>
+<tr><td>Location error notice</td><td>✓</td><td>✓ (equivalent)</td><td><code>ContentView</code></td></tr>
+<tr><td>Tile failure notice + Retry</td><td><span class="ev">not exercised</span></td><td><span class="ev">not exercised</span></td><td><code>TileFailureNotice</code></td></tr>
+<tr><td>“Maximum detail reached” notice</td><td><span class="ev">not exercised</span></td><td><span class="ev">not exercised</span></td><td><code>ContentView</code></td></tr>
+<tr><td>Narrow / wide window adaptation</td><td>✓</td><td>—</td><td>AppKit + <code>sizeClass</code></td></tr>
+<tr><td>Portrait / landscape</td><td>—</td><td>✓</td><td><code>ContentView</code></td></tr>
+<tr><td>Dynamic Type at AX5</td><td>—</td><td>✓</td><td>all SwiftUI views</td></tr>
+<tr><td>App icon / first launch</td><td>—</td><td>✓</td><td>asset catalogue</td></tr>
+</table>
+
+<h2 id="method">How this was produced</h2>
+<p>The macOS app was built Release and driven interactively with real mouse, keyboard and menu input at
+a 1280 × 800 window (and at 560 × 620 for the narrow case), captured window-only with
+<code>screencapture -l</code>. The iPhone build was installed on an iPhone 17 Pro simulator and driven by
+synthesised taps and drags against the live accessibility hierarchy, captured with
+<code>xcrun simctl io … screenshot</code>. Every statement below is tagged:</p>
+<ul>
+<li><span class="ev">observed</span> — seen happening in the running app.</li>
+<li><span class="ev">source</span> — read from the code but not reproduced in this session.</li>
+<li><span class="ev">suspected</span> — seen once, not reliably reproduced.</li>
+</ul>
+<p>Three pieces of temporary state were used and have been removed: a set of seeded bookmarks written into
+the simulator's <code>UserDefaults</code>, and <code>DeveloperToolsUnlocked</code> /
+<code>DeveloperMenuEnabled</code> on the Mac. No source file was modified. See
+<a href="#coverage">Coverage &amp; limitations</a>.</p>
+
+<hr>
+
+<h2 id="s-explorer">1. Main exploration view</h2>
+<p>The app's home. A full-bleed GPU canvas with a translucent control cluster; no chrome, no status bar on
+iPhone, no sidebar or inspector on Mac.</p>
+
+<figure><img src="ui-ux-audit-assets/mac-main-explorer.png" alt="macOS window at launch showing the whole Mandelbrot set in the Blue Gold palette filling a 1280 by 800 window">
+<figcaption><span class="plat">macOS</span>Launch, at a normal laptop window size. The image is the interface; the toolbar is the only chrome.</figcaption></figure>
+
+<div class="shots two wide-left">
+<figure><img src="ui-ux-audit-assets/mac-explorer-deep.png" alt="macOS window showing Seahorse Valley in the Ink palette filling the window, with a translucent toolbar of ten icons at the top right">
+<figcaption><span class="plat">macOS</span>Seahorse Valley, reached from Places. The image fills the window; the window title is just “Mandelbrot”.</figcaption></figure>
+<figure><img src="ui-ux-audit-assets/iphone-explorer-deep.png" alt="iPhone showing a deep Twilight-palette view of the Mandelbrot set with a seven-icon capsule at the top right">
+<figcaption><span class="plat">iPhone</span>2×10⁹ zoom via a shared link. Note there is nothing on screen that says so.</figcaption></figure>
+</div>
+
+<h4>Strengths</h4>
+<ul>
+<li><span class="tag t-str">Strength</span> The content-to-chrome ratio is exemplary. On the Mac the toolbar is a
+single compact glass cluster at the trailing edge; on iPhone it is one capsule. Nothing else is drawn
+over the fractal at rest. <span class="ev">observed</span></li>
+<li><span class="tag t-str">Strength</span> Rendering quality is the product. Colour is smooth and band-free at
+every depth reached, refinement fades in rather than popping, and the canvas never showed a blank frame
+during panning or zooming. <span class="ev">observed</span></li>
+<li><span class="tag t-str">Strength</span> The geometry and input surface share the full drawable area while the
+controls live in the safe area as siblings, so opening or closing the companion never shifts the camera.
+This is a deliberate and correct decision. <span class="ev">source, confirmed by observation</span></li>
+</ul>
+
+<h4>Concerns / Problems</h4>
+<ul>
+<li><span class="tag t-prb">Problem</span> <strong>There is no location or zoom readout anywhere in the
+exploration view.</strong> After following a shared link to 2×10⁹, nothing on screen says where you are or how
+deep you have gone. The only readout is <em>Centre</em> / <em>Scale</em> inside the Places sheet — which
+covers the view. For an app whose entire subject is position and scale, that is the most conspicuous gap in
+the exploration UI. <span class="ev">observed</span></li>
+<li><span class="tag t-con">Concern</span> <strong>Jumping to a place is an instantaneous cut.</strong> Choosing
+Seahorse Valley from Places replaces the screen with no transition at all. The app has the machinery for a
+continuous camera move — it is exactly what the movie renderer does — but the interactive jump does not use
+it, so the user loses their sense of where they went. <span class="ev">observed</span></li>
+<li><span class="tag t-con">Concern</span> On iPhone the status bar is hidden
+(<code>.statusBarHidden()</code>). That is defensible for an immersive canvas, but it also removes the clock
+and battery for the whole session, and the control capsule sits directly under the Dynamic Island where the
+system would have drawn them. <span class="ev">observed</span></li>
+<li><span class="tag t-con">Concern</span> The app does not restore the last viewed location on launch. Three
+restored Mac windows all opened at the whole set. <span class="ev">observed</span></li>
+</ul>
+
+<h4>Recommendations</h4>
+<ul>
+<li>Add a persistent, quiet scale readout. On macOS the natural home is the window <em>subtitle</em>
+(<code>.navigationSubtitle</code>), which is exactly what it is for: “−0.743643887037151, 0.13182590420533 · 4,000×”.
+On iPhone, a single small capsule at the bottom-leading corner showing just the zoom (“4,000×”), tappable to
+reveal the full coordinates.</li>
+<li>Animate jumps to a place and to a bookmark as a short continuous zoom (0.5–0.8&nbsp;s) rather than a cut,
+honouring <em>Reduce Motion</em> by falling back to a cross-fade.</li>
+<li>Persist the last viewport in <code>@SceneStorage</code> so a relaunch returns the user where they were.</li>
+</ul>
+
+<h4>Priority</h4>
+<ul class="pris">
+<li><span class="pri p1">P1</span><span>No scale or coordinate readout in the exploration view on either platform. <em>Systemic — affects exploration, bookmarking and movie endpoint selection.</em></span></li>
+<li><span class="pri p2">P2</span><span>Place/bookmark restoration is a hard cut; no visual continuity.</span></li>
+<li><span class="pri p2">P2</span><span>Last location is not restored on launch.</span></li>
+</ul>
+
+<h2 id="s-mac-toolbar">2. macOS toolbar</h2>
+
+<div class="shots two">
+<figure><img src="ui-ux-audit-assets/mac-toolbar-tooltip.png" alt="Close-up of the macOS toolbar showing ten icon buttons, with a tooltip reading Open the gallery of places, and the views you have bookmarked">
+<figcaption><span class="plat">macOS</span>Hover reveals a full-sentence tooltip and a hover highlight. Note the two adjacent bookmark glyphs (outline = Places, filled = Bookmark).</figcaption></figure>
+<figure><img src="ui-ux-audit-assets/mac-toolbar-overflow.png" alt="Narrow window with the toolbar collapsed into a chevron, showing an overflow menu with Zoom Movie, Share, Settings and Controls">
+<figcaption><span class="plat">macOS</span>At 560&nbsp;pt the four trailing items collapse into an overflow menu — the only place their names ever appear.</figcaption></figure>
+</div>
+
+<h4>Strengths</h4>
+<ul>
+<li><span class="tag t-str">Strength</span> Every button has a helpful, human tooltip — a full sentence, not a
+repeat of the label, and the same sentence appears in Controls. Hover highlighting is correct.
+<span class="ev">observed</span></li>
+<li><span class="tag t-str">Strength</span> Back and Forward are properly disabled when there is no history, and
+the <em>Upright</em> item appears only when the view is rotated. <span class="ev">observed</span></li>
+<li><span class="tag t-str">Strength</span> Overflow at narrow widths works and reveals labels.
+<span class="ev">observed</span></li>
+<li><span class="tag t-str">Strength</span> All ten items carry accessibility descriptions
+(<code>Reset, Back, Forward, Places, Bookmark, Julia Companion, Zoom Movie, Share, Settings, Controls</code>).
+<span class="ev">observed via the AX tree</span></li>
+</ul>
+
+<h4>Concerns / Problems</h4>
+<ul>
+<li><span class="tag t-prb">Problem</span> <strong>Two near-identical bookmark glyphs sit next to each other.</strong>
+<code>bookmark</code> means “open Places” and <code>bookmark.fill</code> means “bookmark this view”. Filled
+versus outline is the standard iOS/macOS encoding of <em>state</em> (bookmarked / not bookmarked), not of two
+different commands. A user will reasonably read the pair as one toggle. <span class="ev">observed</span></li>
+<li><span class="tag t-prb">Problem</span> <strong>Adding a toolbar item shifts every other item.</strong> When
+history becomes available, or the view is rotated, Back/Upright are inserted and the whole cluster slides.
+Because the cluster is trailing-aligned, the buttons the user has learned the position of all move — and the
+change is triggered by the very action that precedes the next click. <span class="ev">observed on both platforms</span></li>
+<li><span class="tag t-con">Concern</span> Ten equal-weight icon buttons with no grouping. Navigation
+(Reset/Back/Forward/Upright), library (Places/Bookmark), view (Julia), and output (Movie/Share) are four
+different families rendered identically, with no <code>ToolbarItemGroup</code>, no spacer and no
+<code>.navigation</code> placement for back/forward. <span class="ev">observed</span></li>
+<li><span class="tag t-con">Concern</span> The toolbar is not user-customisable
+(<code>.toolbar(id:)</code> / <code>customizationBehavior</code>), and overflow priority is purely positional,
+so at narrow widths the app hides Share, Settings and Controls before it hides Forward.
+<span class="ev">observed</span></li>
+</ul>
+
+<h4>Recommendations</h4>
+<ul>
+<li>Give the two library actions distinct glyphs. Use <code>books.vertical</code> or
+<code>rectangle.grid.2x2</code> for Places (it is a gallery, not a bookmark) and keep
+<code>bookmark</code>/<code>bookmark.fill</code> as a single item whose fill reflects whether the current view
+is already bookmarked.</li>
+<li>Reserve space for the conditional items, or move Back/Forward to a fixed
+<code>ToolbarItemGroup(placement: .navigation)</code> at the leading edge — the Mac convention — so the
+trailing cluster never moves.</li>
+<li>Group the trailing cluster with <code>ToolbarItemGroup</code> and a <code>ToolbarSpacer</code> between
+families, and set <code>customizationBehavior</code> so overflow drops the least important items first.</li>
+</ul>
+
+<h4>Priority</h4>
+<ul class="pris">
+<li><span class="pri p1">P1</span><span>Two adjacent bookmark glyphs for two different commands.</span></li>
+<li><span class="pri p1">P1</span><span>Conditional toolbar items reflow the whole cluster. <em>Also affects iPhone.</em></span></li>
+<li><span class="pri p2">P2</span><span>No grouping or overflow priority among ten equal-weight items.</span></li>
+</ul>
+
+<h2 id="s-ios-cluster">3. iPhone control cluster</h2>
+
+<div class="shots two">
+<figure><img src="ui-ux-audit-assets/iphone-main-explorer.png" alt="iPhone launch state: the whole Mandelbrot set in blue and gold with a capsule of six icons at the top right">
+<figcaption><span class="plat">iPhone</span>Launch. Six icons, no labels, no onboarding, no status bar.</figcaption></figure>
+<figure><img src="ui-ux-audit-assets/iphone-explorer-deep.png" alt="iPhone at a deep zoom with a seven-icon capsule; the Back chevron has been inserted and the other icons have shifted left">
+<figcaption><span class="plat">iPhone</span>After navigating, Back is inserted and every other button moves one slot left.</figcaption></figure>
+</div>
+
+<h4>Strengths</h4>
+<ul>
+<li><span class="tag t-str">Strength</span> Each button is a genuine 44 × 44&nbsp;pt target with
+<code>.contentShape(Rectangle())</code>, confirmed in the accessibility hierarchy, and each carries a label and
+a hint. <span class="ev">observed</span></li>
+<li><span class="tag t-str">Strength</span> A single capsule of translucent material reads as one object and
+keeps the image uninterrupted. <span class="ev">observed</span></li>
+</ul>
+
+<h4>Concerns / Problems</h4>
+<ul>
+<li><span class="tag t-prb">Problem</span> <strong>The controls are at the top of a large phone.</strong> On an
+iPhone 17 Pro the cluster sits at y ≈ 100&nbsp;pt — the least reachable part of the screen for a one-handed
+grip, and the app is explicitly a one-handed, pinch-and-explore product. In landscape it is worse.
+<span class="ev">observed</span></li>
+<li><span class="tag t-prb">Problem</span> <strong>Neither Bookmark nor Share exists on iPhone.</strong> The Mac
+has both as toolbar items; on iPhone bookmarking is only reachable by opening Places, scrolling to a text
+field and tapping a 20&nbsp;pt-tall button, and sharing only from inside Places. The phone is the platform
+where people actually share. <span class="ev">observed</span></li>
+<li><span class="tag t-prb">Problem</span> <strong>The cluster's material is content-dependent.</strong> Over the
+bright orange/gold regions the capsule becomes a pale tan and the dark glyphs are fine; over dark regions it
+goes near-black and contrast drops. There is no fixed minimum contrast between glyph and backing.
+<span class="ev">observed</span></li>
+<li><span class="tag t-con">Concern</span> Six to seven unlabelled icons is the app's entire affordance
+surface on iPhone and there is no way to see their names short of opening Controls.
+<span class="ev">observed</span></li>
+</ul>
+
+<h4>Recommendations</h4>
+<ul>
+<li>Move the cluster to the bottom-trailing safe area, mirroring where the companion inset already lives, so
+both live in the thumb arc. Keep the top clear for the eventual scale readout.</li>
+<li>Add Bookmark and Share to the iPhone cluster. If seven is too many, collapse Settings + Controls into one
+“…” menu — those are the two the user visits least.</li>
+<li>Reserve the Back slot (render it disabled rather than absent) so positions are stable.</li>
+<li>Give the capsule an explicit minimum-contrast treatment: a fixed <code>.ultraThinMaterial</code> over a
+subtle scrim, or a constant tint, rather than letting the fractal dictate legibility.</li>
+</ul>
+
+<h4>Priority</h4>
+<ul class="pris">
+<li><span class="pri p1">P1</span><span>Primary controls sit in the hardest-to-reach corner of a large phone.</span></li>
+<li><span class="pri p1">P1</span><span>Bookmark and Share have no iPhone entry point outside a sheet.</span></li>
+<li><span class="pri p2">P2</span><span>Glyph contrast against the capsule varies with the fractal behind it.</span></li>
+</ul>
+
+<h2 id="s-menus">4. macOS menus and keyboard</h2>
+
+<figure><img src="ui-ux-audit-assets/mac-explore-menu.png" alt="The Explore menu open, showing twenty-one items in a single flat list with no separators; Back and Forward are enabled despite an empty history">
+<figcaption><span class="plat">macOS</span>The whole Explore menu. Twenty-one items, no separators, no submenus — and Back and Forward are enabled although the history is empty.</figcaption></figure>
+
+<h4>Strengths</h4>
+<ul>
+<li><span class="tag t-str">Strength</span> A full command set exists and is defined once, so the Controls sheet,
+the tooltips and the menu can never drift apart. Most bindings are conventional (⌘+, ⌘−, ⌘D, ⌘J, ⌘M).
+<span class="ev">observed</span></li>
+<li><span class="tag t-str">Strength</span> The Debug menu is correctly hidden behind a held Option key or a
+launch flag. <span class="ev">observed</span></li>
+</ul>
+
+<h4>Concerns / Problems</h4>
+<ul>
+<li><span class="tag t-prb">Problem</span> <strong>No <em>Settings…</em> item and no ⌘, anywhere.</strong> The app
+menu contains only About, Services, Hide, Hide Others, Show All, Quit. Settings is reachable only from a
+toolbar icon. ⌘, is one of the most reflexive shortcuts on the platform. <span class="ev">observed</span></li>
+<li><span class="tag t-prb">Problem</span> <strong>No menu item validates.</strong> Back and Forward are enabled
+with an empty history (the toolbar versions correctly are not); <em>Swap Main and Companion</em> is enabled
+with the companion hidden; <em>Upright</em> is enabled when the view is already upright. Choosing them does
+nothing and gives no feedback. <span class="ev">observed</span></li>
+<li><span class="tag t-prb">Problem</span> <strong>Twenty-one items in one flat list.</strong> Navigation, zoom,
+rotation, detail, library, companion and movie are all one undivided run. Mac menus are expected to be
+grouped by separators. <span class="ev">observed</span></li>
+<li><span class="tag t-con">Concern</span> <em>Reset View</em> is <kbd>⇧H</kbd> — a bare Shift shortcut with no
+command key, unlike every other item. It will also fire while a text field is focused in a sheet.
+<span class="ev">source; the menu confirms the binding</span></li>
+<li><span class="tag t-con">Concern</span> The four arrow keys are registered as unmodified menu shortcuts
+(<em>Move Left/Right/Up/Down</em>). Any text field elsewhere in the app now shares its arrow keys with a menu
+command. <span class="ev">source — not reproduced; flagged as a risk</span></li>
+<li><span class="tag t-con">Concern</span> <em>Controls</em> shows no shortcut in the menu even though the help
+advertises <kbd>?</kbd>. <span class="ev">observed</span></li>
+<li><span class="tag t-con">Concern</span> The File menu contains only New Window and Close — no Export, no
+Save Image, no Open Location, and Share is absent from the menus entirely.
+<span class="ev">observed</span></li>
+</ul>
+
+<h4>Recommendations</h4>
+<ul>
+<li>Add a <code>Settings</code> scene (or a <code>CommandGroup(replacing: .appSettings)</code> item) so ⌘, opens
+the existing Settings UI.</li>
+<li>Drive every command's enabled state off the focused <code>ExplorerModel</code> —
+<code>.disabled(!(explorer?.canGoBack ?? false))</code> and so on. The state is already published for the
+toolbar.</li>
+<li>Split Explore into grouped sections with <code>Divider()</code>: Navigate · Zoom &amp; Rotate · Detail ·
+Library · Companion · Movie. Consider moving zoom/rotation/detail to a <em>View</em> menu, which is where a Mac
+user looks for them.</li>
+<li>Give Reset View a command-key shortcut (⌘0 or ⌘1 are the conventional “back to 100 %” bindings) and drop
+the bare-Shift binding.</li>
+<li>Add <em>Export Image…</em> (⇧⌘E) and <em>Share</em> to the File menu once still export exists
+(see <a href="#s-share">§9</a>).</li>
+</ul>
+
+<h4>Priority</h4>
+<ul class="pris">
+<li><span class="pri p1">P1</span><span>No Settings… / ⌘, in the app menu.</span></li>
+<li><span class="pri p1">P1</span><span>No menu item validation — commands that cannot work appear available.</span></li>
+<li><span class="pri p2">P2</span><span>Twenty-one ungrouped items; no View menu.</span></li>
+<li><span class="pri p2">P2</span><span>Unmodified arrow-key shortcuts and a bare-Shift Reset binding risk conflicting with text entry.</span></li>
+<li><span class="pri p2">P2</span><span>Controls shortcut not shown in the menu.</span></li>
+</ul>
+
+<h2 id="s-gestures">5. Gestures and direct manipulation</h2>
+<p>This is the heart of the product and the criterion where it scores highest.</p>
+
+<figure><img src="ui-ux-audit-assets/mac-rotated-compass.png" alt="macOS window with the fractal rotated 45 degrees; a small capsule at the bottom left shows a rotated arrow and 45 degrees, and an Upright item has appeared as the second toolbar button">
+<figcaption><span class="plat">macOS</span>After ⌘⇧, three times. Rotation is supported end to end, and a compass capsule appears at the bottom left — but an <em>Upright</em> toolbar item appears at the same moment, so two affordances for the same command are on screen at once and the whole toolbar cluster has shifted right. <span class="ev">observed</span></figcaption></figure>
+
+<h4>Strengths</h4>
+<ul>
+<li><span class="tag t-str">Strength</span> <strong>One transform, not three recognisers.</strong> On iPhone, pan,
+pinch and twist are solved together from the two raw touches: rotate and scale about the previous midpoint,
+then translate it — the unique transform that pins both fingers. Three independent recognisers could not
+agree on a single result, and the difference is felt. <span class="ev">source; motion confirmed smooth in the simulator</span></li>
+<li><span class="tag t-str">Strength</span> Inertia is handled with care: a quick lift keeps its fling, a held
+finish does not; trackpad momentum is left to AppKit rather than having a second inertia curve added on top;
+scroll interaction is only considered finished when <em>momentum</em> ends, so automatic depth waits for the
+view to settle. These are the details that separate smooth from nearly smooth. <span class="ev">source</span></li>
+<li><span class="tag t-str">Strength</span> The Mac gesture set is properly Mac: drag to pan, scroll or pinch to
+zoom at the pointer, ⌘-scroll to zoom on a trackpad, two-finger twist with a snap near a right angle,
+double-click to zoom, shift-drag to frame a region. The iPhone set is properly iPhone: pinch, double-tap in,
+two-finger tap out. Neither is a translation of the other. <span class="ev">observed on macOS for drag/scroll/double-click; shift-drag framing from source</span></li>
+<li><span class="tag t-str">Strength</span> The crosshair is drawn above the input surface but takes no hits; the
+input view owns the pointer and grabs the marker itself, so there is no gesture conflict between moving
+<em>c</em> and panning. A click that barely moves pins instead of dragging.
+<span class="ev">source; hover tracking observed on macOS</span></li>
+</ul>
+
+<h4>Concerns / Problems</h4>
+<ul>
+<li><span class="tag t-con">Concern</span> <strong>Shift-drag framing is undiscoverable.</strong> It is the most
+precise way to navigate and it exists only as a line in the Controls sheet. There is no cursor change on
+Shift, no hint, and no equivalent on iPhone at all. <span class="ev">source + Controls sheet; not exercised (the automation harness cannot hold a modifier during a drag)</span></li>
+<li><span class="tag t-con">Concern</span> <strong>The companion panel eats the bottom-right corner of the
+gesture surface.</strong> On iPhone the inset is 169 × 169&nbsp;pt with its own input view, so panning that
+starts in the lower-right quadrant drives the companion instead of the main view. There is no visual signal
+that the gesture surface has a hole in it. <span class="ev">observed (panel geometry and its own input view)</span></li>
+<li><span class="tag t-con">Concern</span> <strong>Double-click zoom may fire on well-separated clicks.</strong>
+During one sequence, two clicks about 800&nbsp;pt apart with a sheet interaction between them left the view
+zoomed 2× with the history advanced. This could not be reproduced deliberately.
+<span class="ev">suspected — one occurrence, not confirmed</span></li>
+<li><span class="tag t-con">Concern</span> There is no “zoom out one step” gesture on macOS to match iPhone's
+two-finger tap; the Mac needs the keyboard or the scroll wheel. <span class="ev">source</span></li>
+</ul>
+
+<h4>Recommendations</h4>
+<ul>
+<li>Surface shift-drag: change the cursor to a crosshair while Shift is held over the canvas, and show the
+framed rectangle's resulting zoom factor as you drag.</li>
+<li>Make the iPhone companion inset visibly a separate surface — a thin border and a shadow already exist;
+add a small drag handle, and let a pan that begins on the panel's edge fall through to the main view.
+Better still, let the user move the inset between corners.</li>
+<li>Add ⌥-double-click (or a two-finger double-tap) as zoom-out on macOS, and document it in Controls.</li>
+<li>If the double-click behaviour is reproducible, require both clicks to fall within the system
+double-click distance before treating <code>clickCount == 2</code> as a zoom.</li>
+</ul>
+
+<h4>Priority</h4>
+<ul class="pris">
+<li><span class="pri p2">P2</span><span>Shift-drag framing has no discoverable affordance.</span></li>
+<li><span class="pri p2">P2</span><span>The iPhone companion inset silently removes a corner of the exploration surface.</span></li>
+<li><span class="pri p2">P2</span><span>Investigate whether a double-click zoom can fire from two distant clicks. <em>Unconfirmed.</em></span></li>
+</ul>
+
+<h2 id="s-julia">6. Julia companion</h2>
+
+<div class="shots two wide-left">
+<figure><img src="ui-ux-audit-assets/mac-julia-companion.png" alt="macOS window split: Mandelbrot on the left with a crosshair under the pointer, Julia set on the right with a caption reading Julia c = -0.7437+0.1319i">
+<figcaption><span class="plat">macOS</span>The companion takes 28 % of the window. The crosshair follows the pointer and the Julia set updates live — the best interaction in the app.</figcaption></figure>
+<figure><img src="ui-ux-audit-assets/iphone-julia-companion.png" alt="iPhone with a small Julia panel inset at the bottom right showing an unrelated Julia set and the caption Julia c = -0.8000+0.1560i">
+<figcaption><span class="plat">iPhone</span>The companion opens showing the <em>default</em> c = −0.8+0.156i, unrelated to the view, with no crosshair anywhere.</figcaption></figure>
+</div>
+
+<div class="shots two">
+<figure><img src="ui-ux-audit-assets/iphone-julia-marked.png" alt="iPhone with a crosshair visible in the middle of the Mandelbrot view and the companion caption updated to Julia c = -0.7436+0.1318i">
+<figcaption><span class="plat">iPhone</span>After a tap the crosshair appears and the companion catches up. At this depth the 4-decimal readout is the same everywhere on screen.</figcaption></figure>
+<figure><img src="ui-ux-audit-assets/iphone-julia-swapped.png" alt="iPhone with the Julia set filling the main view and a small Mandelbrot inset labelled Mandelbrot at the bottom right">
+<figcaption><span class="plat">iPhone</span>Swapped. The Julia set becomes the hero; the Mandelbrot inset is not interactive and the value of <em>c</em> is no longer shown anywhere.</figcaption></figure>
+</div>
+
+<h4>Strengths</h4>
+<ul>
+<li><span class="tag t-str">Strength</span> On macOS, hover-driven <em>c</em> is genuinely delightful and is the
+clearest expression of the product's idea. It is fast enough to feel continuous.
+<span class="ev">observed</span></li>
+<li><span class="tag t-str">Strength</span> The panel has its own pan, pinch and twist, and its own reset, so it
+is a real second viewer rather than a thumbnail. <span class="ev">source; reset and swap buttons observed</span></li>
+<li><span class="tag t-str">Strength</span> The pin metaphor is right: drag the crosshair to move it, click it to
+pin, pinned is filled. Simple and physical. <span class="ev">source; pin button observed</span></li>
+<li><span class="tag t-str">Strength</span> Swapping promotes the Julia set to the main view cleanly and the
+platform layout adapts correctly (side-by-side on Mac and iPad-class widths, corner inset on a compact phone).
+<span class="ev">observed</span></li>
+</ul>
+
+<h4>Concerns / Problems</h4>
+<ul>
+<li><span class="tag t-prb">Problem</span> <strong>On iPhone the companion opens disconnected from the view.</strong>
+Because there is no pointer to track, <code>juliaMarker</code> is nil until you touch the canvas, so the panel
+appears showing the built-in default <em>c</em> = −0.8 + 0.156i — a point nowhere near the current view — with
+no crosshair to explain the mismatch. The single most important idea of the feature (“this is the Julia set
+for <em>that</em> point”) is not communicated at the moment the feature is turned on.
+<span class="ev">observed</span></li>
+<li><span class="tag t-prb">Problem</span> <strong>The <em>c</em> readout is fixed at four decimal places.</strong>
+At 4×10³ it is already coarse; at 2×10⁹ every point on screen reads <code>-0.7436+0.1318i</code>, so the
+caption conveys nothing and, worse, implies the companion is not changing. It should carry at least enough
+digits to distinguish adjacent pixels at the current scale. <span class="ev">observed</span></li>
+<li><span class="tag t-prb">Problem</span> <strong>The panel's three buttons are 26 × 26&nbsp;pt</strong> — well
+under the 44&nbsp;pt minimum — and on macOS they are grey circles on black with very low contrast.
+<span class="ev">observed in the AX hierarchy and screenshots</span></li>
+<li><span class="tag t-prb">Problem</span> <strong>The whole panel is one accessibility label.</strong> The
+container, its duplicate, all three buttons and the caption text all report
+<code>identifier: companionPanel, label: "Julia companion"</code>. VoiceOver announces four identical “Julia
+companion” buttons and cannot read the value of <em>c</em>.
+<span class="ev">observed in the AX hierarchy</span></li>
+<li><span class="tag t-con">Concern</span> In swapped mode the crosshair and the <em>c</em> caption both
+disappear, and the Mandelbrot inset is a non-interactive thumbnail — so you cannot pick a new <em>c</em>
+without swapping back. <span class="ev">observed</span></li>
+<li><span class="tag t-con">Concern</span> The companion's own viewport starts at scale 1 in a tall panel, so a
+lot of the panel is empty black. It should fit the set to the panel.
+<span class="ev">observed on macOS</span></li>
+<li><span class="tag t-con">Concern</span> Rotating the phone loses the crosshair.
+<span class="ev">observed</span></li>
+</ul>
+
+<h4>macOS notes</h4>
+<p>Opening the companion narrows the Mandelbrot view from the right, cropping content rather than rescaling
+it. That is defensible (it preserves scale), but there is no visible <code>Divider()</code> between the two —
+it is black on black — so the split reads as one image until the Julia set appears.</p>
+
+<h4>iPhone notes</h4>
+<p>The inset is well placed for the thumb, but it is a fixed corner, it cannot be resized or moved, and it
+overlaps the exploration surface (see <a href="#s-gestures">§5</a>).</p>
+
+<h4>Recommendations</h4>
+<ul>
+<li>On iPhone, seed the marker at the centre of the view when the companion is first shown, so the crosshair
+and the companion always agree with each other and with the current location.</li>
+<li>Format <em>c</em> from the current scale: enough significant figures to separate one screen pixel from the
+next, capped sensibly, in a monospaced style so it does not jitter.</li>
+<li>Raise the panel buttons to 44&nbsp;pt hit targets (the visible circle can stay small via
+<code>.contentShape</code>) and give them a material backing for contrast.</li>
+<li>Remove the container-level <code>accessibilityLabel</code>/<code>accessibilityIdentifier</code> from
+<code>CompanionPanel</code> and label the three buttons individually — the correct strings already exist as
+their <code>help</code> text. Expose the caption's real text.</li>
+<li>Make the Mandelbrot inset interactive in swapped mode (tap to move <em>c</em>), and keep the <em>c</em>
+readout visible in both modes.</li>
+<li>Fit the companion's initial viewport to its panel aspect.</li>
+</ul>
+
+<h4>Priority</h4>
+<ul class="pris">
+<li><span class="pri p1">P1</span><span>On iPhone the companion opens on an unrelated default <em>c</em> with no crosshair — the feature's core idea is not communicated.</span></li>
+<li><span class="pri p1">P1</span><span>Companion panel elements are all announced as “Julia companion”; the caption is unreadable to VoiceOver.</span></li>
+<li><span class="pri p1">P1</span><span>Panel controls are 26&nbsp;pt touch targets.</span></li>
+<li><span class="pri p2">P2</span><span>Fixed 4-decimal <em>c</em> readout is meaningless below about 10⁴×.</span></li>
+<li><span class="pri p2">P2</span><span>Swapped mode drops the crosshair and the <em>c</em> readout, and the inset is inert.</span></li>
+<li><span class="pri p2">P2</span><span>Companion viewport does not fit its panel; divider invisible on macOS.</span></li>
+</ul>
+
+<h2 id="s-places">7. Places (gallery and bookmarks)</h2>
+
+<div class="shots two">
+<figure><img src="ui-ux-audit-assets/mac-places-populated.png" alt="macOS Places sheet: a small panel centred over a dimmed fractal, with This view, Bookmarks and Famous places sections, and a Done button at the bottom left">
+<figcaption><span class="plat">macOS</span>A 1280 × 800 window and a ~580 × 420&nbsp;pt sheet. The list is cut off mid-row and “Done” is bottom-<em>left</em>.</figcaption></figure>
+<figure><img src="ui-ux-audit-assets/iphone-places-populated.png" alt="iPhone Places sheet showing This view, three bookmarks and the famous places list">
+<figcaption><span class="plat">iPhone</span>The same view as a full-height grouped sheet. Bookmarks and Famous places are visually identical.</figcaption></figure>
+</div>
+
+<div class="shots two">
+<figure><img src="ui-ux-audit-assets/mac-places.png" alt="macOS Places sheet with no Bookmarks section, showing only This view and Famous places, with the list cut off mid-row at Mini Mandelbrot">
+<figcaption><span class="plat">macOS</span>The empty state on Mac. Six of nine gallery entries fit; the seventh is sliced through the middle.</figcaption></figure>
+<figure><img src="ui-ux-audit-assets/iphone-places-empty.png" alt="iPhone Places sheet with no Bookmarks section at all, jumping straight from This view to Famous places">
+<figcaption><span class="plat">iPhone</span>The same empty state: the Bookmarks section is simply absent. Nothing explains what a bookmark is or how to make one.</figcaption></figure>
+</div>
+
+<h4>Strengths</h4>
+<ul>
+<li><span class="tag t-str">Strength</span> Putting “this view”, the user's bookmarks and a curated gallery in one
+place is the right information architecture — the user does not have to know whether they are saving or
+loading. <span class="ev">observed</span></li>
+<li><span class="tag t-str">Strength</span> The famous-places gallery is well chosen and each entry carries its
+own palette, so it doubles as a palette showcase. <span class="ev">observed</span></li>
+<li><span class="tag t-str">Strength</span> Per-row share buttons let you send a place without visiting it.
+<span class="ev">observed</span></li>
+</ul>
+
+<h4>Concerns / Problems</h4>
+<ul>
+<li><span class="tag t-prb">Problem</span> <strong>This is a picture app whose library has no pictures.</strong>
+Every row is two lines of text. The app already contains <code>LocationThumbnail</code> — it renders exactly
+this, and the Mac movie sheet uses it for its endpoints — but Places does not.
+<span class="ev">observed</span></li>
+<li><span class="tag t-prb">Problem</span> <strong>The sheet does not use the Mac's space.</strong> It stayed the
+same size when the window went from 560&nbsp;pt to 1280&nbsp;pt wide, it is not resizable, and it clips the
+list mid-row (“Mini Mandelbrot” is sliced in half). Six of nine gallery entries are visible.
+<span class="ev">observed at both window sizes</span></li>
+<li><span class="tag t-prb">Problem</span> <strong>“Done” is at the bottom leading edge</strong> and there is no
+Cancel and no default button. On macOS the confirming button belongs bottom-trailing; on iOS it belongs in
+the navigation bar (where it is, correctly, on iPhone). The Mac inherits the iOS placement and then loses
+it to the bottom-left. <span class="ev">observed</span></li>
+<li><span class="tag t-prb">Problem</span> <strong>No empty state.</strong> With no bookmarks the section
+vanishes silently. A first-run user has no idea the feature exists. <span class="ev">observed</span></li>
+<li><span class="tag t-prb">Problem</span> <strong>Bookmarks and the built-in gallery are indistinguishable</strong>
+apart from the section header, and there is no ordering control, no rename, no edit, and no detail view.
+<code>LocationStore.rename</code> exists in the model but has no UI. Deletion is swipe-only and therefore
+invisible on macOS. <span class="ev">observed; rename from source</span></li>
+<li><span class="tag t-prb">Problem</span> <strong>The same quantity is formatted two ways in one sheet.</strong>
+“This view · Scale” shows <code>4000.0</code> while the gallery row for the same place shows
+<code>4e3×</code>, and a bookmark of the home view shows <code>1.0×</code> against the gallery's
+<code>1×</code>. <span class="ev">observed</span></li>
+<li><span class="tag t-con">Concern</span> A row separator under the “Name this view / Bookmark” row is inset
+incorrectly and stops under the button, leaving a visible stub.
+<span class="ev">observed on iPhone</span></li>
+</ul>
+
+<h4>Recommendations</h4>
+<ul>
+<li>Give each row a rendered thumbnail using the existing <code>LocationThumbnail</code>, and on macOS use a
+grid (a gallery of images) rather than a list — that is what the extra space is for.</li>
+<li>Let the sheet grow: replace the fixed <code>.frame(minWidth: 380, minHeight: 460)</code> with a
+resizable presentation sized to the window, and give the list a proper scroll area with no clipped row.</li>
+<li>Move the confirming button to the bottom-trailing edge on macOS with
+<code>.keyboardShortcut(.defaultAction)</code>, and make <kbd>Escape</kbd> dismiss
+(see <a href="#system">Design-system findings</a>).</li>
+<li>Add an empty state: one line of explanation and a “Bookmark this view” button, so Places teaches the
+feature.</li>
+<li>Add rename (it already exists in the store), reorder, and a context menu with Rename / Share / Delete —
+which also gives macOS a discoverable delete.</li>
+<li>Route every scale through one formatter (see <a href="#system">Design-system findings</a>).</li>
+</ul>
+
+<h4>Priority</h4>
+<ul class="pris">
+<li><span class="pri p1">P1</span><span>No thumbnails in the library of an image app, although the renderer for them already exists.</span></li>
+<li><span class="pri p1">P1</span><span>Sheet ignores window size and clips its content on macOS. <em>Systemic — shared sheet chrome.</em></span></li>
+<li><span class="pri p1">P1</span><span>No empty state for bookmarks.</span></li>
+<li><span class="pri p1">P1</span><span>No rename / reorder / context menu; delete is swipe-only and so unreachable on macOS.</span></li>
+<li><span class="pri p2">P2</span><span>Scale formatted two different ways within one sheet. <em>Systemic.</em></span></li>
+<li><span class="pri p2">P2</span><span>Misaligned row separator under the naming row.</span></li>
+</ul>
+
+<h2 id="s-bookmark">8. Bookmark creation and feedback</h2>
+<p>Three entry points: the text field inside Places, the toolbar's filled-bookmark button, and ⌘D.</p>
+
+<h4>Concerns / Problems</h4>
+<ul>
+<li><span class="tag t-prb">Problem</span> <strong>Bookmarking is completely silent from the toolbar and from
+⌘D.</strong> <code>bookmarkCurrentView()</code> adds the place and nothing else happens: no animation, no
+toast, no change to the toolbar icon, no sheet. The user has no way to know it worked short of opening
+Places. This is the app's clearest “did that work?” moment.
+<span class="ev">source; the toolbar path was not separately re-tested, the in-sheet path was</span></li>
+<li><span class="tag t-prb">Problem</span> <strong>The first click on “Bookmark” after typing a name did
+nothing</strong> — it moved focus and re-selected the field text. A second click created the bookmark. A user
+who types a name, clicks once and sees nothing will reasonably conclude the feature is broken.
+<span class="ev">observed once; reproduced only in that one sequence, so treat the exact trigger as unconfirmed</span></li>
+<li><span class="tag t-prb">Problem</span> <strong>The default name is machine-generated and ugly.</strong>
+With no name typed, the bookmark is called <code>"\(scaleDescription.prefix(12))× view"</code> — “1.0× view”
+at home, and at depth something like “2.000000000× view”. <span class="ev">observed</span></li>
+<li><span class="tag t-con">Concern</span> The bookmark list is a nested <code>ObservableObject</code>
+(<code>let bookmarks: LocationStore</code>) that <code>PlacesView</code> does not observe, so a change to it is
+not guaranteed to refresh the view. In this session the list did update, but only after a second interaction
+re-evaluated the body. <span class="ev">source; the delayed update was observed but has an alternative explanation</span></li>
+<li><span class="tag t-con">Concern</span> A bookmark silently captures palette, contrast, phase and iteration
+limit as well as position. That is good behaviour, but nothing in the UI says so, and restoring a bookmark
+therefore changes the user's colours without warning. <span class="ev">source</span></li>
+</ul>
+
+<h4>Recommendations</h4>
+<ul>
+<li>Acknowledge the action. The lightest correct treatment: fill the toolbar's bookmark glyph and show a brief
+capsule (“Saved to Places”) with an <em>Undo</em>/<em>Name…</em> affordance, using the same material capsule
+the app already uses for the precision and error notices.</li>
+<li>Make the toolbar bookmark button a toggle whose filled state means “this view is bookmarked”, which also
+resolves the two-identical-glyphs problem in <a href="#s-mac-toolbar">§2</a>.</li>
+<li>Default the name to the nearest famous place plus a depth (“Near Seahorse Valley · 4,000×”), and let the
+user rename in place.</li>
+<li>Add <code>@ObservedObject var bookmarks: LocationStore</code> (or make <code>LocationStore</code> an
+<code>@Observable</code> type) to <code>PlacesView</code> and <code>MovieView</code> so the dependency is
+explicit.</li>
+<li>Investigate the swallowed first click; committing the field on <code>onSubmit</code> and triggering the
+same action would also let <kbd>Return</kbd> create the bookmark.</li>
+</ul>
+
+<h4>Priority</h4>
+<ul class="pris">
+<li><span class="pri p1">P1</span><span>Bookmarking from the toolbar or ⌘D gives no feedback of any kind.</span></li>
+<li><span class="pri p1">P1</span><span>First click on “Bookmark” after typing was swallowed. <em>Observed once; verify before fixing.</em></span></li>
+<li><span class="pri p2">P2</span><span>Default bookmark name is machine-generated.</span></li>
+<li><span class="pri p2">P2</span><span>Views do not observe the bookmark store they read from.</span></li>
+</ul>
+
+<h2 id="s-share">9. Share</h2>
+
+<figure><img src="ui-ux-audit-assets/mac-share-link.png" alt="The macOS share popover showing a raw mandelbrot://view?re=-0.743643887037151&amp;im=0.13182590420533&amp;zoom=4... URL with a generic compass icon and no preview">
+<figcaption><span class="plat">macOS</span>What Share actually shares: a raw custom-scheme URL with a generic icon and no preview. (The recipients row has been cropped out.)</figcaption></figure>
+
+<h4>Concerns / Problems</h4>
+<ul>
+<li><span class="tag t-prb">Problem</span> <strong>Nobody without the app can open what you share.</strong> The
+shared item is a <code>mandelbrot://view?…</code> URL. In Messages or Mail it arrives as unclickable text.
+The <code>Location(url:)</code> initialiser already accepts an <code>https</code> form with the same
+<code>/view</code> path, so the app is ready for a universal link — but the share path does not use one.
+<span class="ev">observed; https acceptance from source</span></li>
+<li><span class="tag t-prb">Problem</span> <strong>No image is ever shared.</strong> Share offers a link only.
+The vision document lists “export high-resolution images” and “wallpaper-worthy screenshots” as core, and the
+tiled compositor that produces them exists and is exercised by <code>--render</code> on the command line —
+but there is no still-image export anywhere in the UI, on either platform, in any menu.
+<span class="ev">observed — File menu, toolbar, all sheets, and both platforms checked</span></li>
+<li><span class="tag t-con">Concern</span> The share item has no title, no preview and no subject, so the system
+share sheet has nothing to show. <code>Transferable</code> with a preview image and a title would fix all
+three at once. <span class="ev">observed</span></li>
+<li><span class="tag t-con">Concern</span> On iPhone, Share exists only inside the Places sheet.
+<span class="ev">observed</span></li>
+</ul>
+
+<h4>Recommendations</h4>
+<ul>
+<li>Share a <code>Transferable</code> that carries a rendered still <em>and</em> the link, with a
+<code>SharePreview</code> showing the image and the place's name. One change makes the share sheet look right,
+makes the link openable as a picture, and delivers the “shareable” half of the product.</li>
+<li>Switch the shared URL to the <code>https</code> universal-link form (the parser already accepts it) with a
+web page that shows the image and offers the app, so a recipient without the app gets something.</li>
+<li>Add <em>Export Image…</em> with a size/resolution choice, using the existing tiled compositor, to the File
+menu (⇧⌘E) and to the iPhone cluster's share affordance.</li>
+</ul>
+
+<h4>Priority</h4>
+<ul class="pris">
+<li><span class="pri p1">P1</span><span>No still-image export exists in the UI on either platform.</span></li>
+<li><span class="pri p1">P1</span><span>Shared links use a custom scheme nobody else can open, with no preview or title.</span></li>
+<li><span class="pri p2">P2</span><span>Share has no iPhone entry point outside Places.</span></li>
+</ul>
+
+<h2 id="s-settings-colour">10. Settings — Colour</h2>
+
+<div class="shots two">
+<figure><img src="ui-ux-audit-assets/mac-settings.png" alt="The macOS Settings sheet with text clipped at both edges: Exterior contrast reads xterior contrast, sliders and the palette strip run past the right edge, and help text is cut off mid-word">
+<figcaption><span class="plat">macOS</span><strong>P0.</strong> Content is clipped on <em>both</em> edges. “Exterior contrast” loses its first letter; the palette strip and both sliders run off the right; two help sentences are cut mid-word. Section headers render as unstyled body text.</figcaption></figure>
+<figure><img src="ui-ux-audit-assets/iphone-settings.png" alt="iPhone Settings sheet showing Palette picker, palette gradient strip, Exterior contrast with a slider on a separate row, Palette phase adjustment with another bare slider, a Depth/Pinned segmented control and Auto-contrast this view">
+<figcaption><span class="plat">iPhone</span>The same content in a grouped form. Each slider is an unlabelled row below its label; the segmented control has no visible name.</figcaption></figure>
+</div>
+
+<h4>Strengths</h4>
+<ul>
+<li><span class="tag t-str">Strength</span> The palette gradient strip under the picker is exactly right — it
+shows the thing being chosen. <span class="ev">observed</span></li>
+<li><span class="tag t-str">Strength</span> Explanatory footers are written in plain language and are genuinely
+helpful (“Colour follows zoom depth deterministically; it never waits for tiles.”).
+<span class="ev">observed</span></li>
+</ul>
+
+<h4>Concerns / Problems</h4>
+<ul>
+<li><span class="tag t-prb">Problem</span> <strong>The macOS layout is broken.</strong> Labels are clipped on the
+left, controls overflow on the right, help text is truncated mid-word, and the <code>Section</code> headers
+(“Colour”, “Detail”, “Julia companion”, “About”) render as ordinary body text indented into the value column.
+Information is lost, not merely ugly. This is the app's only settings UI.
+<span class="ev">observed at 1280 × 800; the sheet does not resize, so widening the window does not help</span></li>
+<li><span class="tag t-prb">Problem</span> <strong>The Colour mode segmented control cannot be set to
+“Pinned”.</strong> Its setter is <code>{ $0 == 0 ? model.useDepthColouring() : () }</code> — selecting Depth
+works, selecting Pinned does nothing. “Pinned” is only ever reached as a side effect of opening a location
+that carries pinned colour. A segmented control with an inert segment is a broken affordance.
+<span class="ev">observed — the control showed “Pinned” selected after opening a shared link, and “Depth” on a fresh launch</span></li>
+<li><span class="tag t-prb">Problem</span> <strong>The control has no visible label.</strong>
+<code>Picker("Colour mode", …).pickerStyle(.segmented)</code> drops its label in an iOS Form, so the user sees
+two words, “Depth” and “Pinned”, with no statement of what they apply to.
+<span class="ev">observed on iPhone; on macOS the label does appear</span></li>
+<li><span class="tag t-prb">Problem</span> <strong>Sliders are orphaned from their labels.</strong> “Exterior
+contrast ×1” is one row and its slider is a separate row beneath it; “Palette phase adjustment” is a bare
+<code>Text</code> followed by a bare <code>Slider</code>, with no value readout at all. Neither slider has
+minimum/maximum labels or images. <span class="ev">observed on both platforms</span></li>
+<li><span class="tag t-con">Concern</span> The terminology is for the author, not the audience: “Exterior
+contrast”, “Palette phase adjustment”, “Depth”, “Pinned”, “Auto-contrast this view”. For the stated audience
+(“people who aren't programmers… no settings needed”) these are four different names for “make the colours
+look better”. <span class="ev">observed</span></li>
+<li><span class="tag t-con">Concern</span> The gradient strip is built from 64 discrete <code>Color</code>
+blocks, so a smooth palette is shown as visible bands — the opposite of what the renderer achieves.
+<span class="ev">observed</span></li>
+<li><span class="tag t-con">Concern</span> Opening <em>any</em> shared link puts colour into “Pinned”, because a
+URL without a <code>colour</code> parameter yields <code>automaticColour == nil</code>. The user sees the app
+in a mode they did not choose and cannot re-enter. <span class="ev">observed</span></li>
+</ul>
+
+<h4>macOS notes</h4>
+<p>The root cause of the clipping is the fixed <code>.frame(minWidth: 320, idealWidth: 420, minHeight: 350)</code>
+applied to a <code>NavigationStack { Form }</code> whose macOS layout wants a label gutter plus a full-width
+control column. The gutter pushes the content right, the frame refuses to grow, and both ends fall off. The
+fix is structural, not cosmetic — see <a href="#system">Design-system findings</a>.</p>
+
+<h4>Recommendations</h4>
+<ul>
+<li>Rebuild this screen for macOS as a settings window (a <code>Settings</code> scene with
+<code>.formStyle(.grouped)</code>), sized to its content and reachable from ⌘,. Let the iPhone keep the
+grouped <code>Form</code>. This is the single highest-value structural change in the app.</li>
+<li>Put each slider in a row with its label and its value, using
+<code>Slider(value:in:) { Text("Exterior contrast") } minimumValueLabel: … maximumValueLabel: …</code>, and
+give the phase slider a value readout to match contrast.</li>
+<li>Replace the Depth/Pinned picker with a single toggle that the user can actually operate, for example
+<em>“Match colour to zoom depth”</em> on/off, where off means “keep the colours this location was saved with”.
+Make “Auto-contrast this view” the action that switches it off, and say so.</li>
+<li>Rename for the audience: <em>Colour</em> → Palette; <em>Exterior contrast</em> → “Colour spacing”;
+<em>Palette phase adjustment</em> → “Colour shift”; <em>Auto-contrast this view</em> → “Tune colours to this
+view”.</li>
+<li>Draw the palette preview as a real gradient (a <code>LinearGradient</code> from the palette's stops, or an
+<code>Image</code> from the existing 1024-entry lookup table) so it matches the render.</li>
+<li>Treat a link with no colour parameter as depth colouring, not pinned.</li>
+</ul>
+
+<h4>Priority</h4>
+<ul class="pris">
+<li><span class="pri p0">P0</span><span>The macOS Settings sheet clips labels, controls and help text on both edges and cannot be resized. Information is lost. <em>Systemic — shared sheet chrome.</em></span></li>
+<li><span class="pri p1">P1</span><span>“Pinned” segment cannot be selected; the control is inert in one direction.</span></li>
+<li><span class="pri p1">P1</span><span>Sliders have no labels, no bounds and inconsistent value readouts. <em>Systemic.</em></span></li>
+<li><span class="pri p1">P1</span><span>Segmented control has no visible name on iPhone.</span></li>
+<li><span class="pri p2">P2</span><span>Implementation terminology throughout the Colour section.</span></li>
+<li><span class="pri p2">P2</span><span>Palette preview is banded; shared links land in “Pinned” unasked.</span></li>
+</ul>
+
+<h2 id="s-settings-detail">11. Settings — Detail</h2>
+
+<figure><img src="ui-ux-audit-assets/iphone-settings-detail.png" alt="iPhone Settings scrolled to show Automatic iteration limit toggle, Detail x1 stepper, a row reading 2,800 iterations maximum 1,000,000, the Julia companion section and the About section">
+<figcaption><span class="plat">iPhone</span>Detail, Julia companion and About. Three different names for one concept appear within four rows.</figcaption></figure>
+
+<h4>Strengths</h4>
+<ul>
+<li><span class="tag t-str">Strength</span> Automatic by default, with a manual escape hatch, is exactly the
+right progressive disclosure for this control. The user never has to know what an iteration is.
+<span class="ev">observed</span></li>
+<li><span class="tag t-str">Strength</span> The footer explains the symptom the control fixes (“Raise the detail
+multiplier if a region remains dark”), which is far more useful than explaining the maths.
+<span class="ev">observed</span></li>
+<li><span class="tag t-str">Strength</span> Switching to manual reveals Halve/Double buttons and a numeric field,
+and the same operations exist as ⌘[ / ⌘]. <span class="ev">observed on iPhone; Mac shows the stepper</span></li>
+</ul>
+
+<h4>Concerns / Problems</h4>
+<ul>
+<li><span class="tag t-prb">Problem</span> <strong>Three names for one thing in four rows:</strong> “Automatic
+iteration limit”, “Detail ×1”, “2,800 iterations · maximum 1,000,000”, and the menu calls the same operations
+“Increase Detail” / “Decrease Detail”. Pick one word for the user (“Detail”) and keep “iterations” for the
+developer panel. <span class="ev">observed</span></li>
+<li><span class="tag t-con">Concern</span> “2,800 iterations · maximum 1,000,000” is a plain row inside the
+section, so it reads like a setting rather than a status line. It belongs in the section footer beside the
+explanation. <span class="ev">observed</span></li>
+<li><span class="tag t-con">Concern</span> “×1” appears twice on adjacent screens meaning two unrelated things
+(detail multiplier and exterior contrast). <span class="ev">observed</span></li>
+<li><span class="tag t-con">Concern</span> Changing detail has no in-view feedback: the render simply improves
+or degrades over the next second with nothing tying it to the control you moved.
+<span class="ev">observed</span></li>
+</ul>
+
+<h4>Recommendations</h4>
+<ul>
+<li>Standardise on <em>Detail</em> in all user-facing strings: “Detail: Automatic”, “More detail ×2”,
+and a footer reading “Currently 2,800 iterations (maximum 1,000,000).”</li>
+<li>Move the iteration count into the section footer.</li>
+<li>When detail changes, show the same capsule notice the app already uses (“Detail ×2 — 5,600 iterations”) for
+a second, so the cause and effect are connected.</li>
+</ul>
+
+<h4>Priority</h4>
+<ul class="pris">
+<li><span class="pri p2">P2</span><span>Three user-facing names for the iteration limit. <em>Systemic — terminology.</em></span></li>
+<li><span class="pri p2">P2</span><span>Status line presented as a settings row; no feedback when detail changes.</span></li>
+</ul>
+
+<h2 id="s-settings-rest">12. Settings — Julia companion and About</h2>
+
+<h4>Concerns / Problems</h4>
+<ul>
+<li><span class="tag t-prb">Problem</span> <strong>Desktop language on the phone.</strong> The toggle is
+literally “Follow the pointer” and the footer reads “Drag it to move it, or <em>click</em> it to pin and
+release it.” An iPhone has no pointer and does not click. The Controls sheet gets this right with
+<code>#if os(iOS)</code> variants; Settings does not. <span class="ev">observed on iPhone</span></li>
+<li><span class="tag t-prb">Problem</span> <strong>Two toggles describe one axis.</strong> “Follow the pointer”
+and “Pin <em>c</em> where it is” are opposites presented as independent switches, so three of the four
+combinations are meaningless. <span class="ev">observed</span></li>
+<li><span class="tag t-con">Concern</span> “Pin <em>c</em> where it is” exposes a raw mathematical variable with
+no explanation, in the section of the app aimed at the least technical user.
+<span class="ev">observed</span></li>
+<li><span class="tag t-con">Concern</span> The About section is four bare rows — the app name as plain text, an
+Acknowledgements button, a version string, and (once unlocked) a Developer tools button. No icon, no
+copyright, no privacy or support link. For an App Store submission this is the screen reviewers look at.
+<span class="ev">observed</span></li>
+<li><span class="tag t-con">Concern</span> The seven-tap unlock has no discoverable undo — once unlocked, the
+Developer tools row is permanent. <span class="ev">observed</span></li>
+</ul>
+
+<h4>Recommendations</h4>
+<ul>
+<li>Platform-condition the companion copy the way <code>HelpContent</code> already does: “Follow your finger”
+and “tap it to pin” on iOS.</li>
+<li>Replace the two toggles with one picker: <em>Julia point:</em> Follows the pointer / Pinned — and say what
+the point is (“the point the companion is drawn for”) instead of naming it <em>c</em>.</li>
+<li>Give About the app icon, a copyright line, and a link to the project, and move Acknowledgements under the
+standard macOS <em>About Mandelbrot</em> panel as well.</li>
+<li>Let a long press on the version row re-lock developer tools.</li>
+</ul>
+
+<h4>Priority</h4>
+<ul class="pris">
+<li><span class="pri p1">P1</span><span>Mac-specific wording (“pointer”, “click”) shipped verbatim to iPhone. <em>Systemic — microcopy.</em></span></li>
+<li><span class="pri p2">P2</span><span>Two toggles for one mutually exclusive choice; raw variable <em>c</em> exposed.</span></li>
+<li><span class="pri p2">P2</span><span>About section is too bare for App Store submission.</span></li>
+</ul>
+
+<h2 id="s-ack">13. Acknowledgements</h2>
+
+<figure><img src="ui-ux-audit-assets/mac-acknowledgements.png" alt="Acknowledgements screen with BigInt 5.7.0 heading, description, a source link, the full MIT licence text and a Deep-zoom algorithms section with a link">
+<figcaption><span class="plat">macOS</span>Clear, honest attribution with working links. The only exit is the back chevron.</figcaption></figure>
+
+<ul>
+<li><span class="tag t-str">Strength</span> Exactly what this screen should be: what is borrowed, what it is used
+for, a link to the source, the full licence, and a separate credit for the algorithms with a link to the
+reference. Selectable text. <span class="ev">observed</span></li>
+<li><span class="tag t-con">Concern</span> Pushing to this page removes the sheet's Done button, so the only way
+out is the back chevron (and <kbd>Escape</kbd> does not work — see <a href="#system">§Design system</a>). A
+user who lands here has one non-obvious exit. <span class="ev">observed</span></li>
+<li><span class="tag t-con">Concern</span> The licence text keeps its source line breaks, so it wraps raggedly
+inside the panel. <span class="ev">observed</span></li>
+</ul>
+
+<h4>Priority</h4>
+<ul class="pris">
+<li><span class="pri p2">P2</span><span>Detail page loses the sheet's dismissal control.</span></li>
+<li><span class="pri p2">P2</span><span>Licence text reflows raggedly; strip hard wraps.</span></li>
+</ul>
+
+<h2 id="s-controls">14. Controls (help)</h2>
+
+<div class="shots two">
+<figure><img src="ui-ux-audit-assets/mac-controls-buttons.png" alt="macOS Controls sheet scrolled to the Buttons section, each row showing an icon, a name, a one-line explanation and its keyboard shortcut">
+<figcaption><span class="plat">macOS</span>The Buttons section: icon, name, explanation and shortcut, all generated from the same definition as the toolbar.</figcaption></figure>
+<figure><img src="ui-ux-audit-assets/iphone-controls-help.png" alt="iPhone Controls sheet showing Explore gestures: Drag to move around, Pinch to zoom around your fingers, Double-tap, Two-finger tap, Twist, and Drag the crosshair">
+<figcaption><span class="plat">iPhone</span>Gestures first, in touch language, with a different list from macOS. This is correct platform adaptation.</figcaption></figure>
+</div>
+
+<figure><img src="ui-ux-audit-assets/mac-controls-help.png" alt="macOS Controls sheet as first opened, showing the Explore gestures for mouse and trackpad, and the Buttons header clipped in half at the bottom edge">
+<figcaption><span class="plat">macOS</span>The same sheet as it first opens. The Mac gesture list is genuinely different — Shift-drag framing, scroll-to-zoom, double-click — but only ~330&nbsp;pt of an 800&nbsp;pt window is used and the “Buttons” header is sliced in half at the bottom edge.</figcaption></figure>
+
+<h4>Strengths</h4>
+<ul>
+<li><span class="tag t-str">Strength</span> <strong>The best-designed content in the app.</strong> Gestures first
+because that is what the app is used with; one idea per row; then every button with the same sentence that is
+its tooltip; then keyboard shortcuts, and only where there is a keyboard to press them on — the iOS build
+watches for <code>GCKeyboard</code> connect/disconnect while the sheet is open.
+<span class="ev">observed; the hardware-keyboard rows appeared in the simulator because the Mac keyboard is attached, which is correct behaviour</span></li>
+<li><span class="tag t-str">Strength</span> The two gesture lists are genuinely different per platform, not one
+list with words swapped. <span class="ev">observed</span></li>
+</ul>
+
+<h4>Concerns / Problems</h4>
+<ul>
+<li><span class="tag t-prb">Problem</span> <strong>This content is only reachable if you go looking.</strong>
+There is no first-run pass, no “show me” on first launch, and nothing in the exploration view points at it.
+The app's single best explanatory asset is behind the least-used icon.
+<span class="ev">observed</span></li>
+<li><span class="tag t-con">Concern</span> On macOS only ~330&nbsp;pt of the sheet is used in an 800&nbsp;pt
+window, and the “Buttons” header is sliced in half at the bottom edge on first open — it looks like a
+rendering fault. <span class="ev">observed</span></li>
+<li><span class="tag t-con">Concern</span> The second section (“Finer detail appears as you explore”, “A notice
+appears when you reach the current precision limit”) has no header, so it reads as an unexplained gap after
+the gestures. <span class="ev">observed</span></li>
+<li><span class="tag t-con">Concern</span> Icons are tinted accent-blue here but monochrome in the toolbar, so
+the visual match between help row and real button is weaker than it could be.
+<span class="ev">observed</span></li>
+</ul>
+
+<h4>Recommendations</h4>
+<ul>
+<li>Use this content for a first-run pass: on first launch, show the three gesture rows as a brief, dismissible
+overlay over the live fractal (not a modal), with “More” opening the full sheet.</li>
+<li>Let the sheet grow to its content on macOS so no section header is clipped.</li>
+<li>Title the behaviour section (“What the view does on its own”).</li>
+<li>Match icon rendering to the toolbar.</li>
+</ul>
+
+<h4>Priority</h4>
+<ul class="pris">
+<li><span class="pri p1">P1</span><span>No first-run or onboarding state anywhere; excellent help is entirely opt-in.</span></li>
+<li><span class="pri p2">P2</span><span>Sheet clips a section header and wastes Mac height. <em>Systemic.</em></span></li>
+<li><span class="pri p2">P2</span><span>Untitled section; icon rendering differs from the toolbar.</span></li>
+</ul>
+
+<h2 id="s-movie-mac">15. Zoom Movie — macOS</h2>
+<p>The app's most sophisticated interface, and the only one designed as a Mac dialog rather than inherited
+from the shared sheet chrome. It is reviewed here as four items: the journey card, the preview, the timeline,
+and the settings/output cards.</p>
+
+<div class="shots two">
+<figure><img src="ui-ux-audit-assets/mac-movie-sheet.png" alt="Create Zoom Movie dialog with a title and subtitle, a Journey card with two thumbnails and a From popup, a Journey Preview video, and the start of Movie Settings; footer has a help button, Cancel and a blue Render Journey button">
+<figcaption><span class="plat">macOS</span>The dialog as it opens. Note the <strong>From popup is blank</strong> although the thumbnail and the description both say “The whole set”.</figcaption></figure>
+<figure><img src="ui-ux-audit-assets/mac-movie-journey-preview.png" alt="The same dialog with the Elephant Valley start selected and the journey preview video showing transport controls">
+<figcaption><span class="plat">macOS</span>With a non-nested start selected, the description changes to “Zoom out… travel across the set, then descend” and a live preview of the exact journey is scrubbable.</figcaption></figure>
+</div>
+
+<div class="shots two">
+<figure><img src="ui-ux-audit-assets/mac-movie-edit-journey.png" alt="Edit Journey expanded showing an Overview slider at 1.2x, three segment rows Zoom 5s, Travel 1s, Zoom 5s each with a stepper, and Add hold and Reset suggested journey buttons">
+<figcaption><span class="plat">macOS</span>The journey timeline. Each segment shows its minimum and its current duration; the Overview slider pulls the camera back for more context.</figcaption></figure>
+<figure><img src="ui-ux-audit-assets/mac-movie-settings.png" alt="Movie Settings card with Resolution, Duration, Frame rate, Palette cycles and Ease in and out, beside a statistics column reading 360 frames, Route 1 segments, Minimum smooth duration 5 s, Estimated file size 119.4 MB, Estimated render time about 5 s on this Mac">
+<figcaption><span class="plat">macOS</span>Settings and measured statistics side by side. “1 segments” is ungrammatical and the file-size estimate is 11× the eventual truth.</figcaption></figure>
+</div>
+
+<figure><img src="ui-ux-audit-assets/mac-movie-help-popover.png" alt="Help popover from the circular question-mark button explaining Mandelbrot journeys, suggested duration and cancelling">
+<figcaption><span class="plat">macOS</span>The help button is a circled “?” at the footer's leading edge — exactly the Mac convention — opening a well-written popover.</figcaption></figure>
+
+<h4>Strengths</h4>
+<ul>
+<li><span class="tag t-str">Strength</span> <strong>This is what the rest of the app should look like.</strong> A
+dialog with a title and a one-line purpose, content in labelled cards, a right-aligned label gutter, a footer
+with a help button at the leading edge and Cancel / default action at the trailing edge, and three phases
+(settings, rendering, complete) that swap the footer cleanly rather than replacing the dialog.
+<span class="ev">observed</span></li>
+<li><span class="tag t-str">Strength</span> <strong>Both endpoints are shown as pictures.</strong> You choose a
+journey by looking at where it starts and where it ends. <span class="ev">observed</span></li>
+<li><span class="tag t-str">Strength</span> <strong>The journey preview is outstanding.</strong> A real
+480 × 270 · 12 fps movie of the exact route, playable and scrubbable, regenerated whenever any input changes.
+It removes essentially all the guesswork from an expensive operation.
+<span class="ev">observed, including regeneration after changing the start</span></li>
+<li><span class="tag t-str">Strength</span> The route is explained in a sentence that changes with the
+choice — nested destination = direct zoom; separate places = zoom out, travel, zoom in — and the timeline
+exposes it as editable segments with honest minimums (“The timeline cannot make a camera move faster than its
+safe pace”). Duration is raised automatically when a new route needs more.
+<span class="ev">observed</span></li>
+<li><span class="tag t-str">Strength</span> Statistics are measured rather than asserted, the output folder is a
+real security-scoped choice that survives relaunch, and the format is stated (“saved as a QuickTime .mov
+file”). <span class="ev">observed</span></li>
+</ul>
+
+<h4>Concerns / Problems</h4>
+<ul>
+<li><span class="tag t-prb">Problem</span> <strong>The From popup renders empty on open.</strong>
+<code>init</code> sets <code>_startChoice = State(initialValue: startingAt?.id)</code>, which is <code>nil</code>
+in app use, so the <code>Picker</code> has no matching tag and shows blank while <code>start</code> silently
+falls back to the first gallery entry. The dialog's primary input looks unset.
+<span class="ev">observed</span></li>
+<li><span class="tag t-prb">Problem</span> <strong>The route description names the wrong endpoint.</strong>
+“Zoom from The whole set into <em>the starting view</em>” and “…then descend to <em>the starting view</em>”
+should both say <em>the current view</em>. It appears on every route.
+<span class="ev">observed twice</span></li>
+<li><span class="tag t-prb">Problem</span> <strong>The dialog is vertically cramped and clips mid-row.</strong>
+At 1280 × 800 the content area is ~450&nbsp;pt and the Movie Settings card is cut through the middle of the
+Duration row; with both disclosure groups open you can see three timeline rows at a time. The size policy
+targets up to 820&nbsp;pt but the sheet rendered around 590&nbsp;pt.
+<span class="ev">observed</span></li>
+<li><span class="tag t-prb">Problem</span> <strong>The estimated file size is wrong by an order of
+magnitude.</strong> The dialog predicted 119.4&nbsp;MB; the completion card, in the same dialog, reported
+10.8&nbsp;MB. A user choosing 4K will be told to expect roughly half a gigabyte for something that will be
+about 40&nbsp;MB. The render-time estimate, by contrast, was close (“about 5 s”, actual ≈ 20 s wall clock
+including keyframes). <span class="ev">observed — both figures read off the same render</span></li>
+<li><span class="tag t-con">Concern</span> The From menu mixes the built-in gallery and the user's bookmarks in
+one flat list with no separator or heading. <span class="ev">observed</span></li>
+<li><span class="tag t-con">Concern</span> The two endpoint thumbnails render in each location's <em>own</em>
+palette, but the movie is rendered in the current colouring — so the pictures promise colours the movie will
+not have. <span class="ev">observed: Elephant Valley thumbnail in Fire, current view in Ink</span></li>
+<li><span class="tag t-con">Concern</span> Timeline rows say “Zoom”, “Travel”, “Zoom” with no indication of
+which end each belongs to, and each row shows its stepper with the value repeated beside it and the minimum
+repeated below it — three numbers for one quantity. There is no way to delete a segment, and “Add hold” only
+appends at the end. <span class="ev">observed</span></li>
+<li><span class="tag t-con">Concern</span> “Route: 1 segments”. <span class="ev">observed</span></li>
+<li><span class="tag t-con">Concern</span> The preview video swallows scroll events, so the dialog cannot be
+scrolled while the pointer is over it. <span class="ev">observed</span></li>
+<li><span class="tag t-con">Concern</span> “Save to” is a disabled <code>TextField</code>; macOS has
+<code>NSPathControl</code> for this, which also gives a click-through to the folder.
+<span class="ev">observed</span></li>
+</ul>
+
+<h4>Recommendations</h4>
+<ul>
+<li>Initialise <code>startChoice</code> to <code>startingAt?.id ?? Location.gallery[0].id</code> so the popup
+always shows what the rest of the card already claims.</li>
+<li>Fix the two route sentences to say “the current view”.</li>
+<li>Let the dialog use the height its own policy already computes; at minimum, never clip through the middle
+of a control row — pad the scroll content so it breaks at a card boundary.</li>
+<li>Recalibrate the file-size estimate against real output (the completion card measures it — feed that back),
+or present it as a range, or drop it. An estimate that is 11× out is worse than none.</li>
+<li>Split the From menu into “Famous places” and “Your bookmarks” sections, and render the endpoint thumbnails
+with the colouring the movie will actually use.</li>
+<li>Name each timeline segment by its endpoint (“Zoom out of Elephant Valley”, “Travel”, “Zoom into the current
+view”), collapse the three duration numbers into one editable field plus a minimum hint, and allow inserting
+and removing holds anywhere.</li>
+<li>Pluralise “segment(s)”, and swap the disabled path field for <code>NSPathControl</code>.</li>
+</ul>
+
+<h4>Priority</h4>
+<ul class="pris">
+<li><span class="pri p1">P1</span><span>The From popup renders blank; the dialog's primary input looks unset.</span></li>
+<li><span class="pri p1">P1</span><span>File-size estimate is ~11× the measured result.</span></li>
+<li><span class="pri p2">P2</span><span>Route description names “the starting view” where it means the current view.</span></li>
+<li><span class="pri p2">P2</span><span>Dialog clips through the middle of a control row; timeline is cramped.</span></li>
+<li><span class="pri p2">P2</span><span>Endpoint thumbnails use palettes the movie will not use.</span></li>
+<li><span class="pri p2">P2</span><span>Timeline rows are unnamed and show one duration three ways; holds only append.</span></li>
+<li><span class="pri p2">P2</span><span>“1 segments”; From menu does not separate gallery from bookmarks; preview eats scroll; path shown in a disabled text field.</span></li>
+</ul>
+
+<h2 id="s-movie-ios">16. Zoom Movie — iPhone</h2>
+
+<figure><img src="ui-ux-audit-assets/iphone-movie-settings.png" alt="iPhone Zoom Movie sheet: Journey section with a From picker, To showing This view 2.0000000000000004e9x, Keyframes 32, then Movie settings and a Render movie button">
+<figcaption><span class="plat">iPhone</span>The whole feature. Note “<strong>This view, 2.0000000000000004e9×</strong>” and “Keyframes&nbsp;32”.</figcaption></figure>
+
+<h4>Concerns / Problems</h4>
+<ul>
+<li><span class="tag t-prb">Problem</span> <strong>This is a different and substantially weaker feature than the
+Mac's.</strong> It uses the older <code>ZoomPath</code> (direct descent only) rather than
+<code>Journey</code>, so choosing a start that is not an ancestor of the current view does not produce a
+zoom-out/travel/zoom-in route — it produces the message “Zoom in further than the starting place.” There are
+no endpoint thumbnails, no preview, no timeline, no overview control, no statistics, no help, and no
+completion card. <span class="ev">observed; the divergence is confirmed in the two source files</span></li>
+<li><span class="tag t-prb">Problem</span> <strong>A raw floating-point artefact is shown to the user:</strong>
+“This view, 2.0000000000000004e9×”. The Mac has a formatter for exactly this
+(<code>MovieSheetMac.zoom</code>) which would print “2.0e9×”; the iPhone prints
+<code>Location.scale</code> directly. <span class="ev">observed</span></li>
+<li><span class="tag t-prb">Problem</span> <strong>No minimum-duration guard.</strong> The Mac raises the
+duration to the route's safe minimum and disables Render with an explanation and a one-click fix. The iPhone
+lets you render a 32-keyframe descent in 2 seconds with no warning.
+<span class="ev">observed: duration defaults to 12 s with no relationship to the route; the guard exists only in the Mac sheet</span></li>
+<li><span class="tag t-prb">Problem</span> <strong>Settings stay fully interactive during a render.</strong> The
+resolution picker, duration stepper, frame-rate picker, palette-cycle stepper and the ease toggle all remain
+live while the movie renders, and changing them has no effect on the running render. The Mac dims and
+disables them. <span class="ev">observed mid-render</span></li>
+<li><span class="tag t-prb">Problem</span> <strong>“Keyframes 32” is implementation vocabulary</strong> shown as
+a first-class fact to a non-technical user. <span class="ev">observed</span></li>
+<li><span class="tag t-con">Concern</span> “Render movie” is a plain blue text row with no more weight than
+“Ease in and out”; the Mac has a prominent default button. Terminology differs too: “Render movie” vs
+“Render Journey”. <span class="ev">observed</span></li>
+<li><span class="tag t-con">Concern</span> Nothing says where the movie goes. On iOS it is written to the
+temporary directory and only escapes via the share sheet — correct, but unstated, and a user who dismisses
+the sheet without sharing has lost the file. <span class="ev">source + observed absence of any statement</span></li>
+<li><span class="tag t-con">Concern</span> There is no Cancel in the navigation bar, only Done, and dismissing
+the sheet mid-render leaves the render running with no progress indication anywhere in the app.
+<span class="ev">observed structure; the dismiss-mid-render case was not run to completion</span></li>
+</ul>
+
+<h4>Recommendations</h4>
+<ul>
+<li>Move <code>MovieSheetMac</code>'s model — <code>Journey</code>, the preview renderer, the thumbnails, the
+statistics, the minimum-duration guard, the completion outcome — into shared code, and keep only the
+<em>presentation</em> platform-specific. The iPhone should get the same journey planning expressed as a
+grouped form with a navigation-bar action, not a reduced feature.</li>
+<li>Share the zoom formatter immediately; this is a one-line fix for a visible defect.</li>
+<li>Disable the settings section while <code>movies.isRendering</code>.</li>
+<li>Replace “Keyframes 32” with something meaningful, or remove it — the useful figure is duration and
+frame count, both already shown.</li>
+<li>Promote the action: a prominent button in a sheet footer or the navigation bar, labelled the same as the
+Mac.</li>
+<li>State the destination (“Saved to Photos” / “Share to keep it”) and offer to save to Photos on completion.</li>
+</ul>
+
+<h4>Priority</h4>
+<ul class="pris">
+<li><span class="pri p1">P1</span><span>iPhone movie creation is a different, weaker feature with a different route model. <em>Systemic — the whole movie workflow.</em></span></li>
+<li><span class="pri p1">P1</span><span>Raw float leaks into the UI (“2.0000000000000004e9×”).</span></li>
+<li><span class="pri p1">P1</span><span>Settings remain live and ineffective during a render.</span></li>
+<li><span class="pri p1">P1</span><span>No minimum-duration guard, so unusably fast movies can be rendered.</span></li>
+<li><span class="pri p2">P2</span><span>“Keyframes” jargon; weak action affordance; destination unstated.</span></li>
+</ul>
+
+<h2 id="s-progress">17. Render progress and completion</h2>
+
+<div class="shots two">
+<figure><img src="ui-ux-audit-assets/mac-movie-rendering.png" alt="Mac dialog with settings dimmed and a footer showing Rendering keyframe 9 of 13, 56 percent, a progress bar, Frame 200 of 360 and a Cancel button">
+<figcaption><span class="plat">macOS</span>Two counters, a percentage, a determinate bar and Cancel — with the settings dimmed but still readable so you can see what is being made.</figcaption></figure>
+<figure><img src="ui-ux-audit-assets/iphone-movie-rendering.png" alt="iPhone movie sheet during a render: all settings still enabled, a progress bar with Frame 140 of 360 beneath it and a red Cancel row">
+<figcaption><span class="plat">iPhone</span>One counter, no percentage, no headline, and every setting above it still enabled.</figcaption></figure>
+</div>
+
+<div class="shots two">
+<figure><img src="ui-ux-audit-assets/mac-movie-complete.png" alt="Mac completion card with a green tick, Render complete, the saved path, 360 frames 12 seconds 10.8 MB, Reveal in Finder and Share buttons, and a video thumbnail">
+<figcaption><span class="plat">macOS</span>A proper completion card: what happened, where it went, how big it is, and two next actions. The footer becomes Close / Render Another Movie.</figcaption></figure>
+<figure><img src="ui-ux-audit-assets/iphone-movie-complete.png" alt="iPhone movie sheet after completion: the progress bar has gone, Render movie is back, and a video player and Share movie button have appeared below">
+<figcaption><span class="plat">iPhone</span>The same event on iPhone: the bar disappears, “Render movie” returns, and a player quietly appears below the fold. There is no success message at all.</figcaption></figure>
+</div>
+
+<h4>Strengths</h4>
+<ul>
+<li><span class="tag t-str">Strength</span> On macOS the headline names whatever the render is actually doing and
+the quieter line carries the counter it is not on, so a keyframe stall is legible rather than looking like a
+hang. Progress is determinate and Cancel is always visible.
+<span class="ev">observed</span></li>
+<li><span class="tag t-str">Strength</span> Dimming rather than replacing the settings is the right choice — the
+movie being made stays readable beside its own progress. <span class="ev">observed</span></li>
+<li><span class="tag t-str">Strength</span> The viewer's tile cache is deliberately cancelled before a render so
+it does not compete for GPU and memory, and resumes on the first frame after the sheet closes. The user
+never sees this, which is the point. <span class="ev">source</span></li>
+<li><span class="tag t-str">Strength</span> Both platforms play the finished movie in place before it goes
+anywhere. <span class="ev">observed</span></li>
+</ul>
+
+<h4>Concerns / Problems</h4>
+<ul>
+<li><span class="tag t-prb">Problem</span> <strong>On iPhone, completion is announced by absence.</strong> The
+progress bar disappears, the button reverts, and a player materialises below the fold. No “Render complete”,
+no size, no duration, no statement of where it is. This is the single worst feedback moment in the app.
+<span class="ev">observed</span></li>
+<li><span class="tag t-prb">Problem</span> <strong>On macOS the completion card is below the fold too.</strong>
+The footer changes to “Close / Render Another Movie” while the card that explains what happened sits off
+screen until you scroll. <span class="ev">observed</span></li>
+<li><span class="tag t-con">Concern</span> During and after a Mac render the Journey Preview slot shows an empty
+grey and then a black rectangle, still captioned “Play, pause and scrub this low-resolution version of the
+exact journey” — a caption that is no longer true.
+<span class="ev">observed</span></li>
+<li><span class="tag t-con">Concern</span> Neither platform offers an estimated time remaining, only a
+percentage; for a 4K render that is the number the user wants. <span class="ev">observed</span></li>
+<li><span class="tag t-con">Concern</span> The failure path could not be triggered in this session; from source
+it is a red caption in the settings area with no retry action.
+<span class="ev">source — not exercised</span></li>
+</ul>
+
+<h4>Recommendations</h4>
+<ul>
+<li>Give iPhone the same completion state: a card with a tick, “Render complete”, frames · duration · size, and
+two actions (Share, Save to Photos). Reuse <code>MovieOutcome</code>, which is already platform-neutral in
+everything but its file location.</li>
+<li>Scroll to the completion card when a render finishes on macOS, or move the card directly above the footer.</li>
+<li>Collapse the preview slot during and after a render instead of showing an empty box with a stale caption.</li>
+<li>Add a time-remaining estimate derived from observed frame rate once ~10 % of frames are done.</li>
+<li>Give the failure state a Retry and, where the cause is known (disk full, unsupported size), say so.</li>
+</ul>
+
+<h4>Priority</h4>
+<ul class="pris">
+<li><span class="pri p1">P1</span><span>No success confirmation on iPhone when a movie finishes.</span></li>
+<li><span class="pri p2">P2</span><span>macOS completion card is below the fold; preview slot shows a stale caption.</span></li>
+<li><span class="pri p2">P2</span><span>No time-remaining estimate; failure state has no retry.</span></li>
+</ul>
+
+<h2 id="s-dev">18. Developer tools, HUD and benchmarks</h2>
+
+<div class="shots two">
+<figure><img src="ui-ux-audit-assets/mac-developer-panel.png" alt="Developer sheet stacked on top of the Settings sheet, showing a renderer Override picker, Show performance HUD and Tile borders and levels checkboxes, a Benchmarks button and the device description">
+<figcaption><span class="plat">macOS</span>The Developer panel opens as a sheet <em>on top of</em> the Settings sheet, offset and with a large empty band above its title.</figcaption></figure>
+<figure><img src="ui-ux-audit-assets/mac-benchmarks.png" alt="Benchmarks sheet showing Current view 200 iterations, a GPU kernel only toggle, Run benchmarks, Complete, and ten rows of renderer timings">
+<figcaption><span class="plat">macOS</span>Benchmarks after a run. “Share results” has been pushed off the bottom; the sheet does not grow.</figcaption></figure>
+</div>
+
+<figure><img src="ui-ux-audit-assets/mac-developer-hud.png" alt="The main window with a tile grid overlay across the fractal and a performance HUD at the bottom right showing GPU Float 200 iterations, 236 tiles 258 MiB 0 pending, GPU frame 2.50 ms, CPU draw 0.58 ms and cache statistics">
+<figcaption><span class="plat">macOS</span>The tile overlay and the performance HUD. Excellent instrumentation — and there is no way to turn either off without going back through Settings → Developer tools.</figcaption></figure>
+
+<h4>Strengths</h4>
+<ul>
+<li><span class="tag t-str">Strength</span> Correctly hidden: seven taps on the version, a held Option key, or a
+launch argument. A casual user will never meet it. <span class="ev">observed</span></li>
+<li><span class="tag t-str">Strength</span> The instrumentation is genuinely good — tiles, bytes, pending, GPU
+frame, longest batch, CPU draw, demand, presentation fps, hits and evictions, plus a tile-grid overlay and the
+current automatic renderer. <span class="ev">observed</span></li>
+<li><span class="tag t-str">Strength</span> The benchmark reports the device and the exact viewport, disables
+Share until there are results, and turns the run into shareable Markdown.
+<span class="ev">observed</span></li>
+</ul>
+
+<h4>Concerns / Problems</h4>
+<ul>
+<li><span class="tag t-con">Concern</span> Settings → Developer → Benchmarks is a stack of three sheets. On
+macOS a developer panel should be its own window (it already has a Debug menu to open it from).
+<span class="ev">observed</span></li>
+<li><span class="tag t-con">Concern</span> Once the HUD or tile overlay is on there is no way to turn it off from
+the view — no Debug menu toggle, no keyboard shortcut. <span class="ev">observed</span></li>
+<li><span class="tag t-con">Concern</span> The unlock is one-way; there is no re-lock.
+<span class="ev">observed</span></li>
+<li><span class="tag t-con">Concern</span> Benchmark rows use internal variant names (<code>scalar-tight</code>,
+<code>coord-precompute</code>, <code>unsafe-buffer</code>, <code>float-math</code>, <code>simd4-float</code>).
+Acceptable in a developer panel, but the same sheet is reachable from the iOS build's Settings, which is one
+tap from a non-technical user's world. <span class="ev">observed</span></li>
+<li><span class="tag t-con">Concern</span> <code>model.status</code> (“Complete”) is rendered where a section
+header would be, so the finished state reads as a heading. <span class="ev">observed</span></li>
+</ul>
+
+<h4>Recommendations</h4>
+<ul>
+<li>Make the developer panel a <code>Window</code> scene opened from the Debug menu on macOS, and keep the
+sheet only on iOS.</li>
+<li>Add HUD and tile-overlay toggles to the Debug menu with shortcuts, so they can be turned off where they are
+seen.</li>
+<li>Let the benchmark sheet grow so “Share results” stays reachable.</li>
+</ul>
+
+<h4>Priority</h4>
+<ul class="pris">
+<li><span class="pri p2">P2</span><span>Three stacked sheets; developer panel should be a window on macOS.</span></li>
+<li><span class="pri p2">P2</span><span>HUD and overlay cannot be dismissed from the view; unlock cannot be undone.</span></li>
+<li><span class="pri p2">P2</span><span>Benchmark results push the Share action off the bottom of the sheet.</span></li>
+</ul>
+
+<h2 id="s-states">19. Error, empty and boundary states</h2>
+
+<figure><img src="ui-ux-audit-assets/mac-location-error.png" alt="A small translucent capsule near the top of the window reading Invalid decimal coordinate, over the fractal">
+<figcaption><span class="plat">macOS</span>Opening a malformed link. The message is the internal error string, and the capsule is dismissed by clicking it — which nothing indicates.</figcaption></figure>
+
+<table>
+<tr><th>State</th><th>Status</th><th>Assessment</th></tr>
+<tr><td>Malformed location link</td><td>observed</td><td><span class="tag t-prb">Problem</span> Shows <code>String(describing: error)</code> — “Invalid decimal coordinate”. Developer text, no explanation of what failed, no suggestion, no dismiss affordance, no timeout.</td></tr>
+<tr><td>Unopenable location (<code>apply</code> path)</td><td>source</td><td><span class="tag t-str">Strength</span> “That location could not be opened.” is written for a human — so the app already contains the right register; the URL path just does not use it.</td></tr>
+<tr><td>No bookmarks</td><td>observed</td><td><span class="tag t-prb">Problem</span> Section simply absent. No empty state. See <a href="#s-places">§7</a>.</td></tr>
+<tr><td>First bookmark created</td><td>observed</td><td><span class="tag t-prb">Problem</span> No acknowledgement. See <a href="#s-bookmark">§8</a>.</td></tr>
+<tr><td>Movie start not an ancestor (iPhone)</td><td>source</td><td><span class="tag t-prb">Problem</span> “Zoom in further than the starting place.” — a dead end where the Mac would plan a travel route.</td></tr>
+<tr><td>Movie duration below the safe minimum (Mac)</td><td>observed structure</td><td><span class="tag t-str">Strength</span> Clock-warning icon, the required figure, a one-click “Use N s” fix, and Render disabled. This is the app's best-designed validation.</td></tr>
+<tr><td>Movie render cancelled</td><td>not exercised</td><td>Cancel is present and prominent in both sheets; the post-cancel state was not observed.</td></tr>
+<tr><td>Movie render failure</td><td>not exercised</td><td><span class="tag t-con">Concern</span> From source: a red caption, no retry, no cause.</td></tr>
+<tr><td>Tile render failure + Retry</td><td>not exercised</td><td><span class="tag t-con">Concern</span> From source, <code>TileFailureNotice</code> shows the raw store error plus a “Retry rendering” button, bottom-leading, over the fractal. Could not be provoked.</td></tr>
+<tr><td>“Maximum detail reached”</td><td>not exercised</td><td>From source: a capsule at the top. Reaching the precision limit requires zooming past 2^13000 and was not achievable interactively.</td></tr>
+<tr><td>Benchmark with no results</td><td>observed</td><td><span class="tag t-str">Strength</span> Share correctly disabled; <span class="tag t-con">Concern</span> a large blank area with no placeholder.</td></tr>
+<tr><td>Renderer unavailable during benchmark</td><td>not exercised</td><td>From source: status becomes “<em>renderer</em> unavailable” and the run stops silently.</td></tr>
+<tr><td>Narrow Mac window</td><td>observed</td><td><span class="tag t-str">Strength</span> Toolbar overflow works. <span class="tag t-con">Concern</span> Sheets do not adapt.</td></tr>
+<tr><td>iPhone landscape</td><td>observed</td><td>See <a href="#s-resize">§20</a>.</td></tr>
+<tr><td>Accessibility text sizes</td><td>observed</td><td><span class="tag t-prb">Problem</span> See <a href="#a11y">Accessibility</a>.</td></tr>
+</table>
+
+<h4>Recommendations</h4>
+<ul>
+<li>Never show <code>String(describing:)</code> to a user. Map the two or three real failure causes to
+sentences — “That link is not a Mandelbrot location”, “That link's coordinates could not be read” — and keep
+the internal string for the log.</li>
+<li>Give every transient notice a visible dismiss control and an automatic timeout, and say what the user can
+do next.</li>
+<li>Add the missing empty states: no bookmarks, no benchmark results, and no movie yet.</li>
+</ul>
+
+<h4>Priority</h4>
+<ul class="pris">
+<li><span class="pri p1">P1</span><span>Internal error strings shown to the user; notices have no visible dismiss affordance.</span></li>
+<li><span class="pri p2">P2</span><span>Missing empty states for bookmarks and benchmark results.</span></li>
+<li><span class="pri p2">P2</span><span>Render failure has no retry or cause.</span></li>
+</ul>
+
+<h2 id="s-resize">20. Resizing and orientation</h2>
+
+<div class="shots two">
+<figure><img src="ui-ux-audit-assets/mac-narrow-window.png" alt="A 560 by 620 point Mandelbrot window with the toolbar collapsed into a chevron">
+<figcaption><span class="plat">macOS</span>560 × 620&nbsp;pt. The canvas reflows correctly and the toolbar overflows gracefully.</figcaption></figure>
+<figure><img src="ui-ux-audit-assets/mac-narrow-places.png" alt="The Places sheet inside the narrow window, the same size it is in a large window">
+<figcaption><span class="plat">macOS</span>The same Places sheet at the same fixed size — it neither shrinks for the small window nor grows for the large one.</figcaption></figure>
+</div>
+
+<figure><img src="ui-ux-audit-assets/iphone-landscape.png" alt="iPhone in landscape with the fractal filling the screen, the control capsule top right and the Julia companion inset bottom right">
+<figcaption><span class="plat">iPhone</span>Landscape. Layout is correct and the compact size class keeps the companion as an inset — but the crosshair set in portrait is gone.</figcaption></figure>
+
+<h4>Strengths</h4>
+<ul>
+<li><span class="tag t-str">Strength</span> The canvas resizes correctly and keeps its centre and scale; there
+was no flash of black and no visible reflow cost at any size tried.
+<span class="ev">observed</span></li>
+<li><span class="tag t-str">Strength</span> The side-by-side / inset decision is made on horizontal size class,
+not on platform, so an iPad gets the Mac layout and a phone gets the inset. That is the right rule.
+<span class="ev">source; both branches observed on their respective platforms</span></li>
+<li><span class="tag t-str">Strength</span> Landscape is handled without a separate layout and the safe areas are
+respected. <span class="ev">observed</span></li>
+</ul>
+
+<h4>Concerns / Problems</h4>
+<ul>
+<li><span class="tag t-prb">Problem</span> <strong>No sheet responds to window size.</strong> Places, Settings and
+Controls are the same size in a 560&nbsp;pt window and a 1280&nbsp;pt one; only the movie dialog has a size
+policy. <span class="ev">observed at both sizes</span></li>
+<li><span class="tag t-con">Concern</span> Rotating the phone clears the Julia crosshair, so the companion and
+the marker disagree until the next touch. <span class="ev">observed</span></li>
+<li><span class="tag t-con">Concern</span> The companion takes a fixed 28 % of a Mac window. In a very wide
+window that is a great deal of Julia; in a narrow one the Mandelbrot view becomes a strip. It is not
+resizable by the user. <span class="ev">observed / source</span></li>
+</ul>
+
+<h4>Recommendations</h4>
+<ul>
+<li>Give the sheets a size relative to the window with a sensible minimum, and make them resizable where
+content can grow (Places especially).</li>
+<li>Recompute the marker from its model coordinate on layout change so rotation preserves it.</li>
+<li>Make the Mac split draggable with a persisted position, or at least clamp the panel to a pixel range rather
+than a fixed fraction.</li>
+</ul>
+
+<h4>Priority</h4>
+<ul class="pris">
+<li><span class="pri p1">P1</span><span>Sheets ignore window size on macOS. <em>Systemic — shared sheet chrome.</em></span></li>
+<li><span class="pri p2">P2</span><span>Crosshair lost on rotation; Mac companion split is not user-adjustable.</span></li>
+</ul>
+
+<h2 id="s-icon">21. App icon and first run</h2>
+
+<figure><img src="ui-ux-audit-assets/iphone-app-icon.png" alt="The Mandelbrot app icon on the iOS Home Screen: a densely detailed multicoloured fractal crop in acid greens, purples and orange">
+<figcaption><span class="plat">iPhone</span>The Home Screen icon — a full-detail fractal crop at 60&nbsp;pt.</figcaption></figure>
+
+<ul>
+<li><span class="tag t-con">Concern</span> The icon is a dense fractal crop rendered at icon size, so it reads as
+coloured noise rather than a mark. It has no clear silhouette, no focal point, and its acid green / purple /
+orange palette matches none of the app's own seven curated palettes — so the first impression contradicts the
+product's best asset. <span class="ev">observed</span></li>
+<li><span class="tag t-con">Concern</span> No dark or tinted icon variants were visible.
+<span class="ev">observed on the Home Screen only</span></li>
+<li><span class="tag t-prb">Problem</span> <strong>There is no first-run experience at all.</strong> A new user
+gets the whole set and six unlabelled icons. The app's gestures — the thing it is actually for — are
+discoverable only by guessing or by finding the Controls sheet.
+<span class="ev">observed on a fresh install</span></li>
+</ul>
+
+<h4>Recommendations</h4>
+<ul>
+<li>Design the icon as a mark: one recognisable silhouette (the cardioid-and-bulb outline is instantly
+readable) in one of the app's own palettes, with dark and tinted variants.</li>
+<li>Add a first-run pass built from the existing <code>HelpContent.gestures</code>: three lines over the live
+fractal, dismissed by the first gesture the user makes. No modal, no carousel, no account — it should be gone
+in five seconds.</li>
+</ul>
+
+<h4>Priority</h4>
+<ul class="pris">
+<li><span class="pri p1">P1</span><span>No first-run or onboarding state.</span></li>
+<li><span class="pri p2">P2</span><span>App icon does not read at icon size and is off-palette; no dark/tinted variants seen.</span></li>
+</ul>
+
+<hr>
+
+<h2 id="workflows">Workflow review</h2>
+
+<h3>A. Exploration — launch → pan → zoom → refine → continue</h3>
+<p><strong>Observed:</strong> launch is immediate and the whole set renders at once. Dragging, scroll-zoom at
+the pointer, double-click zoom and pinch all work smoothly and detail fades in. Back/Forward become available
+as you move, and history is recorded when a view settles and differs meaningfully — a well-judged rule that
+avoids a history full of near-duplicates.</p>
+<p><strong>Friction:</strong> the moment you stop, you cannot say where you are. There is no scale readout, so
+“continue exploring” has no anchor; deciding whether this is somewhere worth bookmarking means opening a sheet
+that covers it. On iPhone, the Back chevron appearing mid-session shifts every other control.</p>
+<p><strong>Especially successful:</strong> the gesture model. Nothing in this workflow feels mediated.</p>
+
+<h3>B. Bookmarking — find a place → bookmark → browse → restore</h3>
+<p><strong>Observed:</strong> On Mac, clicking the filled-bookmark toolbar button appears to do nothing at all.
+Opening Places, typing a name and clicking Bookmark required two clicks before the entry appeared. The new
+bookmark then sits in a text-only list next to nine built-in places that look identical to it, with its scale
+formatted differently from theirs. Restoring it is an instant cut to somewhere else.</p>
+<p><strong>Friction, in order of cost:</strong> no confirmation → no thumbnail → no rename → no transition. A
+user cannot tell that the first step worked, and then cannot recognise the result.</p>
+<p><strong>State loss:</strong> restoring a bookmark silently replaces the current palette, contrast, phase and
+iteration limit. That is probably correct, but it is unannounced and not undoable except via Back.</p>
+
+<h3>C. Julia exploration — Mandelbrot location → Julia → explore → return</h3>
+<p><strong>Observed on macOS:</strong> excellent. Toggle the companion, move the pointer, and the Julia set
+changes under it; click the crosshair to pin; the panel pans and zooms on its own; swap to promote the Julia
+set; swap back. Conceptual continuity is genuinely preserved.</p>
+<p><strong>Observed on iPhone:</strong> the same toggle produces a Julia set for a point you did not choose,
+with no crosshair anywhere, and the caption gives four decimal places of a number that needs ten. The
+connection between the two views — the entire point — is not made until you happen to touch the canvas.</p>
+<p><strong>Missing step:</strong> there is no way to bookmark, share or render a movie of a Julia set. It is a
+view, not a place, so it falls outside the rest of the app's vocabulary.</p>
+
+<h3>D. Movie creation — choose start → choose end → configure → preview → render → completion → share</h3>
+<p><strong>Observed on macOS:</strong> the best workflow in the app. Open the dialog, see both endpoints as
+pictures, read a sentence describing the route, watch a real preview of it, open Edit Journey to slow a leg or
+pull the overview back, read measured statistics, choose a folder, render with two live counters and a Cancel,
+and finish on a card that tells you what was made and where. The only real breaks are the blank From popup at
+the start and the completion card being below the fold at the end.</p>
+<p><strong>Observed on iPhone:</strong> the same intent, a different product. The end is fixed to the current
+view (so “choose end” is not a step), the start list offers no pictures, a raw float is shown, there is no
+preview, no timeline, no statistics, no guard against an impossible duration, and completion is announced by a
+progress bar disappearing.</p>
+<p><strong>Cross-screen friction:</strong> on both platforms the movie's end is “this view”, so the whole
+workflow depends on the user having already navigated to the right place — but the exploration view never told
+them where that was, and the movie sheet is the first time they see it named.</p>
+
+<h3>E. Export — current visual state → controls → progress → result → share</h3>
+<p><strong>This workflow does not exist.</strong> There is no still-image export in the UI on either platform.
+The only export is a movie, and the only share is a custom-scheme URL. A user who has found something
+beautiful can screenshot it or nothing.</p>
+
+<h3>F. Recovery and cancellation</h3>
+<p>Movie rendering can be cancelled from a prominent control on both platforms. Navigation has Back/Forward
+with a well-judged recording rule. Beyond that there is no undo: deleting a bookmark is immediate and
+irreversible (and unreachable on macOS), changing the palette or detail cannot be undone, and restoring a
+bookmark's colours cannot be reverted except by navigating back.</p>
+
+<h2 id="crossplat">Cross-platform consistency</h2>
+<p>The goal is “the same application, expressed naturally in each platform's language”. The app achieves that
+in the places where someone clearly sat down and designed for each platform, and misses it everywhere the
+shared <code>Form</code> was simply shipped to both.</p>
+
+<h4>Expressed correctly on both</h4>
+<ul>
+<li><strong>Gestures.</strong> Two genuinely different, genuinely idiomatic sets, with two different help lists.
+The single best example of the principle in the codebase.</li>
+<li><strong>Layout adaptation.</strong> Side-by-side companion by horizontal size class; corner inset on a
+compact phone; Mac gets a window toolbar, iPhone gets a floating capsule.</li>
+<li><strong>Movie output destination.</strong> macOS gets a chosen, security-scoped folder that survives
+relaunch; iOS correctly has no folder and uses the share sheet. The code says so in a comment, and it is the
+right call.</li>
+<li><strong>Resolution options.</strong> 4K on Mac, capped at 1080p on iOS.</li>
+<li><strong>Keyboard.</strong> Shown on macOS always; on iOS only when a hardware keyboard is actually present,
+and it watches for connection changes while the sheet is open.</li>
+</ul>
+
+<h4>Desktop design leaked onto iPhone</h4>
+<ul>
+<li>Settings' companion section says “Follow the <em>pointer</em>” and “<em>click</em> it to pin” on a phone.</li>
+<li>The primary controls are at the top of the screen — a window-toolbar position, not a phone position.</li>
+<li>Places and Settings are the Mac's list structure with an iOS skin: the same nine-row gallery, the same
+row-level share buttons, the same inline “Bookmark” button rendered at 20&nbsp;pt tall.</li>
+</ul>
+
+<h4>Mobile design enlarged onto macOS</h4>
+<ul>
+<li>Every sheet is <code>NavigationStack { Form }</code> with a navigation title and a <em>Done</em> toolbar
+button. On macOS that yields a phone-width panel, a title bar the platform does not use, <em>Done</em> at the
+bottom left, no Cancel, no default button, no Escape, and content clipped on both edges.</li>
+<li><code>NavigationLink</code> to Acknowledgements pushes inside a Mac sheet and removes its dismissal
+control.</li>
+<li>Swipe-to-delete is the only way to remove a bookmark — a gesture macOS does not have.</li>
+</ul>
+
+<h4>Workflows that differ for no defensible reason</h4>
+<ul>
+<li><strong>Movie creation</strong> — two different route models and two different feature sets from two
+separate files. The Mac's journey planning, preview, timeline, statistics and completion card are all absent
+on iPhone. Nothing about the phone makes those impossible; the preview is 480 × 270 at 12 fps.</li>
+<li><strong>Bookmark and Share</strong> — first-class toolbar items on Mac, buried in a sheet on iPhone.</li>
+<li><strong>Render feedback</strong> — two counters, a percentage and dimmed settings on Mac; one counter and
+live settings on iPhone.</li>
+</ul>
+
+<h4>Terminology and icon mismatches</h4>
+<table>
+<tr><th>Concept</th><th>macOS</th><th>iPhone</th></tr>
+<tr><td>Start the render</td><td>“Render Journey” (prominent default button)</td><td>“Render movie” (plain list row)</td></tr>
+<tr><td>The route</td><td>“Journey”, with segments and holds</td><td>“Journey” section, but “Keyframes 32”</td></tr>
+<tr><td>Current zoom in the movie sheet</td><td>“Current view (4,000×)”</td><td>“This view, 2.0000000000000004e9×”</td></tr>
+<tr><td>Dismiss a sheet</td><td>“Done”, bottom left, no Escape</td><td>“Done”, navigation bar (correct)</td></tr>
+<tr><td>Bookmark action</td><td>Toolbar <code>bookmark.fill</code> + ⌘D + in-sheet button</td><td>In-sheet button only</td></tr>
+</table>
+
+<h4>Recommendation</h4>
+<p>Adopt one rule and apply it mechanically: <em>the model, the vocabulary and the states are shared; the
+presentation is not.</em> Concretely, <code>Journey</code>, <code>MovieOutcome</code>, the zoom formatter, the
+minimum-duration guard, the preview renderer and the thumbnail renderer belong in shared code used by both
+sheets; <code>MovieSheetMac</code> and <code>MovieView</code> should differ only in how they lay that out.
+The same rule applied to Places and Settings would fix most of the macOS problems in this report.</p>
+
+<h2 id="a11y">Accessibility and resilience</h2>
+
+<h3>Tested in this session</h3>
+
+<div class="shots two">
+<figure><img src="ui-ux-audit-assets/iphone-toolbar-dynamic-type.png" alt="iPhone at accessibility text size: the control capsule's icons have grown far beyond the capsule, overlapping each other and spilling outside it; the Julia panel's caption has expanded into a huge blob covering the whole panel">
+<figcaption><span class="plat">iPhone</span><strong>P0.</strong> At AX5 the control capsule's glyphs overflow their 44&nbsp;pt frames and overlap each other and the capsule edge, and the companion's caption expands until it covers the entire Julia image.</figcaption></figure>
+<figure><img src="ui-ux-audit-assets/iphone-dynamic-type.png" alt="iPhone Settings at accessibility text size, reflowing correctly with labels above controls and no truncation">
+<figcaption><span class="plat">iPhone</span>By contrast the Settings form reflows perfectly at the same size — labels stack above controls, nothing truncates.</figcaption></figure>
+</div>
+
+<figure><img src="ui-ux-audit-assets/iphone-companion-dynamic-type.png" alt="Close-up of the Julia companion panel at accessibility text size: the three control glyphs have burst out of their circles and overlap, and the c readout has expanded into a large rounded blob that covers the whole Julia image">
+<figcaption><span class="plat">iPhone</span>The companion panel at AX5, enlarged. The three 26&nbsp;pt buttons burst their circles and overlap; the <em>c</em> readout capsule expands until the Julia set it labels is entirely hidden behind it.</figcaption></figure>
+
+<ul>
+<li><span class="tag t-prb">Problem</span> <strong>The iPhone control capsule and the companion panel break at
+accessibility text sizes.</strong> At AX5 the glyphs grow past their fixed 44 × 44&nbsp;pt frames and overlap
+one another and the capsule background; the companion's three 26&nbsp;pt buttons do the same; and the
+“Julia <em>c</em> = …” caption capsule expands until it hides the entire Julia set. The buttons remain in the
+accessibility tree at their original coordinates, so what the user sees no longer corresponds to what they can
+tap. <span class="ev">observed at <code>accessibility-extra-extra-large</code></span></li>
+<li><span class="tag t-str">Strength</span> <strong>Every <code>Form</code>-based sheet survives AX5 intact</strong>
+— Settings reflowed with labels above controls, no truncation and no clipping. That is a real, tested
+strength and it comes from using standard controls.
+<span class="ev">observed</span></li>
+<li><span class="tag t-prb">Problem</span> <strong>The fractal is invisible to VoiceOver on macOS.</strong> The
+window's accessibility tree is a toolbar of ten well-labelled buttons plus a single unlabelled
+<code>group</code> containing nothing. There is no description, no value, no actions.
+<span class="ev">observed via the AX tree</span></li>
+<li><span class="tag t-con">Concern</span> <strong>On iPhone the canvas is one opaque element</strong> labelled
+“Mandelbrot explorer”, with no value, no traits and no custom actions — so a VoiceOver user can know the
+explorer is there but cannot learn where they are, or pan and zoom.
+<span class="ev">observed via the AX hierarchy</span></li>
+<li><span class="tag t-prb">Problem</span> <strong>The companion panel reports five elements with one
+label.</strong> The container, its duplicate, all three buttons and the caption all announce “Julia
+companion”. <span class="ev">observed via the AX hierarchy</span></li>
+<li><span class="tag t-prb">Problem</span> <strong>Touch targets below 44&nbsp;pt:</strong> companion panel
+buttons 26 × 26&nbsp;pt; the “Bookmark” button in Places 77 × 20&nbsp;pt.
+<span class="ev">observed via the AX hierarchy</span></li>
+<li><span class="tag t-str">Strength</span> All ten macOS toolbar buttons and all seven iPhone cluster buttons
+carry correct accessibility labels, and the iPhone buttons additionally carry the explanatory sentence as a
+hint. <span class="ev">observed</span></li>
+<li><span class="tag t-con">Concern</span> No keyboard focus was visible anywhere on macOS outside text fields;
+the canvas accepts first responder for key commands but shows no focus ring, and there is no Tab order through
+the toolbar. <span class="ev">observed</span></li>
+</ul>
+
+<h3>Inferred from source, not tested</h3>
+<ul>
+<li><strong>Reduce Motion is not consulted anywhere.</strong> There is no
+<code>accessibilityReduceMotion</code> reference in the UI code, yet the app has inertial flings, spring-based
+rotation snapping, refinement fades and a rotation animation. At minimum, flings and the refinement fade
+should be shortened when Reduce Motion is on.</li>
+<li><strong>Colour carries meaning without a second channel</strong> in two places: the green tick on the Mac
+completion card, and the red/orange error and warning captions. Both have accompanying text, which mitigates
+it; the movie timeline's segment icons (magnifier vs arrows) are a good example of doing it right.</li>
+<li><strong>Localisation resilience is untested.</strong> Strings are inline literals rather than a string
+catalogue, and several layouts depend on short English labels — the movie sheet's 52&nbsp;pt “From:”/“To:”
+gutter, the Mac settings' fixed label column, the 116&nbsp;pt thumbnail captions. German or French would
+likely clip several of them. No localisation was attempted in this session.</li>
+<li><strong>The crosshair is white with a 2&nbsp;pt shadow</strong> and is drawn over content that is frequently
+white. It was legible over mid-tones in testing; over the bright interior bands it will not be.</li>
+</ul>
+
+<h4>Recommendations</h4>
+<ul>
+<li>Cap the control glyphs and the companion caption with
+<code>.dynamicTypeSize(...DynamicTypeSize.accessibility1)</code> (or size them with
+<code>@ScaledMetric</code> against a ceiling) so the capsule stays coherent, and let the frames grow with the
+glyph rather than clipping.</li>
+<li>Make the canvas an accessible element with a live value — “Centred on −0.743…, 0.131…, zoomed 4,000 times” —
+and add <code>accessibilityAdjustableAction</code> for zoom plus custom actions for pan, so VoiceOver users can
+explore. On macOS, give the <code>NSView</code> an <code>accessibilityRole</code>, label and value.</li>
+<li>Remove the container-level label on <code>CompanionPanel</code> and label its children.</li>
+<li>Raise the two sub-44&nbsp;pt targets.</li>
+<li>Honour Reduce Motion for flings, fades and the rotation spring.</li>
+<li>Give the crosshair a dark outline or a blend mode so it is legible on any background.</li>
+<li>Move user-facing strings into a string catalogue before the layouts harden further.</li>
+</ul>
+
+<h2 id="system">Design-system findings</h2>
+<p>Most of this report collapses into five repeated causes. Fixing these is worth more than fixing the
+symptoms individually.</p>
+
+<h3>1. The shared sheet chrome <span class="pri p0">P0</span> <span class="pri p1">P1</span></h3>
+<p>Five screens — Places, Settings, Controls, Developer, Benchmarks — are
+<code>NavigationStack { Form/List }.navigationTitle(…).toolbar { Button("Done") }</code> with a hard-coded
+<code>.frame(minWidth:…, idealWidth:…, minHeight:…)</code>. On iPhone this is correct and idiomatic. On macOS
+it produces, every time:</p>
+<ul>
+<li>a fixed panel that ignores the window and cannot be resized;</li>
+<li>content clipped at the edges or through the middle of a row;</li>
+<li><em>Done</em> at the bottom <em>leading</em> edge;</li>
+<li>no Cancel and no default button, so <kbd>Return</kbd> does nothing;</li>
+<li><strong><kbd>Escape</kbd> does not dismiss</strong> (verified on Settings, both at the root and after
+pushing to Acknowledgements);</li>
+<li>a navigation title bar macOS sheets do not use;</li>
+<li><code>Section</code> headers rendered as unstyled body text;</li>
+<li>an inconsistent label gutter, so some controls align to it and some do not.</li>
+</ul>
+<p><strong>Fix once:</strong> introduce a single <code>PanelScaffold</code> that is
+<code>NavigationStack { Form }</code> on iOS and, on macOS, a <code>VStack</code> with a heading, a scrolling
+<code>Form().formStyle(.grouped)</code> sized to the window, and a footer with Cancel plus a
+<code>.keyboardShortcut(.defaultAction)</code> confirm — the shape <code>MovieSheetMac</code> already uses.
+Settings should additionally become a real <code>Settings</code> scene reachable by ⌘,.</p>
+
+<h3>2. No slider or labelled-control convention <span class="pri p1">P1</span></h3>
+<p>Sliders appear three times and are built three ways: a <code>LabeledContent</code> row followed by a bare
+<code>Slider</code> row (Exterior contrast, with a value); a bare <code>Text</code> followed by a bare
+<code>Slider</code> (Palette phase, with no value); and a labelled slider with an inline value in the movie
+timeline's Overview. None has minimum/maximum labels. Steppers are similarly inconsistent: label-in-row on
+iPhone, hidden-label-plus-separate-value on Mac, and hidden-label-plus-value-plus-minimum in the timeline —
+three numbers for one quantity.</p>
+<p><strong>Fix once:</strong> one <code>ValueSlider(title:value:in:format:)</code> and one
+<code>ValueStepper</code> used everywhere, each showing title, current value and bounds.</p>
+
+<h3>3. No scale formatter <span class="pri p1">P1</span></h3>
+<p>The same quantity — how far you are zoomed in — was observed printed six different ways:</p>
+<table>
+<tr><th>Rendering</th><th>Where</th></tr>
+<tr><td><code>1.0</code></td><td>Places → This view → Scale</td></tr>
+<tr><td><code>4000.0</code></td><td>Places → This view → Scale, at Seahorse Valley</td></tr>
+<tr><td><code>1×</code></td><td>Places → Famous places row</td></tr>
+<tr><td><code>4e3×</code></td><td>Places → Famous places row, same place</td></tr>
+<tr><td><code>1.0×</code></td><td>Places → Bookmarks row, same place</td></tr>
+<tr><td><code>4,000×</code></td><td>Mac movie sheet, “Current view (4,000×)”</td></tr>
+<tr><td><code>2.0000000000000004e9×</code></td><td>iPhone movie sheet, “To”</td></tr>
+</table>
+<p><strong>Fix once:</strong> <code>MovieSheetMac.zoom(_:)</code> is already the right function — plain digits
+with grouping below about 10¹⁰ and a clean exponent above. Move it to the model and use it for every
+user-facing scale. Show the raw decimal string only where precision matters (a copyable coordinate field).</p>
+
+<h3>4. Terminology drift <span class="pri p2">P2</span></h3>
+<table>
+<tr><th>One concept</th><th>Names in use</th></tr>
+<tr><td>Iteration limit</td><td>“Automatic iteration limit”, “Detail ×1”, “iterations”, “Increase Detail”</td></tr>
+<tr><td>A saved view</td><td>“Bookmark” (verb + noun), “Place”, “This view”, “Location” (model), “view”</td></tr>
+<tr><td>Making a movie</td><td>“Render movie”, “Render Journey”, “Zoom Movie”, “Create Zoom Movie”</td></tr>
+<tr><td>Colour behaviour</td><td>“Depth”, “Pinned”, “Auto-contrast”, “Exterior contrast”, “Palette phase”</td></tr>
+<tr><td>The movie's destination</td><td>“To”, “Current view”, “the starting view” (incorrectly), “This view”</td></tr>
+<tr><td>Leaked jargon</td><td>“Keyframes”, “Perturbation”, “FloatFloat”, “Invalid decimal coordinate”</td></tr>
+</table>
+<p><strong>Fix once:</strong> a short glossary, one word per concept, applied to every user-facing string.
+Suggested: <em>Place</em> (a saved view, whether yours or built-in), <em>Detail</em>, <em>Palette</em>,
+<em>Colour spacing</em>, <em>Colour shift</em>, <em>Journey</em>, <em>Render</em>.</p>
+
+<h3>5. Two tiers of design investment <span class="pri p1">P1</span></h3>
+<p>There is exactly one screen in this app that was designed — <code>MovieSheetMac</code> — and it contains all
+the conventions the rest of the app lacks: a title and purpose line, cards with headers, a right-aligned label
+gutter, a statistics column, a footer with a leading help button and a trailing default action, phase-dependent
+footers, dimmed-not-replaced content during work, and a completion card. Everything else is a
+<code>Form</code>.</p>
+<p><strong>Fix once:</strong> extract that file's conventions into the shared scaffold above, then rebuild
+Places and Settings on it. That single move resolves the P0, most of the macOS P1s, and the cross-platform
+consistency findings simultaneously.</p>
+
+<h2 id="recs">Prioritised recommendations</h2>
+<p>Grouped by theme within each priority. Order inside a group is not significant.</p>
+
+<h3>P0 — Critical</h3>
+<ul class="pris">
+<li><span class="pri p0">P0</span><span><strong>Rebuild the macOS Settings presentation.</strong> Labels, controls and help text are clipped on both edges and the panel cannot be resized, so information is lost in the app's only settings screen. Make Settings a <code>Settings</code> scene with <code>.formStyle(.grouped)</code>, sized to its content and reachable from ⌘,. <em>(Systemic: the same chrome affects Places, Controls, Developer and Benchmarks.)</em></span></li>
+<li><span class="pri p0">P0</span><span><strong>Make the iPhone controls survive accessibility text sizes.</strong> At AX5 the control capsule's glyphs overlap each other and spill outside the capsule, the companion's buttons do the same, and the companion caption covers the entire Julia image. Cap the icon scaling and let frames grow with their content.</span></li>
+</ul>
+
+<h3>P1 — Important</h3>
+
+<h4>Platform conventions (macOS)</h4>
+<ul class="pris">
+<li><span class="pri p1">P1</span><span>Add <em>Settings…</em> / ⌘, to the app menu.</span></li>
+<li><span class="pri p1">P1</span><span>Make <kbd>Escape</kbd> dismiss every sheet; add Cancel and a default button; move the confirming button to the bottom-trailing edge. <em>Systemic.</em></span></li>
+<li><span class="pri p1">P1</span><span>Validate every menu command against the focused model — Back, Forward, Upright and Swap are currently always enabled.</span></li>
+<li><span class="pri p1">P1</span><span>Let sheets size themselves to the window and stop clipping content. <em>Systemic.</em></span></li>
+<li><span class="pri p1">P1</span><span>Give Places and the filled-bookmark toolbar item distinct glyphs, and stop conditional toolbar items reflowing the cluster.</span></li>
+</ul>
+
+<h4>Feedback and state</h4>
+<ul class="pris">
+<li><span class="pri p1">P1</span><span>Acknowledge a bookmark: fill the toolbar glyph and show a brief “Saved to Places” capsule with Undo/Name.</span></li>
+<li><span class="pri p1">P1</span><span>Give iPhone a real movie-completion state (tick, frames · duration · size, Share, Save to Photos).</span></li>
+<li><span class="pri p1">P1</span><span>Disable the iPhone movie settings while a render is running.</span></li>
+<li><span class="pri p1">P1</span><span>Replace internal error strings with human sentences and give notices a visible dismiss control.</span></li>
+<li><span class="pri p1">P1</span><span>Investigate the swallowed first click on “Bookmark” after typing a name; commit on <kbd>Return</kbd> as well.</span></li>
+</ul>
+
+<h4>Orientation in the fractal</h4>
+<ul class="pris">
+<li><span class="pri p1">P1</span><span>Show the current scale (and, on demand, the coordinates) in the exploration view on both platforms. Use <code>.navigationSubtitle</code> on macOS.</span></li>
+<li><span class="pri p1">P1</span><span>On iPhone, seed the Julia marker at the view centre when the companion opens so the crosshair and the companion always agree.</span></li>
+</ul>
+
+<h4>Cross-platform parity</h4>
+<ul class="pris">
+<li><span class="pri p1">P1</span><span>Share the journey model, preview, thumbnails, statistics and duration guard between the two movie sheets; keep only presentation platform-specific. <em>Systemic.</em></span></li>
+<li><span class="pri p1">P1</span><span>Share the zoom formatter — this alone removes “2.0000000000000004e9×”. <em>Systemic.</em></span></li>
+<li><span class="pri p1">P1</span><span>Add Bookmark and Share to the iPhone control cluster, and move the cluster into the thumb arc.</span></li>
+<li><span class="pri p1">P1</span><span>Platform-condition the Settings companion copy (“pointer”/“click” on a phone).</span></li>
+</ul>
+
+<h4>Missing capability</h4>
+<ul class="pris">
+<li><span class="pri p1">P1</span><span>Add still-image export using the existing tiled compositor: <em>Export Image…</em> (⇧⌘E) on macOS and a share action on iPhone.</span></li>
+<li><span class="pri p1">P1</span><span>Share a <code>Transferable</code> carrying a rendered still plus an <code>https</code> universal link, with a <code>SharePreview</code>.</span></li>
+<li><span class="pri p1">P1</span><span>Add a first-run pass built from the existing gesture help.</span></li>
+<li><span class="pri p1">P1</span><span>Add an empty state for bookmarks; add rename, reorder and a context menu (which also gives macOS a discoverable delete).</span></li>
+<li><span class="pri p1">P1</span><span>Put thumbnails in Places using the existing <code>LocationThumbnail</code>.</span></li>
+</ul>
+
+<h4>Controls and correctness</h4>
+<ul class="pris">
+<li><span class="pri p1">P1</span><span>Replace the Depth/Pinned segmented control with a control the user can actually operate in both directions, and give it a visible name on iPhone.</span></li>
+<li><span class="pri p1">P1</span><span>Adopt one slider/stepper pattern with title, value and bounds. <em>Systemic.</em></span></li>
+<li><span class="pri p1">P1</span><span>Initialise the movie sheet's From popup so it is never blank.</span></li>
+<li><span class="pri p1">P1</span><span>Recalibrate or remove the movie file-size estimate (observed 119.4&nbsp;MB predicted vs 10.8&nbsp;MB actual).</span></li>
+</ul>
+
+<h4>Accessibility</h4>
+<ul class="pris">
+<li><span class="pri p1">P1</span><span>Make the fractal an accessible element with a live value and adjustable zoom on both platforms.</span></li>
+<li><span class="pri p1">P1</span><span>Label the companion panel's children individually instead of labelling the container.</span></li>
+<li><span class="pri p1">P1</span><span>Raise the two sub-44&nbsp;pt touch targets (companion buttons, the Places “Bookmark” button).</span></li>
+</ul>
+
+<h3>P2 — Polish</h3>
+
+<h4>Motion and continuity</h4>
+<ul class="pris">
+<li><span class="pri p2">P2</span><span>Animate jumps to a place or bookmark as a short continuous zoom; honour Reduce Motion.</span></li>
+<li><span class="pri p2">P2</span><span>Honour Reduce Motion for flings, refinement fades and the rotation spring.</span></li>
+<li><span class="pri p2">P2</span><span>Preserve the Julia crosshair across device rotation; restore the last location on launch.</span></li>
+</ul>
+
+<h4>Microcopy</h4>
+<ul class="pris">
+<li><span class="pri p2">P2</span><span>Fix “Zoom from X into <em>the starting view</em>” → “the current view” (both route descriptions).</span></li>
+<li><span class="pri p2">P2</span><span>Fix “Route: 1 segments”.</span></li>
+<li><span class="pri p2">P2</span><span>Adopt one word per concept (see the glossary in <a href="#system">Design-system findings</a>): Detail, Place, Journey, Palette, Colour spacing, Colour shift.</span></li>
+<li><span class="pri p2">P2</span><span>Replace “Keyframes 32”, “Pin <em>c</em> where it is” and “Exterior contrast” with audience-facing language.</span></li>
+<li><span class="pri p2">P2</span><span>Name each movie timeline segment by its endpoints; title the untitled Controls section.</span></li>
+<li><span class="pri p2">P2</span><span>Give bookmarks a meaningful default name instead of “1.0× view”.</span></li>
+</ul>
+
+<h4>Layout and visual polish</h4>
+<ul class="pris">
+<li><span class="pri p2">P2</span><span>Never clip a sheet through the middle of a control row — break at card boundaries.</span></li>
+<li><span class="pri p2">P2</span><span>Draw the palette preview as a real gradient rather than 64 blocks.</span></li>
+<li><span class="pri p2">P2</span><span>Fix the misaligned row separator under the Places naming row.</span></li>
+<li><span class="pri p2">P2</span><span>Collapse the movie preview slot during and after a render instead of showing an empty box with a stale caption; scroll to the completion card.</span></li>
+<li><span class="pri p2">P2</span><span>Fit the Julia companion's initial viewport to its panel; make the Mac split draggable; give the companion buttons a material backing.</span></li>
+<li><span class="pri p2">P2</span><span>Give the crosshair a dark outline so it is legible on bright regions; give the iPhone capsule a fixed minimum contrast.</span></li>
+<li><span class="pri p2">P2</span><span>Redesign the app icon as a readable mark in one of the app's own palettes, with dark and tinted variants.</span></li>
+</ul>
+
+<h4>Structure and menus</h4>
+<ul class="pris">
+<li><span class="pri p2">P2</span><span>Group the Explore menu with separators; consider a View menu for zoom, rotation and detail.</span></li>
+<li><span class="pri p2">P2</span><span>Give Reset View a command-key shortcut and review the unmodified arrow-key bindings against text entry.</span></li>
+<li><span class="pri p2">P2</span><span>Group the macOS toolbar and set overflow priorities; allow customisation.</span></li>
+<li><span class="pri p2">P2</span><span>Make the developer panel a window on macOS; add HUD and tile-overlay toggles to the Debug menu; let the unlock be undone.</span></li>
+<li><span class="pri p2">P2</span><span>Separate “Famous places” from “Your bookmarks” in the movie From menu; render endpoint thumbnails in the colouring the movie will use.</span></li>
+<li><span class="pri p2">P2</span><span>Add a time-remaining estimate and a retry on the render failure state; add empty states for benchmarks.</span></li>
+<li><span class="pri p2">P2</span><span>Add zoom-out by gesture on macOS; surface shift-drag framing with a cursor change.</span></li>
+<li><span class="pri p2">P2</span><span>Move user-facing strings into a string catalogue; strip hard wraps from the licence text; give About an icon and links.</span></li>
+<li><span class="pri p2">P2</span><span>Let the Acknowledgements page keep a dismissal control.</span></li>
+<li><span class="pri p2">P2</span><span>Investigate whether a double-click zoom can fire from two distant clicks. <em>Unconfirmed.</em></span></li>
+</ul>
+
+<h2 id="sequence">Suggested next-pass sequence</h2>
+<p>This is sequencing by dependency and blast radius, not by severity. Each stage makes the next cheaper.</p>
+
+<ol>
+<li><strong>Establish the shared conventions.</strong> Extract <code>MovieSheetMac</code>'s dialog shape into a
+<code>PanelScaffold</code>; add the shared zoom formatter, the <code>ValueSlider</code>/<code>ValueStepper</code>
+pair, and the glossary. Nothing user-visible ships yet, but every later stage becomes a small change instead
+of a rewrite.</li>
+<li><strong>Rebuild Settings and Places on it</strong>, and add the <code>Settings</code> scene with ⌘,. This
+clears the P0, the Escape/Done/Cancel family, the sheet-sizing family, and most of the macOS platform-idiom
+findings in one pass. Add the Places thumbnails and empty state while the file is open.</li>
+<li><strong>Fix high-impact exploration UX.</strong> The scale readout, the bookmark acknowledgement, the
+iPhone control cluster's position and contents, stable toolbar item positions, and the first-run pass. These
+are the changes a friend picking up the phone would notice first.</li>
+<li><strong>Unify the movie workflow.</strong> Move <code>Journey</code>, the preview, thumbnails, statistics,
+the duration guard and <code>MovieOutcome</code> into shared code and rebuild <code>MovieView</code> on them.
+Fix the blank From popup, the route wording and the file-size estimate on the way through.</li>
+<li><strong>Build the export workflow.</strong> Still-image export, the <code>Transferable</code> share with a
+preview, and the universal link. This is the largest piece of genuinely missing product and it depends on the
+share and menu structure settled in stages 2–3.</li>
+<li><strong>Accessibility pass.</strong> Dynamic Type ceilings on the overlay controls, the canvas as an
+accessible adjustable element, companion labels, touch targets, Reduce Motion, and the string catalogue.
+Doing this after the layouts have settled avoids doing it twice.</li>
+<li><strong>Polish.</strong> Transitions between places, the icon, the palette preview, menu grouping,
+crosshair contrast, the developer window, and the remaining microcopy.</li>
+</ol>
+
+<h2 id="coverage">Audit coverage and limitations</h2>
+
+<h4>Exercised interactively</h4>
+<ul>
+<li><strong>macOS:</strong> launch; navigation by drag, scroll-zoom, double-click and keyboard; rotation via ⌘⇧,
+and the compass; Places (empty and populated); creating a bookmark by name; the share popover; Settings and
+all four of its sections; Acknowledgements; Controls (both sections); the complete Zoom Movie workflow
+including a direct-descent render end to end, a planned travel journey, the journey preview with transport
+controls, the Edit Journey timeline, the overview slider, the help popover, render progress and the completion
+card; the Developer panel; the performance HUD and tile overlay; a full benchmark run; the malformed-link error
+notice; the Explore, File and app menus; the toolbar overflow at 560&nbsp;pt; window resizing between
+560 × 620 and 1280 × 800; and the window's accessibility tree.</li>
+<li><strong>iPhone:</strong> launch on a clean install; opening a shared link; Places (empty and populated,
+seeded); Settings (all sections, scrolled); Controls; the Julia companion including the crosshair, the
+<em>c</em> readout and the swapped mode; the complete Zoom Movie workflow including a 360-frame render,
+progress, and the completion state; portrait and landscape; the Home Screen icon; the accessibility hierarchy
+at every step; and Dynamic Type at <code>accessibility-extra-extra-large</code> across the explorer, the
+companion and Settings.</li>
+</ul>
+
+<h4>Not exercised — reviewed from source and labelled as such</h4>
+<ul>
+<li><strong>Shift-drag region framing on macOS.</strong> The automation harness cannot hold a modifier key
+across a press-drag-release, so the selection rectangle was never seen. Its behaviour is described from
+<code>MacInputView</code> and the Controls sheet.</li>
+<li><strong>“Maximum detail reached.”</strong> Reaching the precision limit requires zooming past roughly
+2^13000; not achievable by interaction.</li>
+<li><strong>Tile render failure and the Retry control.</strong> Could not be provoked; no tile failure occurred
+in any session.</li>
+<li><strong>Movie render failure, and cancelling a render.</strong> Cancel was seen and is prominent, but no
+render was cancelled to completion and no render failed.</li>
+<li><strong>Swipe-to-delete a bookmark on iPhone.</strong> Not attempted.</li>
+<li><strong>Julia swapped mode on macOS</strong> (it was exercised on iPhone) and the iPhone rotation compass.</li>
+<li><strong>VoiceOver itself.</strong> Accessibility findings come from the live accessibility hierarchies on
+both platforms, which is a reliable proxy for labels, traits and geometry, but no screen reader was run.</li>
+<li><strong>Localisation.</strong> No non-English locale was tested; the remarks are inferences from fixed-width
+label gutters and inline string literals.</li>
+<li><strong>iPad.</strong> Out of scope for this audit, though the size-class logic means it takes the Mac
+layout branch.</li>
+</ul>
+
+<h4>Workarounds used</h4>
+<ul>
+<li><strong>Bookmarks were seeded</strong> into the simulator's <code>UserDefaults</code>
+(<code>xcrun simctl spawn … defaults write … Bookmarks</code>) because the automation harness could not type
+into the text field. The seeded records use the app's own <code>Location</code> encoding, so the populated
+Places screenshots show genuine app rendering of genuine data.</li>
+<li><strong>Developer tools were unlocked</strong> on macOS by tapping the version row seven times — the
+documented route — and briefly by writing <code>DeveloperToolsUnlocked</code> and
+<code>DeveloperMenuEnabled</code>.</li>
+<li><strong>Deep locations were reached</strong> by the app's own <code>mandelbrot://</code> links and by the
+Places gallery, not by simulated gestures, so the deep-zoom screenshots show genuine renders.</li>
+<li><strong>The iPhone 17 Pro simulator ran iOS 27.0</strong> rather than 26.5, because that was the only
+runtime the device-interaction harness could attach to. The launch screen was captured on both runtimes and
+was identical; no other state was compared across them. The simulator's GPU handled every rendering path
+used, including the deep views; no fallback or mock content was needed.</li>
+</ul>
+
+<h4>Residual changes to the environment</h4>
+<ul>
+<li><strong>The repository is unmodified.</strong> No source file was edited; <code>git status</code> shows only
+the new <code>reviews/claude-ui-ux/</code> directory containing this report and its assets.</li>
+<li>The Mac app's <code>Bookmarks</code>, <code>DeveloperToolsUnlocked</code> and
+<code>DeveloperMenuEnabled</code> preferences were written during the audit and have been deleted again. The
+app's own saved window frame was updated by normal use and has been left alone.</li>
+<li><strong>One movie file was rendered to <code>~/Movies</code></strong>
+(<code>Mandelbrot zoom 2026-09-22-073232.mov</code>, 10.8&nbsp;MB) as part of testing the export workflow. It
+has been left in place rather than deleted, since it sits in the user's own Movies folder.</li>
+<li>The iPhone 17 Pro (iOS 27) simulator still has the app installed with the seeded bookmarks and is left
+booted. Erase it with <code>xcrun simctl erase 224ADF74-F91F-49C1-AD68-6F661661C9A5</code> if a clean state is
+wanted.</li>
+</ul>
+
+</main>
+</div>
+</div>
+
+<div id="lb" role="dialog" aria-label="Enlarged screenshot" aria-modal="true"><img alt=""></div>
+<script>
+(function(){
+  var lb = document.getElementById('lb'), img = lb.querySelector('img');
+  document.querySelectorAll('figure img').forEach(function(el){
+    el.addEventListener('click', function(){
+      img.src = el.src; img.alt = el.alt; lb.classList.add('on');
+    });
+  });
+  function close(){ lb.classList.remove('on'); img.removeAttribute('src'); }
+  lb.addEventListener('click', close);
+  document.addEventListener('keydown', function(e){ if(e.key === 'Escape') close(); });
+})();
+</script>
+</body>
+</html>

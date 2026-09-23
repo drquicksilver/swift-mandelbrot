@@ -506,6 +506,13 @@ for empty, busy and failed, and keyboard and pointer support on the Mac
 alongside touch on iOS. Fix what the pass finds, and note anything too large
 for it as its own item.
 
+Two independent audits have now been run, in `reviews/claude-ui-ux/` and
+`reviews/codex-ui-ux/`. `plan-ui-ux-2.12.md` sorts their findings into the work
+that needs no design decisions — shared primitives, correctness, language,
+accessibility, polish, in that order — and the screens that need designing
+first, chief among them the shared macOS sheet chrome that five screens have in
+common and that is visibly broken on the Mac.
+
 **2.13 High-resolution still export.** Tiled supersampled render at any size.
 PNG with the location embedded in the metadata. Shares code with the CLI
 `--render`. After 2.11, so that what a still bakes in is the mapping the app
