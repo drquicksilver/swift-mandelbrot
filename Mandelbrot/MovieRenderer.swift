@@ -20,6 +20,14 @@ struct MovieSettings: Equatable, Sendable {
   var densityAdjustment: Float = 1
   var offsetAdjustment: Float = 0
   var frameCount: Int { max(2, Int((duration * Double(framesPerSecond)).rounded())) }
+  /// HEVC at its default quality spends about as much per second whatever
+  /// the frame rate: 0.30–0.45 bytes per pixel-second across five measured
+  /// journeys (720p and 1080p, 30 and 60 fps, 8 to 16 s). This takes the top
+  /// of that range.  The old per-frame figure predicted 119 MB for a movie
+  /// that wrote 10.8.
+  static func estimatedBytes(_ settings: MovieSettings) -> Double {
+    Double(settings.width * settings.height) * settings.duration * 0.45
+  }
   /// A phone renders a movie beside the viewer's own cache, on a third of the
   /// memory a Mac has, and a 4K keyframe pair alone is 66 MB, so it stops at
   /// 1080p.

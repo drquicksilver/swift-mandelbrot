@@ -93,13 +93,6 @@ enum ExplorerCommand: String, CaseIterable, Identifiable {
   }
 }
 
-struct ExplorerFocusKey: FocusedValueKey { typealias Value = ExplorerModel }
-extension FocusedValues {
-  var explorer: ExplorerModel? {
-    get { self[ExplorerFocusKey.self] }
-    set { self[ExplorerFocusKey.self] = newValue }
-  }
-}
 #if os(macOS)
   import AppKit
   import Combine
@@ -122,19 +115,22 @@ struct ExplorerCommands: Commands {
     @ObservedObject private var access = DeveloperAccess.shared
     @AppStorage("DeveloperMenuEnabled") private var developerMenu = false
   #endif
-  @FocusedValue(\.explorer) private var explorer
+  /// Observed, not merely read: a menu item's enabled state has to follow
+  /// the model as it changes, not only when the focused window does.
+  @FocusedObject private var explorer: ExplorerModel?
   var body: some Commands {
     // Settings is still a sheet on the window it changes, so the standard
     // command opens that sheet rather than a separate Settings scene.
     CommandGroup(replacing: .appSettings) {
       Button("Settings…") { explorer?.showSettings = true }
         .keyboardShortcut(",", modifiers: .command)
-        .disabled(explorer == nil)
+        .disabled(explorer?.isPresentingSheet ?? true)
     }
     CommandMenu("Explore") {
       ForEach(ExplorerCommand.allCases.filter { $0 != .benchmark }) { command in
         Button(command.title) { explorer?.perform(command) }
           .keyboardShortcut(command.key, modifiers: command.modifiers)
+          .disabled(!(explorer?.canPerform(command) ?? false))
       }
     }
     #if os(macOS)

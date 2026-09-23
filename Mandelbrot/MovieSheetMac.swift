@@ -38,7 +38,7 @@
     @StateObject private var toImage = LocationThumbnail()
     @StateObject private var preview = JourneyPreviewRenderer()
     @Environment(\.dismiss) private var dismiss
-    @State private var startChoice: UUID? = Location.gallery[0].id
+    @State private var startChoice: UUID?
     @State private var settings = MovieSettings()
     @State private var outcome: MovieOutcome?
     @State private var problem: String?
@@ -60,7 +60,8 @@
       _model = ObservedObject(wrappedValue: model)
       _movies = ObservedObject(wrappedValue: movies ?? model.movies)
       _outcome = State(initialValue: outcome)
-      _startChoice = State(initialValue: startingAt?.id)
+      // Never nil: an unmatched selection leaves the From popup blank.
+      _startChoice = State(initialValue: (startingAt ?? Location.gallery[0]).id)
     }
 
     // MARK: The journey
@@ -719,12 +720,11 @@
     }
 
     /// A deliberately coarse local estimate, not a promise about a particular
-    /// codec or Mac.  The file figure is a conservative HEVC average for the
-    /// highly detailed images this app makes; travel is more expensive because
-    /// it renders every output view exactly rather than resampling keyframes.
+    /// codec or Mac.  Travel is more expensive to render because it renders
+    /// every output view exactly rather than resampling keyframes.
     private var estimatedFileSize: String {
-      let bytes = Int64(Double(settings.width * settings.height * settings.frameCount) * 0.16)
-      return ByteCountFormatter.string(fromByteCount: bytes, countStyle: .file)
+      let bytes = Int64(MovieSettings.estimatedBytes(settings))
+      return "About " + ByteCountFormatter.string(fromByteCount: bytes, countStyle: .file)
     }
 
     private var estimatedRenderTime: String {

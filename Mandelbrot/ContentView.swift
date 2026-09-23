@@ -146,7 +146,7 @@ struct ContentView: View {
     }
     .sheet(isPresented: $model.showSettings) { AppearanceView(model: model) }
     .sheet(isPresented: $model.showHelp) { HelpView() }
-    .focusedSceneValue(\.explorer, model)
+    .focusedSceneObject(model)
   }
 
   #if os(macOS)

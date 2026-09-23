@@ -31,3 +31,13 @@ private let english = Locale(identifier: "en_GB")
   #expect(!place.zoomDescription.contains("0000000000000004"))
   #expect(ZoomFormat.string(logScale: .nan) == "—")
 }
+
+@Test func anUnnamedBookmarkIsNamedForWhereItIs() {
+  let seahorse = Location.gallery[1]
+  var nearby = seahorse
+  nearby.scale = "8e3"
+  #expect(nearby.suggestedName.hasPrefix("Near Seahorse Valley · "))
+  #expect(Location.gallery[0].suggestedName == "The whole set · 1×")
+  let elsewhere = Location(real: "-0.2", imag: "-0.7", scale: "50")
+  #expect(elsewhere.suggestedName.hasPrefix("-0.2 − 0.7i · "))
+}

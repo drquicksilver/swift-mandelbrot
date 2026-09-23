@@ -3,8 +3,15 @@ import SwiftUI
 /// The starter gallery and the user's bookmarks, each with a link to share.
 struct PlacesView: View {
   @ObservedObject var model: ExplorerModel
+  /// Observed in its own right: the model does not republish the store, so
+  /// a new bookmark reached the list only on the next unrelated redraw.
+  @ObservedObject private var bookmarks: LocationStore
   @Environment(\.dismiss) private var dismiss
   @State private var name = ""
+  init(model: ExplorerModel) {
+    _model = ObservedObject(wrappedValue: model)
+    _bookmarks = ObservedObject(wrappedValue: model.bookmarks)
+  }
   var body: some View {
     NavigationStack {
       List {
@@ -18,21 +25,27 @@ struct PlacesView: View {
           }
           LabeledContent("Zoom", value: model.viewport.zoomDescription)
           HStack {
-            TextField("Name this view", text: $name)
-            Button("Bookmark") {
-              model.bookmarkCurrentView(named: name)
-              name = ""
-            }
+            TextField("Name this view", text: $name, prompt: Text(model.location.suggestedName))
+              .onSubmit(bookmark)
+            // Borderless, so a click or tap reaches the button itself rather
+            // than the row: a bordered button in a list row shares its hits
+            // with the row, and the first click after typing went to the field.
+            Button("Bookmark", action: bookmark)
+              #if os(macOS)
+                .buttonStyle(.bordered)
+              #else
+                .buttonStyle(.borderless)
+              #endif
           }
           ShareLink("Share link", item: model.location.url)
         }
-        if !model.bookmarks.bookmarks.isEmpty {
+        if !bookmarks.bookmarks.isEmpty {
           Section("Bookmarks") {
-            ForEach(model.bookmarks.bookmarks) { place in
+            ForEach(bookmarks.bookmarks) { place in
               row(place)
             }
             .onDelete { offsets in
-              for index in offsets { model.bookmarks.remove(model.bookmarks.bookmarks[index]) }
+              for index in offsets { bookmarks.remove(bookmarks.bookmarks[index]) }
             }
           }
         }
@@ -46,6 +59,10 @@ struct PlacesView: View {
       .toolbar { Button("Done") { dismiss() } }
     }
     .frame(minWidth: 380, minHeight: 460)
+  }
+  private func bookmark() {
+    model.bookmarkCurrentView(named: name)
+    name = ""
   }
   private func row(_ place: Location) -> some View {
     HStack {

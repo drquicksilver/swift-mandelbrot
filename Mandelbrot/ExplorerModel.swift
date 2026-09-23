@@ -266,7 +266,14 @@ import SwiftUI
   func toggleJulia() {
     showJulia.toggle()
     if !showJulia { juliaSwapped = false }
+    // A phone has no pointer to hover, so without this the companion opened
+    // on a default c nowhere near the view, and no crosshair to explain it.
+    if showJulia && !juliaPinned { centreJulia() }
     requestJuliaRedraw()
+  }
+  /// Puts c at the middle of the Mandelbrot view.
+  func centreJulia() {
+    setJulia(at: CGPoint(x: size.width / 2, y: size.height / 2))
   }
   func swapJulia() {
     guard showJulia else { return }
@@ -418,9 +425,8 @@ import SwiftUI
   }
   func bookmarkCurrentView(named name: String? = nil) {
     var place = location
-    place.name =
-      name?.isEmpty == false
-      ? name! : "\(viewport.zoomDescription) view"
+    let typed = name?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+    place.name = typed.isEmpty ? place.suggestedName : typed
     bookmarks.add(place)
   }
   var motion = Motion()
@@ -632,6 +638,14 @@ import SwiftUI
     self.displayScale = displayScale
     viewport.zoom(
       by: 1, at: CGPoint(x: size.width / 2, y: size.height / 2), in: size, pixelWidth: pixelWidth)
+    // Turning a phone reshapes the view; a following crosshair that the new
+    // shape leaves off screen comes back to the middle rather than vanishing.
+    // A pinned one stays on its point, wherever that now is.
+    if let marker = juliaMarker, !juliaPinned,
+      !CGRect(origin: .zero, size: size).contains(marker)
+    {
+      centreJulia()
+    }
     requestRender()
   }
   func pan(_ delta: CGSize) {
@@ -656,6 +670,22 @@ import SwiftUI
     atPrecisionLimit = viewport.zoom(
       by: factor, at: point ?? CGPoint(x: size.width / 2, y: size.height / 2),
       in: size, pixelWidth: pixelWidth)
+  }
+  /// Whether a sheet covers the window.  The menu bar stays live above one,
+  /// and its commands would otherwise act on the view hidden behind it.
+  var isPresentingSheet: Bool {
+    showPlaces || showMovie || showSettings || showHelp || showDeveloper || showBenchmark
+  }
+  /// Whether a command would do anything now, so a menu can say so.
+  func canPerform(_ command: ExplorerCommand) -> Bool {
+    if isPresentingSheet { return false }
+    switch command {
+    case .back: return canGoBack
+    case .forward: return canGoForward
+    case .resetRotation: return abs(mainViewport.angle) > 0.001
+    case .swapJulia: return showJulia
+    default: return true
+    }
   }
   func perform(_ command: ExplorerCommand) {
     stopMotion()

@@ -19,7 +19,7 @@ struct MovieView: View {
     _movies = ObservedObject(wrappedValue: movies ?? model.movies)
   }
   @Environment(\.dismiss) private var dismiss
-  @State private var startChoice: UUID?
+  @State private var startChoice: UUID? = Location.gallery[0].id
   @State private var settings = MovieSettings()
   @State private var problem: String?
   @State private var player: AVPlayer?
@@ -44,6 +44,7 @@ struct MovieView: View {
             Text("Zoom in further than the starting place.").foregroundStyle(.secondary)
           }
         }
+        .disabled(movies.isRendering)
         Section("Movie") {
           Picker("Resolution", selection: resolution) {
             ForEach(MovieSettings.resolutions, id: \.name) { option in
@@ -60,6 +61,9 @@ struct MovieView: View {
           Toggle("Ease in and out", isOn: $settings.eased)
           LabeledContent("Frames", value: "\(settings.frameCount)")
         }
+        // A render has already taken these; changing them now would only
+        // suggest the movie being made will follow.
+        .disabled(movies.isRendering)
         #if os(macOS)
           Section("Saved to") {
             LabeledContent("Folder", value: library.folder.lastPathComponent)
@@ -101,7 +105,6 @@ struct MovieView: View {
     }
     .frame(minWidth: 420, minHeight: 480)
     .onAppear {
-      startChoice = startChoice ?? Location.gallery[0].id
       // Reopening the sheet after a render finds the finished movie already
       // there: `onChange` will not fire for it, so the player is built here.
       player = player ?? movies.output.map { AVPlayer(url: $0) }

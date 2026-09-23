@@ -2,6 +2,24 @@ import SwiftUI
 
 #if os(macOS)
   import AppKit
+  /// A double click the views can trust.  AppKit counts a second press inside
+  /// the double-click interval as a double click wherever it lands, and after
+  /// a short drag too; this also asks that both presses were clicks, a few
+  /// points apart at most.
+  struct DoubleClick {
+    static let tolerance = 5.0
+    private var lastClick: CGPoint?
+    /// Call from `mouseDown`, before anything else uses the event.
+    func isDouble(_ event: NSEvent, at point: CGPoint) -> Bool {
+      guard event.clickCount >= 2, let lastClick else { return false }
+      return hypot(point.x - lastClick.x, point.y - lastClick.y) <= Self.tolerance
+    }
+    /// Call from `mouseUp` with where the press began and ended.
+    mutating func released(from start: CGPoint, to end: CGPoint) {
+      let still = hypot(end.x - start.x, end.y - start.y) <= Self.tolerance
+      lastClick = still ? end : nil
+    }
+  }
   struct PlatformInput: NSViewRepresentable {
     var model: ExplorerModel
     func makeNSView(context: Context) -> MacInputView { MacInputView(model: model) }
@@ -21,6 +39,7 @@ import SwiftUI
     /// instead of panning, and a click that barely moves toggles the pin.
     private var draggingMarker = false
     private var markerMoved = false
+    private var clicks = DoubleClick()
     private var timer: Timer?
     override var isFlipped: Bool { true }
     override var acceptsFirstResponder: Bool { true }
@@ -74,7 +93,10 @@ import SwiftUI
       draggingMarker = !selecting && model.isOnJuliaMarker(last)
       markerMoved = false
       if draggingMarker { return }
-      if event.clickCount == 2 { model.zoom(2, at: last) }
+      if clicks.isDouble(event, at: last) {
+        // Option reverses it, as it does for the zoom tool in most Mac apps.
+        model.zoom(event.modifierFlags.contains(.option) ? 0.5 : 2, at: last)
+      }
     }
     override func mouseDragged(with event: NSEvent) {
       let point = convert(event.locationInWindow, from: nil)
@@ -101,6 +123,7 @@ import SwiftUI
       previousTime = event.timestamp
     }
     override func mouseUp(with event: NSEvent) {
+      clicks.released(from: start, to: convert(event.locationInWindow, from: nil))
       if draggingMarker {
         // A click on the crosshair, rather than a drag of it, pins or releases.
         if !markerMoved { model.toggleJuliaPin() }
@@ -186,6 +209,8 @@ import SwiftUI
   @MainActor final class PanelInputView: NSView {
     var model: ExplorerModel
     private var last = CGPoint.zero
+    private var start = CGPoint.zero
+    private var clicks = DoubleClick()
     override var isFlipped: Bool { true }
     init(model: ExplorerModel) {
       self.model = model
@@ -194,7 +219,13 @@ import SwiftUI
     required init?(coder: NSCoder) { fatalError("init(coder:) is not supported") }
     override func mouseDown(with event: NSEvent) {
       last = convert(event.locationInWindow, from: nil)
-      if event.clickCount == 2 { model.zoomPanel(2, at: last) }
+      start = last
+      if clicks.isDouble(event, at: last) {
+        model.zoomPanel(event.modifierFlags.contains(.option) ? 0.5 : 2, at: last)
+      }
+    }
+    override func mouseUp(with event: NSEvent) {
+      clicks.released(from: start, to: convert(event.locationInWindow, from: nil))
     }
     override func mouseDragged(with event: NSEvent) {
       let point = convert(event.locationInWindow, from: nil)

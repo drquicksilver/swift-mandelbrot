@@ -26,6 +26,14 @@ import Testing
     thumbnail.release()
   }
 
+  /// The audit's case: 12 s of 1080p predicted 119.4 MB and wrote 10.8.
+  @Test func theFileSizeEstimateIsTheRightOrderOfMagnitude() {
+    var settings = MovieSettings()
+    settings.duration = 12
+    let estimate = MovieSettings.estimatedBytes(settings)
+    #expect(estimate > 10.8e6 && estimate < 2 * 10.8e6)
+  }
+
   @Test func galleryZoomsReadPlainlyUntilTheDigitsStopMeaningAnything() throws {
     #expect(Location.gallery[0].zoomDescription == "1×")
     #expect(Location.gallery[1].zoomDescription.hasPrefix("4"))

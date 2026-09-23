@@ -45,3 +45,29 @@ extension Location {
     return view.zoomDescription
   }
 }
+
+extension Location {
+  /// A name for a bookmark nobody named: the famous place it is close to, or
+  /// failing that where it is, and either way how far in.  “Near Seahorse
+  /// Valley · 4,000×” says more than any number alone.
+  var suggestedName: String {
+    let zoom = zoomDescription
+    guard let x = Double(real), let y = Double(imag) else { return zoom }
+    // Distance measured in the famous place's own view widths, so a deep
+    // place only claims views that are close to it at its own scale.
+    let nearby = Location.gallery.dropFirst().compactMap { place -> (String, Double)? in
+      guard let px = Double(place.real), let py = Double(place.imag),
+        let view = try? place.viewport()
+      else { return nil }
+      let widths = hypot(x - px, y - py) / (3 / pow(2, view.logScale))
+      return widths < 2 ? (place.name, widths) : nil
+    }
+    if let nearest = nearby.min(by: { $0.1 < $1.1 }) {
+      return "Near \(nearest.0) · \(zoom)"
+    }
+    if let view = try? viewport(), view.logScale < 1 { return "The whole set · \(zoom)" }
+    let digits = FloatingPointFormatStyle<Double>.number.precision(.significantDigits(1...4))
+    let sign = y < 0 ? "−" : "+"
+    return "\(x.formatted(digits)) \(sign) \(abs(y).formatted(digits))i · \(zoom)"
+  }
+}
