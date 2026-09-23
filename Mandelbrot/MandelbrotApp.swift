@@ -24,6 +24,9 @@ enum MandelbrotMain {
         exit(await TileDiagnostics.runReferenceBenchmark())
       }
       if arguments.contains("--test-tiles") { exit(await TileDiagnostics.run()) }
+      if arguments.contains("--benchmark-compositor") {
+        exit(await TileDiagnostics.runCompositorBenchmark())
+      }
       if arguments.contains("--benchmark") || arguments.contains("--render")
         || arguments.contains("--movie") || arguments.contains("--help")
       {

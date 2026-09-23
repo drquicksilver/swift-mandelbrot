@@ -114,6 +114,23 @@ float3 legacyColour(float iteration) {
     return clamp(rgb,0.0f,1.0f);
 }
 struct ColourParameters { float density; float offset; uint smooth; uint logarithmic; uint limit; };
+// Where a sample falls in the palette's cycle, before the offset.  Linear
+// phase is count / density in double-float, and only the high half may be
+// reduced by fract: at a million iterations a float cannot hold a correction
+// of 0.003, so adding the halves first, as 2.11 did, threw the smooth shading
+// away.  Logarithmic phase is small enough for a float.  The density enters
+// as its reciprocal, which a caller colouring many samples works out once:
+// the compositor colours four per level per pixel, and a division each was
+// most of its cost.
+float2 densityReciprocal(constant ColourParameters &settings) {
+    return dd_div(float2(1,0),float2(settings.density,0));
+}
+float palettePhase(uint2 raw, constant ColourParameters &settings, float2 reciprocal) {
+    float correction=as_type<float>(raw.y);
+    if(settings.logarithmic != 0) return log2(max(1.0f,float(raw.x)+correction))*reciprocal.x;
+    float2 phase=dd_mul(dd_add(float2(float(raw.x),0),float2(correction,0)),reciprocal);
+    return fract(phase.x)+phase.y;
+}
 kernel void colourSamples(texture2d<uint,access::read> samples [[texture(0)]],
                           texture2d<float,access::write> output [[texture(1)]],
                           texture1d<float> palette [[texture(2)]],
@@ -122,15 +139,9 @@ kernel void colourSamples(texture2d<uint,access::read> samples [[texture(0)]],
     if(gid.x>=output.get_width() || gid.y>=output.get_height()) return;
     uint2 raw = samples.read(gid).xy;
     bool capped = raw.x >= sampleGlitched || raw.x >= settings.limit;
-    float correction = as_type<float>(raw.y);
     float value = capped ? -1.0f : float(raw.x);
-    float escaped = max(1.0f, float(raw.x) + correction);
-    float phase = settings.logarithmic != 0
-        ? log2(escaped) / settings.density
-        : (dd_div(dd_add(float2(float(raw.x),0),float2(correction,0)),float2(settings.density,0)).x
-           + dd_div(dd_add(float2(float(raw.x),0),float2(correction,0)),float2(settings.density,0)).y);
     constexpr sampler lookup(coord::normalized, address::repeat, filter::linear);
-    float3 rgb = capped ? float3(0.005,0.008,0.014) : palette.sample(lookup,fract(phase)+settings.offset).rgb;
+    float3 rgb = capped ? float3(0.005,0.008,0.014) : palette.sample(lookup,palettePhase(raw,settings,densityReciprocal(settings))+settings.offset).rgb;
     output.write(float4(settings.smooth != 0 ? rgb : legacyColour(value),1),gid);
 }
 
@@ -178,28 +189,46 @@ bool digitPixel(float2 point,uint digit) {
         || ((mask&16) && x<1 && y>=5 && y<8) || ((mask&32) && x<1 && y>=1 && y<4)
         || ((mask&64) && y>=4 && y<5 && x>=1 && x<4);
 }
-float3 colourSample(texture2d<uint> samples, float2 uv, texture1d<float> palette,
-                     constant ColourParameters &settings) {
-    uint2 point=uint2(clamp(uv,0.0f,1.0f)*float2(samples.get_width()-1,samples.get_height()-1));
-    uint2 raw=samples.read(point).xy;
+float3 texelColour(uint2 raw, texture1d<float> palette, constant ColourParameters &settings,
+                   float2 reciprocal) {
     if(raw.x>=sampleGlitched || raw.x>=settings.limit) return float3(0.005,0.008,0.014);
-    float correction=as_type<float>(raw.y),escaped=max(1.0f,float(raw.x)+correction);
-    float phase=settings.logarithmic != 0 ? log2(escaped)/settings.density
-        : (dd_div(dd_add(float2(float(raw.x),0),float2(correction,0)),float2(settings.density,0)).x
-           + dd_div(dd_add(float2(float(raw.x),0),float2(correction,0)),float2(settings.density,0)).y);
     constexpr sampler lookup(coord::normalized,address::repeat,filter::linear);
-    return palette.sample(lookup,fract(phase)+settings.offset).rgb;
+    return palette.sample(lookup,palettePhase(raw,settings,reciprocal)+settings.offset).rgb;
+}
+// A level's colour at a point: the four samples around it, each coloured,
+// then blended -- bilinear filtering of colours, as a sampler did for the
+// colour textures before 2.11.  Texel i is centred on (i + 0.5) / size, which
+// is what the compositor's UVs assume; the tile's one-texel gutter is what
+// makes the blend continuous across tile edges.
+float3 colourSample(texture2d<uint> samples, float2 uv, texture1d<float> palette,
+                     constant ColourParameters &settings, float2 reciprocal) {
+    float2 size=float2(samples.get_width(),samples.get_height());
+    float2 position=clamp(uv,0.0f,1.0f)*size-0.5f;
+    float2 corner=floor(position),t=position-corner;
+    // One gather per component fetches the whole 2x2 footprint around the
+    // point, in the order (left, bottom), (right, bottom), (right, top),
+    // (left, top) -- where "top" is the lower row index.
+    constexpr sampler nearest(coord::normalized,address::clamp_to_edge,filter::nearest);
+    float2 centre=(corner+1.0f)/size;
+    uint4 counts=samples.gather(nearest,centre,int2(0),component::x);
+    uint4 corrections=samples.gather(nearest,centre,int2(0),component::y);
+    float3 top=mix(texelColour(uint2(counts.w,corrections.w),palette,settings,reciprocal),
+                   texelColour(uint2(counts.z,corrections.z),palette,settings,reciprocal),t.x);
+    float3 bottom=mix(texelColour(uint2(counts.x,corrections.x),palette,settings,reciprocal),
+                      texelColour(uint2(counts.y,corrections.y),palette,settings,reciprocal),t.x);
+    return mix(top,bottom,t.y);
 }
 fragment float4 tileFragment(QuadOutput in [[stage_in]],texture2d<uint> coarse [[texture(0)]],
                              texture2d<uint> base [[texture(1)]],texture2d<uint> fine [[texture(2)]],texture2d<uint> previousFine [[texture(3)]],
                              texture1d<float> palette [[texture(4)]],
                              constant TileDrawUniforms &p [[buffer(0)]], constant ColourParameters &colour [[buffer(1)]]) {
     // Interpolate colours, never iteration counts or inside/outside flags.
-    float3 rgb=colourSample(base,mix(p.baseUV.xy,p.baseUV.zw,in.uv),palette,colour);
-    if(p.baseMix<1) rgb=mix(colourSample(coarse,mix(p.coarseUV.xy,p.coarseUV.zw,in.uv),palette,colour),rgb,p.baseMix);
+    float2 reciprocal=densityReciprocal(colour);
+    float3 rgb=colourSample(base,mix(p.baseUV.xy,p.baseUV.zw,in.uv),palette,colour,reciprocal);
+    if(p.baseMix<1) rgb=mix(colourSample(coarse,mix(p.coarseUV.xy,p.coarseUV.zw,in.uv),palette,colour,reciprocal),rgb,p.baseMix);
     if(p.fineMix>0) {
-        float3 detail=colourSample(fine,mix(p.fineUV.xy,p.fineUV.zw,in.uv),palette,colour);
-        if(p.fineFade<1) detail=mix(colourSample(previousFine,mix(p.previousFineUV.xy,p.previousFineUV.zw,in.uv),palette,colour),detail,p.fineFade);
+        float3 detail=colourSample(fine,mix(p.fineUV.xy,p.fineUV.zw,in.uv),palette,colour,reciprocal);
+        if(p.fineFade<1) detail=mix(colourSample(previousFine,mix(p.previousFineUV.xy,p.previousFineUV.zw,in.uv),palette,colour,reciprocal),detail,p.fineFade);
         rgb=mix(rgb,detail,p.fineMix);
     }
     if(p.border) {

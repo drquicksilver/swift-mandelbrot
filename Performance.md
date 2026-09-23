@@ -897,3 +897,43 @@ the frame whose blend is nearest a half and measures its outer 8% alone: **19.1
 /255** before that fade, **5.5/255** after, against 3.3/255 for the whole frame.
 It renders the triple spiral rather than the seahorse valley, whose border is a
 smooth gradient that clamps to nearly the right colour and hid this.
+
+## 2.11 follow-up: colouring in the compositor
+
+2.11 moved colouring from per-tile colour textures into the compositor, which
+colours each level's samples as it draws, so a palette or depth mapping is a
+uniform and never repaints the cache. Three things went wrong in that move,
+found by `make tiles`, `make product` and `make deep`, which had failed since:
+
+- **A one-texel stretch.** The shader read texel `uv × (size − 1)`, but the
+  UVs put texel *i* at (*i* + 0.5)/size, so the right half of every tile was
+  shifted by a sample. The minibrot product check was 189/255 out.
+- **No filtering within a level.** Integer sample textures cannot use a
+  sampler, and the shader read one sample where the colour textures had been
+  bilinearly filtered. It now colours the four samples around a point and
+  blends the colours, as before; the one-texel gutter keeps that continuous
+  across tile edges.
+- **Lost smooth shading at high counts.** Linear phase added the double-float
+  halves before `fract`, and a float at a million cannot hold a correction of
+  0.003. Only the high half is reduced now.
+
+**Cost**, `--benchmark-compositor`, M1 Pro, 3456×2234, settled tiles, median
+of 30 draws after 5 warm-ups:
+
+| View | 2.11 (one read) | Four reads, divide per sample | Four reads, divide per pixel |
+| --- | ---: | ---: | ---: |
+| Whole set, between levels, depth colour | 1.21 ms | 3.41 ms | 2.19 ms |
+| Whole set, between levels, fixed colour | — | 4.01 ms | 2.14 ms |
+| Seahorse Valley, on a level, depth colour | 0.77–0.92 ms | 2.04 ms | 1.30–1.49 ms |
+
+Removing the phase and the palette lookup entirely left 1.81 ms between
+levels: the four fetches and blends of two levels are the floor, and `gather`
+(one fetch per component for the 2×2 footprint) saved almost nothing. The
+phase was the lever: dividing by the density once per pixel instead of once per
+sample took a third off. Filtering costs about 1 ms a frame at full resolution
+over 2.11's unfiltered read.
+
+The per-tile colour textures are still made, repainted on detail changes and
+averaged into mipmaps, though nothing has drawn them since 2.11. Removing them
+would save that GPU work and a third of each tile's memory; it is a
+separate change.

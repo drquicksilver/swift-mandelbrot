@@ -46,18 +46,42 @@
       params.fineMix = 0.5
       encoder.setVertexBytes(&params, length: MemoryLayout<TileDrawUniforms>.stride, index: 0)
       encoder.setFragmentBytes(&params, length: MemoryLayout<TileDrawUniforms>.stride, index: 0)
-      for (index, bytes) in [
-        [UInt8](arrayLiteral: 0, 0, 255, 255), [255, 0, 0, 255], [0, 255, 0, 255],
-      ].enumerated() {
+      // Since 2.11 the shader colours each level from its samples, so the
+      // levels are counts and the colours come from the palette: a three-texel
+      // palette of blue, red and green, and counts whose phase, count / 6,
+      // lands on each texel's centre.  The blend itself is unchanged.
+      struct ColourParameters {
+        var density: Float = 6, offset: Float = 0
+        var smooth: UInt32 = 0, logarithmic: UInt32 = 0, limit: UInt32 = 1000
+      }
+      var colour = ColourParameters()
+      encoder.setFragmentBytes(&colour, length: MemoryLayout<ColourParameters>.stride, index: 1)
+      let paletteDescriptor = MTLTextureDescriptor()
+      paletteDescriptor.textureType = .type1D
+      paletteDescriptor.width = 3
+      paletteDescriptor.pixelFormat = .rgba8Unorm
+      paletteDescriptor.storageMode = .shared
+      paletteDescriptor.usage = .shaderRead
+      let palette = gpu.device.makeTexture(descriptor: paletteDescriptor)!
+      let texels: [UInt8] = [0, 0, 255, 255, 255, 0, 0, 255, 0, 255, 0, 255]
+      texels.withUnsafeBytes {
+        palette.replace(
+          region: MTLRegionMake1D(0, 3), mipmapLevel: 0, withBytes: $0.baseAddress!,
+          bytesPerRow: 12)
+      }
+      encoder.setFragmentTexture(palette, index: 4)
+      // Coarse is blue (count 1), base red (3), fine green (5); the previous
+      // fine level is the coarse texture, and fades out entirely.
+      for (index, count) in [UInt32(1), 3, 5].enumerated() {
         let descriptor = MTLTextureDescriptor.texture2DDescriptor(
-          pixelFormat: .rgba8Unorm, width: 1, height: 1, mipmapped: false)
+          pixelFormat: .rg32Uint, width: 1, height: 1, mipmapped: false)
         descriptor.storageMode = .shared
         descriptor.usage = .shaderRead
         let texture = gpu.device.makeTexture(descriptor: descriptor)!
-        bytes.withUnsafeBytes {
+        [count, 0].withUnsafeBytes {
           texture.replace(
             region: MTLRegionMake2D(0, 0, 1, 1), mipmapLevel: 0, withBytes: $0.baseAddress!,
-            bytesPerRow: 4)
+            bytesPerRow: 8)
         }
         encoder.setFragmentTexture(texture, index: index)
         if index == 0 { encoder.setFragmentTexture(texture, index: 3) }
@@ -238,9 +262,11 @@
         viewport: view, size: size, pixelWidth: 256, iterations: 200, override: nil,
         colouring: ColourSettings(palette: .ice))
       try await store.waitUntilReady()
+      // Since 2.11 a palette is applied as the compositor draws, so changing
+      // it neither samples nor repaints anything in the cache.
       try require(
-        store.statistics.computed == computed && store.statistics.mipmaps > mipCount,
-        "Palette change failed to rebuild colour mipmaps without sampling")
+        store.statistics.computed == computed && store.statistics.mipmaps == mipCount,
+        "A palette change sampled or repainted the cache")
       for (key, samples) in mipSamples {
         try require(
           store.records[key]?.samples === samples, "Palette change replaced authoritative raw data")
@@ -507,9 +533,19 @@
       try require(
         !store.hasActiveFades(now: ProcessInfo.processInfo.systemUptime + 1),
         "Settled tiles keep drawing alive")
+      // Since 2.11 the compositor colours from the samples, so a palette is a
+      // display setting: the cache is not repainted, and the store has nothing
+      // to announce.  The model's own redraw is what shows the new palette.
+      let recolours = store.statistics.recolours
       update(.fire)
       try await store.waitUntilReady()
-      try require(notifications > initial, "Palette completion did not wake presentation")
+      try require(store.colouring.palette == .fire, "The compositor was not given the palette")
+      try require(store.statistics.recolours == recolours, "A palette change repainted the cache")
+      try require(notifications == initial, "A palette change scheduled tile work")
+      let model = ExplorerModel()
+      let requests = model.redrawRequests
+      model.colouring.palette = .ice
+      try require(model.redrawRequests > requests, "A palette change did not ask for a frame")
       store.cancel()
       update(.fire)
       try await store.waitUntilReady()
@@ -955,6 +991,67 @@
       try require(updateP95 < 4, "Demand updates exceeded 4 ms p95 while moving at 1e1000")
       try require(planP95 < 2, "Frame plans exceeded 2 ms p95 while moving at 1e1000")
       return ["movingUpdateP95MS": updateP95, "movingPlanP95MS": planP95]
+    }
+    /// GPU time to draw settled tiles at a Retina laptop's full resolution:
+    /// the compositor alone, which every frame of a pan pays.  Two views: the
+    /// whole set, between levels, where each pixel reads two; and Seahorse
+    /// Valley, resting on one.  `--benchmark-compositor`.
+    static func runCompositorBenchmark() async -> Int32 {
+      let size = CGSize(width: 3456, height: 2234)
+      let views: [(String, Viewport)] = [
+        ("whole set", Viewport()),
+        (
+          "Seahorse Valley",
+          Viewport(center: CGPoint(x: -0.743643887037151, y: 0.13182590420533), scale: 3000)
+        ),
+      ]
+      // Depth colouring is the default; fixed colouring is what old links
+      // and tuned colours use, and costs a double-float division per sample.
+      let colourings: [(String, (Viewport) -> ColourSettings)] = [
+        ("depth", { DepthColouring.resolve(viewport: $0, palette: .blueGold, smooth: true) }),
+        ("fixed", { _ in ColourSettings() }),
+      ]
+      do {
+        for (name, view) in views {
+          for (colourName, colouring) in colourings {
+            let store = TileStore()
+            store.update(
+              viewport: view, size: size, pixelWidth: size.width, iterations: 1000, override: nil,
+              colouring: colouring(view))
+            try await store.waitUntilReady()
+            guard let gpu = GPUContext.shared else { throw GPUFailure("GPU unavailable") }
+            let target = try gpu.texture(
+              width: Int(size.width), height: Int(size.height), format: .bgra8Unorm)
+            var times: [Double] = []
+            for run in 0..<35 {
+              let pass = MTLRenderPassDescriptor()
+              pass.colorAttachments[0].texture = target
+              pass.colorAttachments[0].loadAction = .clear
+              pass.colorAttachments[0].storeAction = .store
+              guard let command = gpu.displayQueue.makeCommandBuffer(),
+                let encoder = command.makeRenderCommandEncoder(descriptor: pass)
+              else { throw GPUFailure("Compositor unavailable") }
+              TileCompositor.encode(
+                store: store, viewport: view, size: size, gpu: gpu, encoder: encoder,
+                now: ProcessInfo.processInfo.systemUptime + 1, overlay: false)
+              encoder.endEncoding()
+              let seconds = try await gpu.submit(command)
+              if run >= 5 { times.append(seconds * 1000) }
+            }
+            times.sort()
+            let median = times[times.count / 2]
+            let high = times[Int(Double(times.count) * 0.95)]
+            print(
+              "\(name), \(colourName) colour: median \(String(format: "%.2f", median)) ms, "
+                + "p95 \(String(format: "%.2f", high)) ms, LOD \(String(format: "%.2f", store.lod))"
+            )
+          }
+        }
+        return 0
+      } catch {
+        FileHandle.standardError.write(Data("Compositor benchmark failed: \(error)\n".utf8))
+        return 1
+      }
     }
     static func run() async -> Int32 {
       do {

@@ -331,7 +331,7 @@
         Set(progresses).count > 3 && progresses.last == 1,
         "Progress did not move, or did not reach the end: \(Set(progresses).sorted())")
       try require(
-        stages.contains { $0.hasPrefix("Keyframe") } && stages.contains { $0.hasPrefix("Frame") },
+        stages.contains { $0.hasPrefix("Zoom level") } && stages.contains { $0.hasPrefix("Frame") },
         "The stage never named the keyframes or the frames: \(stages.sorted())")
       try require(
         FileManager.default.fileExists(atPath: url.path),

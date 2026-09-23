@@ -1,8 +1,8 @@
 """Independent float64 CPU oracle for the settled tiled product image.
 
 No app invocation or recorded GPU output participates in reference generation.
-Pixel centres, palette sampling, colour filtering and optional box mipmaps are
-expressed here independently of the Swift/Metal implementation.
+Pixel centres, palette sampling and colour filtering are expressed here
+independently of the Swift/Metal implementation.
 """
 from functools import lru_cache
 import math
@@ -70,23 +70,10 @@ def reference(fixture):
     cx, cy = fixture['center']
     limit = fixture['iterations']
     span = 3/scale
-    # Rotation turns screen offsets into the plane; tiles stay axis-aligned, so a
-    # rotated view needs the tiles of its bounding box.
     theta = math.radians(fixture.get('rotation', 0))
     cos_t, sin_t = math.cos(theta), math.sin(theta)
-    box_x = (abs(cos_t) + abs(sin_t)*height/width)*span/2
-    box_y = (abs(sin_t) + abs(cos_t)*height/width)*span/2
     lod = max(-2, math.log2(scale*width/256))
     fine, base = math.ceil(lod), math.floor(lod)
-    # Define the requested tile set geometrically, not via the app's grid code.
-    tile_span = 3 / 2**fine
-    x0, x1 = math.floor((cx-box_x+0.5)/tile_span), math.ceil((cx+box_x+0.5)/tile_span)
-    y0, y1 = math.floor((-cy-box_y)/tile_span), math.ceil((-cy+box_y)/tile_span)
-    needed = set()
-    for y in range(y0, y1):
-        for x in range(x0, x1):
-            for level in range(max(-2, fine-2), fine+1):
-                needed.add((level, x // 2**(fine-level), y // 2**(fine-level)))
     stops = [(8,12,21), (83,97,113), (255,255,255), (83,97,113), (8,12,21)]
     lut = []
     for i in range(1024):
@@ -110,15 +97,11 @@ def reference(fixture):
         left, t = math.floor(position), position % 1
         return tuple(round(a*(1-t)+b*t) for a,b in zip(lut[left%1024],lut[(left+1)%1024]))
 
-    @lru_cache(None)
     def texel(level, tx, ty, x, y):
-        gx, gy = tx*256+x, ty*256+y
-        children = [(level+1,tx*2+dx,ty*2+dy) for dy in (0,1) for dx in (0,1)]
-        if 0 <= x < 256 and 0 <= y < 256 and all(child in needed for child in children):
-            colours = [texel(level+1, (gx*2+dx)//256, (gy*2+dy)//256,
-                            (gx*2+dx)%256, (gy*2+dy)%256) for dy in (0,1) for dx in (0,1)]
-            return tuple(round(sum(c[channel] for c in colours)/4) for channel in range(3))
-        return sample(level, gx, gy)
+        # Since 2.11 the compositor colours each level from its own samples as
+        # it draws, so a parent shows its own coarser render, never a box
+        # average of its children's colours.
+        return sample(level, tx*256+x, ty*256+y)
 
     def filtered(level, cr, ci):
         step = 3 / 2**level / 256
