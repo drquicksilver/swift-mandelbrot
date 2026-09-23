@@ -146,7 +146,9 @@ import Testing
     let preview = JourneyPreviewRenderer()
     preview.start(journey: journey, settings: settings, colouring: ColourSettings())
     defer { preview.cancel() }
-    for _ in 0..<100 where preview.player == nil && preview.error == nil {
+    // A deadline, not a delay: the iPad simulator, running this beside the
+    // other render tests, has taken over ten seconds.
+    for _ in 0..<300 where preview.player == nil && preview.error == nil {
       try await Task.sleep(for: .milliseconds(100))
     }
     #expect(preview.error == nil)

@@ -3,12 +3,20 @@ import Testing
 
 @testable import Mandelbrot
 
-/// The model's rules for menus, travel and remembering where you were.  Each
-/// model gets its own defaults suite: the test host shares the app's bundle
-/// identifier, so `.standard` would be the real app's preferences.
+/// Defaults held in memory.  The test host shares the app's bundle
+/// identifier, so `.standard` is the real app's preferences, and even a
+/// removed suite leaves an empty file in ~/Library/Preferences.
+final class MemoryDefaults: UserDefaults, @unchecked Sendable {
+  private var values: [String: Any] = [:]
+  init() { super.init(suiteName: nil)! }
+  override func object(forKey key: String) -> Any? { values[key] }
+  override func set(_ value: Any?, forKey key: String) { values[key] = value }
+  override func removeObject(forKey key: String) { values[key] = nil }
+}
+
+/// The model's rules for menus, travel and remembering where you were.
 @MainActor struct ExplorerModelTests {
-  let suite = "ExplorerModelTests-\(UUID().uuidString)"
-  var defaults: UserDefaults { UserDefaults(suiteName: suite)! }
+  let defaults = MemoryDefaults()
   func model() -> ExplorerModel {
     ExplorerModel(bookmarks: LocationStore(defaults: defaults), defaults: defaults)
   }
@@ -105,7 +113,6 @@ import Testing
     model.restoreLastLocation()  // What the window does; nothing saved yet.
     model.perform(.zoomIn)
     #expect(defaults.string(forKey: ExplorerModel.lastLocationKey) != nil)
-    defaults.removePersistentDomain(forName: suite)
   }
 
   @Test func aSavedPlaceIsRestoredAndGarbageIsIgnored() throws {
@@ -119,6 +126,5 @@ import Testing
     let fresh = model()
     fresh.restoreLastLocation()
     #expect(fresh.viewport == Viewport())
-    defaults.removePersistentDomain(forName: suite)
   }
 }
