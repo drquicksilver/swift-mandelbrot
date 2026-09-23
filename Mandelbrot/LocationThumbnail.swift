@@ -80,3 +80,70 @@ import SwiftUI
     store = nil
   }
 }
+
+/// Thumbnails for a whole library of places, kept for the life of the app.
+///
+/// One `LocationThumbnail` per card would be a tile store per card, so the
+/// places queue for one renderer instead and wait their turn.  The famous
+/// places never change, so a second visit to Places finds them drawn.
+@MainActor final class PlaceThumbnails: ObservableObject {
+  static let shared = PlaceThumbnails()
+  /// Pixels, twice the points a card shows them at.
+  static let width = 480
+  static let height = 270
+  @Published private(set) var images: [String: CGImage] = [:]
+  private var order: [String] = []
+  private var queue: [Location] = []
+  private var worker: Task<Void, Never>?
+  private let renderer = LocationThumbnail()
+  private let capacity = 64
+
+  func image(for place: Location) -> CGImage? { images[LocationThumbnail.key(place)] }
+
+  func request(_ place: Location) {
+    let key = LocationThumbnail.key(place)
+    guard images[key] == nil, !queue.contains(where: { LocationThumbnail.key($0) == key })
+    else { return }
+    queue.append(place)
+    guard worker == nil else { return }
+    worker = Task { await drain() }
+  }
+
+  #if DEBUG
+    /// Hands over a picture drawn elsewhere, as a preview does: its snapshot
+    /// is taken before the GPU could draw one.
+    func seed(_ image: CGImage, for place: Location) {
+      remember(image, for: LocationThumbnail.key(place))
+    }
+  #endif
+
+  /// Stops drawing what nobody is waiting for, and gives back the store.
+  func cancelPending() {
+    queue.removeAll()
+    worker?.cancel()
+    worker = nil
+    renderer.release()
+  }
+
+  private func drain() async {
+    while !queue.isEmpty, !Task.isCancelled {
+      let place = queue.removeFirst()
+      let before = renderer.image
+      await renderer.render(place, width: Self.width, height: Self.height)
+      // A failed render leaves the previous picture behind; that is not this
+      // place's.
+      guard let image = renderer.image, image !== before else { continue }
+      remember(image, for: LocationThumbnail.key(place))
+    }
+    if !Task.isCancelled {
+      renderer.release()
+      worker = nil
+    }
+  }
+
+  private func remember(_ image: CGImage, for key: String) {
+    if images[key] == nil { order.append(key) }
+    images[key] = image
+    while order.count > capacity { images[order.removeFirst()] = nil }
+  }
+}

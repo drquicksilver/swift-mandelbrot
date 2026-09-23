@@ -170,7 +170,13 @@ struct ContentView: View {
     .sheet(isPresented: $model.showBenchmark) {
       BenchmarkView(viewport: model.viewport, iterations: model.iterations)
     }
-    .sheet(isPresented: $model.showPlaces) { PlacesView(model: model) }
+    .sheet(isPresented: $model.showPlaces) {
+      #if os(macOS)
+        PlacesSheetMac(model: model)
+      #else
+        PlacesView(model: model)
+      #endif
+    }
     .sheet(isPresented: $model.showMovie) {
       // Each platform has its own shape: a dialog on the Mac, a grouped form
       // where a sheet fills a phone.

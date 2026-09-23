@@ -506,6 +506,16 @@ import SwiftUI
   }
   static let unopenableLink = String(
     localized: "That link isn’t a complete Mandelbrot place, so it couldn’t be opened.")
+  /// Whether this view is the place: the same zoom, and a centre too close to
+  /// see the difference.  Palette and detail do not count; it is where you
+  /// are that Places marks.
+  func isShowing(_ place: Location) -> Bool {
+    guard let view = try? place.viewport(), abs(view.logScale - viewport.logScale) < 0.05
+    else { return false }
+    let there = viewport.screen(for: view.preciseCenter, in: size)
+    let off = hypot(there.x - size.width / 2, there.y - size.height / 2)
+    return off <= max(1, max(size.width, size.height) * 0.01)
+  }
   func bookmarkCurrentView(named name: String? = nil) {
     var place = location
     let typed = name?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""

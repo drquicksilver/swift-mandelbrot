@@ -107,6 +107,9 @@
     "Across the set" : {
 
     },
+    "Actions" : {
+
+    },
     "Add hold" : {
 
     },
@@ -152,7 +155,13 @@
     "Bookmark This View" : {
 
     },
+    "Bookmark this view, and go back to the places you have found." : {
+
+    },
     "Bookmark this view, so it is waiting in Places." : {
+
+    },
+    "Bookmarked %@" : {
 
     },
     "Bookmarks" : {
@@ -171,6 +180,9 @@
 
     },
     "Choose…" : {
+
+    },
+    "Clear Search" : {
 
     },
     "Close" : {
@@ -203,6 +215,9 @@
     "Crosshair follows your finger" : {
 
     },
+    "Current" : {
+
+    },
     "Current view · %lld iterations" : {
 
     },
@@ -224,6 +239,15 @@
     "Deepest zoom reached" : {
 
     },
+    "Delete" : {
+
+    },
+    "Delete “%@”?" : {
+
+    },
+    "Delete…" : {
+
+    },
     "Detail" : {
 
     },
@@ -242,7 +266,16 @@
     "Done" : {
 
     },
+    "Done Reordering" : {
+
+    },
     "Double" : {
+
+    },
+    "Double-click a place to go there with a smooth zoom." : {
+
+    },
+    "Double-click a place to go there." : {
 
     },
     "Double-click to zoom in one step; hold Option to zoom out." : {
@@ -258,6 +291,9 @@
 
     },
     "Drag to move around." : {
+
+    },
+    "Drag your bookmarks into the order you want." : {
 
     },
     "Duration" : {
@@ -285,6 +321,9 @@
 
     },
     "Famous places" : {
+
+    },
+    "Famous Places (%lld)" : {
 
     },
     "Finer detail appears as you explore." : {
@@ -365,6 +404,9 @@
     "Keep" : {
 
     },
+    "Keep this view in Places, with its palette, colour spacing, colour shift and detail." : {
+
+    },
     "Keyboard" : {
 
     },
@@ -428,16 +470,31 @@
     "Movie saved to %@" : {
 
     },
+    "My Bookmarks (%lld)" : {
+
+    },
+    "Name" : {
+
+    },
     "Name this view" : {
 
     },
     "Near %@ · %@" : {
 
     },
+    "No bookmarks yet" : {
+
+    },
     "No Mandelbrot Window" : {
 
     },
+    "No places match “%@”." : {
+
+    },
     "No Results Yet" : {
+
+    },
+    "Open" : {
 
     },
     "Open a Mandelbrot window to inspect it." : {
@@ -497,6 +554,15 @@
     "Pull back for more context; the right end is the closest overview that keeps both places in view." : {
 
     },
+    "Rename" : {
+
+    },
+    "Rename Bookmark" : {
+
+    },
+    "Rename…" : {
+
+    },
     "Render a movie of the journey from a place to this view." : {
 
     },
@@ -522,6 +588,9 @@
 
     },
     "Rendering zoom level %lld of %lld" : {
+
+    },
+    "Reorder" : {
 
     },
     "Reset" : {
@@ -575,6 +644,9 @@
     "Scroll, or pinch on a trackpad, to zoom at the pointer." : {
 
     },
+    "Search places" : {
+
+    },
     "Settings" : {
 
     },
@@ -597,6 +669,9 @@
 
     },
     "Share…" : {
+
+    },
+    "Show" : {
 
     },
     "Show performance HUD" : {
@@ -624,6 +699,9 @@
 
     },
     "That link isn’t a complete Mandelbrot place, so it couldn’t be opened." : {
+
+    },
+    "The bookmark is removed from Places. You can’t undo this." : {
 
     },
     "The bundled BigInt licence notice could not be loaded." : {
@@ -749,7 +827,13 @@
     "Version %@" : {
 
     },
+    "When you find a view worth keeping, bookmark it here or press ⌘D." : {
+
+    },
     "Zoom" : {
+
+    },
+    "Zoom %@" : {
 
     },
     "Zoom from %@ into %@." : {

@@ -32,6 +32,22 @@ import Foundation
     bookmarks[index].name = name
     save()
   }
+  /// Moves a bookmark one place earlier (negative) or later (positive),
+  /// stopping at either end.
+  func move(_ location: Location, by step: Int) {
+    guard let index = bookmarks.firstIndex(where: { $0.id == location.id }) else { return }
+    let target = min(max(0, index + step), bookmarks.count - 1)
+    guard target != index else { return }
+    bookmarks.insert(bookmarks.remove(at: index), at: target)
+    save()
+  }
+  /// Moves a bookmark to where another one is, as a drag across a grid does.
+  func move(_ location: Location, to other: Location) {
+    guard let to = bookmarks.firstIndex(where: { $0.id == other.id }),
+      let from = bookmarks.firstIndex(where: { $0.id == location.id })
+    else { return }
+    move(location, by: to - from)
+  }
   private func save() {
     guard let data = try? JSONEncoder().encode(bookmarks) else { return }
     defaults.set(data, forKey: key)

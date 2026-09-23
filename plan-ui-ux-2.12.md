@@ -235,6 +235,18 @@ is corrected in `ce720d2`.
 
 `make apptests` runs the app's tests on the Mac and an iPad simulator.
 
+## Places on the Mac, 23 September 2026
+
+Design item 3 is built for the Mac from Jules's drawing, as
+`PlacesSheetMac`: this view ready to bookmark, then bookmarks and famous
+places as grids of rendered thumbnails, with search, a “Current” mark, a
+per-card menu (open, rename, share, move, delete), drag reordering and an
+empty state. The iPhone keeps `PlacesView` until it has a design of its own.
+Its previews show real thumbnails from `Preview Content`, drawn beforehand
+with `--render --pipeline tiles`, because a preview snapshot does not wait
+for the GPU. Drawn that way, Mini Mandelbrot comes out flat gold and Feather
+flat black; whether the gallery entries miss is not yet checked.
+
 The three inherited failures are fixed in `7beff93`: two were tests still
 written for colour before 2.11, and three were real 2.11 regressions in the
 compositor's colouring, recorded in Performance.md. `make test` passes.

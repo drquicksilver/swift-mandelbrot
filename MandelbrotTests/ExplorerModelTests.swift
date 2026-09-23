@@ -137,4 +137,37 @@ final class MemoryDefaults: UserDefaults, @unchecked Sendable {
     fresh.restoreLastLocation()
     #expect(fresh.viewport == Viewport())
   }
+
+  // MARK: Places
+
+  @Test func placesMarksTheViewYouAreAt() {
+    let model = model()
+    model.apply(seahorse, record: false)
+    #expect(model.isShowing(seahorse))
+    // Palette and detail are not where you are.
+    var recoloured = seahorse
+    recoloured.palette = .fire
+    recoloured.iterations = 99
+    #expect(model.isShowing(recoloured))
+    #expect(!model.isShowing(Location.gallery[0]))
+    model.perform(.zoomIn)
+    #expect(!model.isShowing(seahorse), "A zoom away still counted as the place")
+  }
+
+  @Test func bookmarksMoveOneStepAndStopAtTheEnds() {
+    let store = LocationStore(defaults: defaults)
+    let names = ["a", "b", "c"]
+    // `add` puts each new bookmark first.
+    for name in names.reversed() {
+      store.add(Location(name: name, real: "0", imag: "0", scale: "1"))
+    }
+    #expect(store.bookmarks.map(\.name) == ["a", "b", "c"])
+    store.move(store.bookmarks[0], by: -1)
+    #expect(store.bookmarks.map(\.name) == ["a", "b", "c"])
+    store.move(store.bookmarks[0], by: 1)
+    #expect(store.bookmarks.map(\.name) == ["b", "a", "c"])
+    store.move(store.bookmarks[0], to: store.bookmarks[2])
+    #expect(store.bookmarks.map(\.name) == ["a", "c", "b"])
+    #expect(LocationStore(defaults: defaults).bookmarks.map(\.name) == ["a", "c", "b"])
+  }
 }
