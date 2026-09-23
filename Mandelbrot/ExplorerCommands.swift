@@ -53,7 +53,14 @@ enum ExplorerCommand: String, CaseIterable, Identifiable {
     case .swapJulia: return "j"
     case .movie: return "m"
     case .benchmark: return "b"
-    case .help: return "?"
+    case .help:
+      // "?" for the Mac canvas, which reads the typed character; ⇧/ for an
+      // iPad menu shortcut, which is the same keys and which a menu can carry.
+      #if os(macOS)
+        return "?"
+      #else
+        return "/"
+      #endif
     }
   }
   var modifiers: EventModifiers {
@@ -61,9 +68,13 @@ enum ExplorerCommand: String, CaseIterable, Identifiable {
     case .left, .right, .up, .down: return []
     case .back, .forward: return [.command, .shift]
     case .swapJulia: return [.command, .shift]
-    // A bare "?", which the canvas answers: Command-? belongs to the system's
-    // Help search, and a menu drops a "?" equivalent.
-    case .help: return []
+    // Never Command-?: that belongs to the system's Help search.
+    case .help:
+      #if os(macOS)
+        return []
+      #else
+        return [.shift]
+      #endif
     // Command-comma belongs to Settings, so twisting takes Shift as well.
     case .rotateLeft, .rotateRight: return [.command, .shift]
     default: return [.command]
@@ -107,10 +118,22 @@ enum ExplorerCommand: String, CaseIterable, Identifiable {
     [.julia, .swapJulia],
     [.movie],
   ]
-  /// The bare keys are the canvas's own.  As menu shortcuts they would fire
-  /// from anywhere in the window, a text field in a sheet included, so the
-  /// menu lists these without binding them.
-  var bindsInMenu: Bool { modifiers.contains(.command) }
+  /// Where a command's key is heard.
+  enum KeyRoute { case menu, canvas }
+  var keyRoute: KeyRoute {
+    #if os(macOS)
+      // A bare key as a menu shortcut fires from anywhere in the window, a
+      // text field in a sheet included, so the Mac canvas hears those itself
+      // (`MacInputView.keyDown`) and the menu only lists them.
+      return modifiers.contains(.command) ? .menu : .canvas
+    #else
+      // An iPad has no canvas key handler: the menu's shortcuts are its
+      // hardware-keyboard commands, the only route there is.  Text editing
+      // takes keys ahead of key commands on iPadOS, so a field in a sheet
+      // keeps its arrows.
+      return .menu
+    #endif
+  }
 }
 
 #if os(macOS)
@@ -169,7 +192,7 @@ struct ExplorerCommands: Commands {
   @ViewBuilder private func item(_ command: ExplorerCommand) -> some View {
     let button = Button(command.title) { explorer?.perform(command) }
       .disabled(!(explorer?.canPerform(command) ?? false))
-    if command.bindsInMenu {
+    if command.keyRoute == .menu {
       button.keyboardShortcut(command.key, modifiers: command.modifiers)
     } else {
       button

@@ -1,7 +1,7 @@
 BUILD_DIR ?= /tmp/mandelbrot-development
 APP = $(BUILD_DIR)/Build/Products/Release/Mandelbrot.app/Contents/MacOS/Mandelbrot
 
-.PHONY: build test unit cli golden smooth tiles product ios ios-device format format-check bla strings strings-check
+.PHONY: build test unit cli golden smooth tiles product ios ios-device format format-check bla strings strings-check apptests
 build:
 	xcodebuild -quiet -project Mandelbrot.xcodeproj -scheme Mandelbrot -configuration Release -destination 'platform=macOS' -derivedDataPath $(BUILD_DIR) CODE_SIGNING_ALLOWED=NO ENABLE_CODE_COVERAGE=NO build
 unit:
@@ -34,6 +34,15 @@ strings: build ios
 	swift tools/update_strings.swift $(STRINGS)
 strings-check: build ios
 	swift tools/update_strings.swift --check $(STRINGS)
+
+# The app's own tests, on the Mac and on an iPad simulator: the iPad is where
+# hardware-keyboard commands differ, and the Mac cannot show it.
+# The first iPad simulator the scheme can build for: naming one picks the
+# newest runtime, which this Xcode may not support.
+IPAD ?= $(shell xcodebuild -project Mandelbrot.xcodeproj -scheme Mandelbrot -showdestinations 2>/dev/null | grep -m1 'platform:iOS Simulator.*name:iPad' | sed -E 's/.*id:([^,]+),.*/\1/')
+apptests:
+	xcodebuild -quiet -project Mandelbrot.xcodeproj -scheme Mandelbrot -destination 'platform=macOS' -derivedDataPath $(BUILD_DIR)-apptests CODE_SIGNING_ALLOWED=NO test -only-testing:MandelbrotTests
+	xcodebuild -quiet -project Mandelbrot.xcodeproj -scheme Mandelbrot -destination 'platform=iOS Simulator,id=$(IPAD)' -derivedDataPath $(BUILD_DIR)-apptests-ios test -only-testing:MandelbrotTests -only-testing:MandelbrotUITests/KeyboardUITests
 
 format:
 	rg --files -g '*.swift' -g '!Mandelbrot/Core/Vendor/**' -0 | xargs -0 xcrun swift-format format --configuration .swift-format --in-place

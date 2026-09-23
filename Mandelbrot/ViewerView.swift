@@ -22,6 +22,7 @@ struct ViewerView: View {
         }
         PlatformInput(model: model)
           .accessibilityElement()
+          .accessibilityIdentifier("viewerCanvas")
           .accessibilityLabel(model.juliaSwapped ? Text("Julia set") : Text("Mandelbrot set"))
           .accessibilityValue(model.location.suggestedName)
           .accessibilityHint(Text("Swipe up or down to zoom in or out."))
