@@ -47,6 +47,71 @@ These checks use CPU renderers so they can run without GPU access.
 Set `MANDELBROT_TEST_METAL=1` to also run the deep-zoom accuracy regression against
 CPU Double. This requires GPU access and checks square and non-square viewports.
 
+### GPU zoom-depth suite (2026-09-23)
+
+`tests/benchmark_gpu_depths.py` runs eight headless GPU cases: Float at 30× and
+1000×, FloatFloat at 10⁷×, and Perturbation at 10¹⁰⁰×. Each depth uses two
+iteration caps. Before timing a case, the script exports raw sample records and
+requires both capped and escaped pixels, so an accidentally trivial viewport
+fails the suite; `--compare` also fails if any capped or escaped total differs
+from an earlier results file. Run it against a Release app with:
+
+```sh
+python3 tests/benchmark_gpu_depths.py \
+  /tmp/mandelbrot-development/Build/Products/Release/Mandelbrot.app/Contents/MacOS/Mandelbrot \
+  --output /tmp/gpu-depths.json [--compare earlier.json]
+```
+
+**GPU clock.** The M1 Pro GPU raises its clock only under sustained load. A
+sub-millisecond kernel separated by CPU work can run at about a third of full
+clock for dozens of runs, then switch part-way through a series. Medians of
+such series measure the clock state, not the kernel. A first attempt at this
+comparison took a median of seven runs from a fresh process and reported
+1.1–1.4× for the 2,000-iteration Float cases, where the true figure is about 3×.
+The script therefore renders a larger primer size (16× the pixels) in the same
+process before each light case. It then measures 30 runs after 5 warmups, and
+reports the 10–90% spread; a spread above about 10% means the clock moved.
+
+**Results.** GPU compute kernel medians on an Apple M1 Pro (16 GPU cores),
+without colour conversion, readback, or PNG encoding. The baseline is commit
+`409a30e`. Each build was run twice, alternating; the table gives the second
+pair. Raw samples are in [evidence/gpu-float](evidence/gpu-float/).
+
+| Case | Capped pixels | Baseline ms | Final ms | Speedup | At 2048×1536 |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Float, slow exterior, 500 | 144,412 / 196,608 | 0.658 | 0.220 | 3.0× | 9.72 → 2.31 ms, 4.2× |
+| Float, slow exterior, 2,000 | 134,493 / 196,608 | 2.476 | 0.743 | 3.3× | 36.06 → 6.83 ms, 5.3× |
+| Float, period-two bulb edge, 500 | 120,247 / 196,608 | 0.564 | 0.204 | 2.8× | 8.30 → 2.40 ms, 3.5× |
+| Float, period-two bulb edge, 2,000 | 118,014 / 196,608 | 2.024 | 0.671 | 3.0× | 29.59 → 6.70 ms, 4.4× |
+| FloatFloat, 2,000 / 5,000 | 19,266 / 15,147 of 49,152 | 4.13 / 9.46 | 4.12 / 9.48 | — | |
+| Perturbation, 25,000 / 30,000 | 44 / 4 of 192 | 87.7 / 152.1 | 87.7 / 155.8 | — | |
+
+The Float change rejects points strictly inside the main cardioid or
+period-two bulb before iterating, with a small margin at their boundaries. It
+is used by both the full-image and resumable tile kernels. All eight cases have
+the same capped/escaped totals before and after. The Float boundary regression
+also compares capped pixels against CPU Double, and the tile integration
+diagnostics pass.
+
+The skipped pixels account for 78–92% of capped pixels in these views, and a
+coarse CPU count puts the iterations saved at 4.1×, 7.1×, 3.6× and 4.3× for the
+four Float cases. The 2048×1536 timings follow that closely, except that the slow
+exterior at 2,000 gains 5.3× against the 7.1× estimate (not yet explained). At
+512×384 the gain is about 3× throughout; that grid is probably too small to fill
+the GPU, though this is untested. In the
+first alternating run, one light case (bulb edge, 500) settled at an
+intermediate clock (0.274 ms, 27% spread); the second run is the clean one.
+FloatFloat and Perturbation are unchanged; their differences are measurement
+variation.
+
+Other measured experiments were discarded before this re-measurement, using the
+earlier seven-run method: caching squared orbit components changed a few
+classifications and did not give a repeatable win; testing the iteration cap
+before the escape condition gave mixed times; and compute threadgroup heights of
+4 and 16 each improved some scenes while slowing others relative to the existing
+height of 8. Because that method was sensitive to clock state, those small
+differences deserve a second look with the primed harness.
+
 ## PNG export and deep-zoom benchmarks
 
 `--render` exports a single full-resolution PNG without opening a window. For example:

@@ -115,6 +115,33 @@ class HeadlessTests(unittest.TestCase):
             self.assertIn("Could not write", result.stderr)
 
     @unittest.skipUnless(os.environ.get("MANDELBROT_TEST_METAL") == "1", "Opt in with MANDELBROT_TEST_METAL=1")
+    def test_float_gpu_interior_boundary(self):
+        # The period-two bulb edge contains both true interior and slow exterior
+        # points. Compare capped classifications with CPU Double, allowing Float
+        # rounding at the boundary rather than requiring identical escape counts.
+        with tempfile.TemporaryDirectory() as folder:
+            values = {}
+            for variant in ("parallel", "metal"):
+                counts = Path(folder) / f"{variant}.u16"
+                args = ["--render", "--renderer", variant, "--size", "256x192",
+                        "--center-real", "-1", "--center-imag", "0.25",
+                        "--scale", "30", "--iterations", "2000",
+                        "--output", str(Path(folder) / f"{variant}.png"),
+                        "--counts", str(counts)]
+                if variant == "metal":
+                    args += ["--pipeline", "gpu", "--colouring", "legacy"]
+                result = self.run_cli(*args)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                raw = array.array("H", counts.read_bytes())
+                if sys.byteorder != "little": raw.byteswap()
+                values[variant] = raw
+            cpu, gpu = values["parallel"], values["metal"]
+            self.assertGreater(sum(value == 2000 for value in gpu), len(gpu) // 4)
+            self.assertGreater(sum(value < 2000 for value in gpu), len(gpu) // 4)
+            differences = sum((a == 2000) != (b == 2000) for a, b in zip(cpu, gpu))
+            self.assertLess(differences, len(cpu) // 200)
+
+    @unittest.skipUnless(os.environ.get("MANDELBROT_TEST_METAL") == "1", "Opt in with MANDELBROT_TEST_METAL=1")
     def test_floatfloat_deep_zoom_accuracy(self):
         # Compare escape counts, not palette colours; exclude capped pixels from
         # the exact-match criterion so a flat black image cannot pass.

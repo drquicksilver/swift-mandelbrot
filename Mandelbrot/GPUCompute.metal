@@ -11,6 +11,17 @@ struct GPUParameters {
     uint rowStart, rowCount, smooth, padding;
 };
 
+// Strictly interior points never escape. Leave a margin for Float rounding at
+// the cardioid and period-two bulb boundaries.
+inline bool insideMainSet(float cr, float ci) {
+    float ci2 = ci * ci;
+    float bulbReal = cr + 1.0f;
+    float bulbRadius2 = bulbReal * bulbReal + ci2;
+    float cardioidReal = cr - 0.25f;
+    float q = cardioidReal * cardioidReal + ci2;
+    return bulbRadius2 < 0.0624999f || q * (q + cardioidReal) < 0.249999f * ci2;
+}
+
 // Integer escape count and fractional smooth correction stay separate (8 bytes).
 kernel void renderSamples(texture2d<uint, access::write> out [[texture(0)]],
                           constant GPUParameters &p [[buffer(0)]], uint2 gid [[thread_position_in_grid]]) {
@@ -22,6 +33,10 @@ kernel void renderSamples(texture2d<uint, access::write> out [[texture(0)]],
     if (p.precision == 0) {
         float cr = p.realMin.x + float(point.x) * p.stepX.x;
         float ci = p.imagMax.x - float(point.y) * p.stepY.x;
+        if (insideMainSet(cr, ci)) {
+            out.write(sampleStatus(sampleCapped), point);
+            return;
+        }
         float zr = 0, zi = 0;
         while (zr*zr+zi*zi <= bailout && n < p.maxIterations) {
             float next = zr*zr-zi*zi+cr;
@@ -286,6 +301,7 @@ kernel void resumeTile(texture2d<uint,access::read_write> out [[texture(0)]],
     float magnitude=0;bool escaped=false;
     if(p.precision==0) {
         float cr=p.realMin.x+float(point.x)*p.stepX.x,ci=p.imagMax.x-float(point.y)*p.stepY.x;
+        if(insideMainSet(cr,ci)) { out.write(sampleStatus(sampleCapped),point);return; }
         float zr=state.x,zi=state.z;
         while(n<end) {
             magnitude=zr*zr+zi*zi;
