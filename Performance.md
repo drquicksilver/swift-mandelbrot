@@ -1029,3 +1029,67 @@ plan, whose zoom-out coverage grew by about a third (24 → 32 and 44 → 60 til
 in the deep coverage runs), while the visible band itself arrived slightly
 sooner. The same memory now buys a level more detail where the budget was
 binding, and a fuller zoom-out ladder everywhere.
+
+## Tile refinement: fewer, longer batches (2026-09-23)
+
+The tile worker computes a Float or FloatFloat tile as a series of resumable
+batches, one command buffer each, awaited in turn. Batches were capped at 512
+iterations. Summing each command buffer's own GPU timestamps showed the kernels
+running for only about a tenth of a cold render's wall time: at cap 20,000 a
+3456×2234 view made 12,658 batches of about 29 µs of GPU work, each costing
+about 260 µs of wall time. `powermetrics` meanwhile reported the GPU 96% active
+at its top clock, so its residency counts a GPU kept awake by frequent
+submissions, not kernel work; use the command-buffer timestamps for questions
+like this. Coverage tiles were not the cost: turning coverage off saved 1%.
+
+Two changes:
+
+- **The cap rises to 65,536.** The existing 1 ms target now binds. Cost per
+  iteration only falls as pixels escape, and a batch at most doubles, so a batch
+  overshoots the target by at most about 2×.
+- **Tiles start where the costliest iteration allows.** The store keeps, per
+  renderer, the highest GPU seconds per iteration it has measured (reached while
+  every pixel is still active) and starts each tile at the batch that fits 1 ms
+  at that rate, rather than ramping up from 64 every time. Starting from the
+  previous tile's final batch would be unsafe: that size is reached once most
+  pixels have escaped, and would overrun on a fresh interior tile.
+
+Cold `--render --pipeline tiles` at 3456×2234 on the M1 Pro, all variants
+from one instrumented build switched by environment variables, interleaved,
+median of three. "Ready" is from demand to every planned tile finished, so it
+excludes process start, compositing and PNG encoding; "GPU busy" is the summed
+kernel time over that interval.
+
+| View, cap | Variant | Ready | GPU busy | Batches | Longest batch |
+| --- | --- | ---: | ---: | ---: | ---: |
+| Whole set, 1,000 | before | 536 ms | 6% | 1,316 | 0.45 ms |
+| | cap only | 544 ms | 5% | 1,316 | 0.30 ms |
+| | cap + start | **362 ms** | 6% | 526 | 0.43 ms |
+| Seahorse Valley (−0.745 + 0.11i, 100×), 2,000 | before | 1,112 ms | 9% | 2,897 | 0.87 ms |
+| | cap only | 1,011 ms | 10% | 2,502 | 0.87 ms |
+| | cap + start | **743 ms** | 12% | 1,253 | 0.92 ms |
+| Float neck (−0.75 + 0.1i, 30×), 20,000 | before | 3,333 ms | 11% | 12,658 | 0.40 ms |
+| | cap only | 1,160 ms | 23% | 2,831 | 1.35 ms |
+| | cap + start | **962 ms** | 28% | 1,924 | 1.44 ms |
+| Period-3 bulb (−0.1226 + 0.7449i, 10×), 20,000 | before | 2,907 ms | 37% | 7,546 | 1.00 ms |
+| | cap only | 1,696 ms | 61% | 2,191 | 1.38 ms |
+| | cap + start | **1,596 ms** | 65% | 1,712 | 1.85 ms |
+| FloatFloat (1e7 reference location), 5,000 | before | 1,190 ms | 33% | 2,712 | 0.97 ms |
+| | cap only | 951 ms | 40% | 1,644 | 1.13 ms |
+| | cap + start | **809 ms** | 46% | 1,040 | 1.28 ms |
+
+That is 1.5×, 1.5×, 3.5×, 1.8× and 1.5× to a finished view. Whole-command
+wall time from the shipped build (median of three, against the instrumented
+build at cap 512) agrees: 715 → 528 ms, 1,312 → 923, 3,547 → 1,125,
+3,183 → 1,804 and 1,329 → 986. Perturbation tiles batch separately and are
+unchanged.
+
+The longest batch rose from about 1 ms to at most 1.85 ms. That is the price:
+the compositor waits behind a batch, and at 120 Hz a frame is 8.3 ms. It has
+not been measured on a phone.
+
+The GPU is still idle most of the time in cheap views. Every tile costs at
+least three round trips (its batches, then separate summary and histogram
+passes), plus a sample copy when it is being extended. Folding the summary and
+histogram into the last batch's command buffer, or keeping two tiles in flight,
+are the next steps.

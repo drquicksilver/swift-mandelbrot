@@ -150,6 +150,11 @@ struct TileStatistics: Equatable, Codable {
   }
   private var tick: UInt64 = 0
   private var counters = TileStatistics()
+  /// The costliest GPU seconds per iteration seen for each renderer: an
+  /// iteration costs most while every pixel is still active.
+  private var worstIterationSeconds: [RendererID: Double] = [:]
+  /// Iterations per batch; the 1 ms target, not this, normally binds.
+  private static let maximumBatch = 65536
   private var suspended = false
   private var lastFramePublish = 0.0
   private var frameTimes: [Double] = []
@@ -979,7 +984,13 @@ struct TileStatistics: Equatable, Codable {
             params.smooth = 1
             params.padding = previous != nil ? 1 : 0
             var start = 0
-            var batch = 64
+            // Each batch is a round trip, and short ones leave the GPU idle.
+            // Start at what the costliest iteration seen so far fits in the
+            // target, so later tiles skip the ramp up from 64.
+            var batch =
+              self.worstIterationSeconds[renderer].map {
+                max(8, min(Self.maximumBatch, Int(0.001 / $0)))
+              } ?? 64
             while start < limit {
               if Task.isCancelled
                 || (!self.needed.contains(key) && !self.coverage.contains(key)
@@ -994,9 +1005,13 @@ struct TileStatistics: Equatable, Codable {
               start += count
               self.counters.batches += 1
               self.counters.longestBatchMS = max(self.counters.longestBatchMS, time * 1000)
-              // Target 1 ms of measured GPU work; even the worst interior
-              // batch is limited to 512 iterations over one 258² tile.
-              batch = max(8, min(512, Int(Double(count) * min(2, 0.001 / max(time, 0.00001)))))
+              self.worstIterationSeconds[renderer] = max(
+                self.worstIterationSeconds[renderer] ?? 0, time / Double(count))
+              // Target 1 ms of measured GPU work. An iteration only gets
+              // cheaper as pixels escape, and a batch at most doubles, so no
+              // batch runs much past the target.
+              batch = max(
+                8, min(Self.maximumBatch, Int(Double(count) * min(2, 0.001 / max(time, 0.00001)))))
             }
           }
           if cancelled {
