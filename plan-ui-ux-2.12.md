@@ -234,3 +234,7 @@ is corrected in `ce720d2`.
 6. **The smaller items**, including the review's list of tests.
 
 `make apptests` runs the app's tests on the Mac and an iPad simulator.
+
+The three inherited failures are fixed in `7beff93`: two were tests still
+written for colour before 2.11, and three were real 2.11 regressions in the
+compositor's colouring, recorded in Performance.md. `make test` passes.
