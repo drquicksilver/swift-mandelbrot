@@ -56,14 +56,29 @@ import SwiftUI
           rect: .zero, options: [.mouseMoved, .activeInKeyWindow, .inVisibleRect], owner: self))
     }
     override func mouseMoved(with event: NSEvent) {
+      updateCursor(event.modifierFlags)
       model.trackJulia(at: convert(event.locationInWindow, from: nil))
     }
     override func viewDidMoveToWindow() {
       if window == nil {
         model.stopMotion()
         model.interactionActive = false
+      } else {
+        // The keys are the canvas's from the start, not only after a click.
+        window?.makeFirstResponder(self)
       }
       updateMotionClock()
+    }
+    /// Shift turns a drag into framing a region, so the pointer says so.
+    override func flagsChanged(with event: NSEvent) {
+      updateCursor(event.modifierFlags)
+      super.flagsChanged(with: event)
+    }
+    private func updateCursor(_ flags: NSEvent.ModifierFlags) {
+      guard let window else { return }
+      let point = convert(window.mouseLocationOutsideOfEventStream, from: nil)
+      guard bounds.contains(point) else { return }
+      (flags.contains(.shift) ? NSCursor.crosshair : NSCursor.arrow).set()
     }
     func updateMotionClock() {
       guard window != nil, model.isActive, !model.renderer.isGPU, model.isAnimating else {

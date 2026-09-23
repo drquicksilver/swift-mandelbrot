@@ -615,10 +615,10 @@
         ExplorerCommand.matching(event("?", code: 44, flags: .shift)) == .help,
         "Help command missing")
       try require(
-        ExplorerCommand.matching(event("h", code: 4, flags: .shift)) == .reset,
+        ExplorerCommand.matching(event("0", code: 29, flags: .command)) == .reset,
         "Reset command missing")
       try require(
-        ExplorerCommand.matching(event("h", code: 4)) == nil, "Incorrect modifier triggered reset")
+        ExplorerCommand.matching(event("0", code: 29)) == nil, "Incorrect modifier triggered reset")
       let model = ExplorerModel()
       model.fling(pan: CGPoint(x: 100, y: 0))
       try require(model.motionActive, "Fling did not signal input-clock wakeup")

@@ -12,8 +12,10 @@ enum ToolbarAction: String, CaseIterable, Identifiable {
     case .upright: return "location.north.line"
     case .back: return "chevron.backward"
     case .forward: return "chevron.forward"
-    case .places: return "bookmark"
-    case .bookmark: return "bookmark.fill"
+    // Two commands, two shapes: a library for Places, a bookmark for
+    // bookmarking.  An outline and a filled bookmark read as one toggle.
+    case .places: return "books.vertical"
+    case .bookmark: return "bookmark"
     case .julia: return "circle.lefthalf.filled"
     case .movie: return "film"
     case .share: return "square.and.arrow.up"
@@ -42,7 +44,7 @@ enum ToolbarAction: String, CaseIterable, Identifiable {
     case .reset: return String(localized: "Go back to the whole set.")
     case .upright:
       return String(
-        localized: "Turn the view back to upright. It appears once the view is rotated.")
+        localized: "Turn the view back to upright after rotating it.")
     case .back: return String(localized: "Return to the last place you looked at.")
     case .forward: return String(localized: "Go forward again after going back.")
     case .places: return String(localized: "Open the famous places and your bookmarks.")

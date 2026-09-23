@@ -5,7 +5,8 @@ Xcode keeps a string catalogue in step with the code when it builds in the IDE;
 `xcodebuild` extracts the strings but never writes them back.  This does that
 step from the command line: it reads every `.stringsdata` the Mac and iOS builds
 left behind, adds keys the catalogue lacks, marks keys the code no longer uses
-as stale, and keeps whatever translations are already there.
+as stale if they were translated (and drops them if not), and keeps whatever
+translations are already there.
 
     python3 tools/update_strings.py BUILD_DIR [BUILD_DIR ...]
 """
@@ -51,9 +52,13 @@ def main():
         entry.pop("extractionState", None)
         if comment:
             entry["comment"] = comment
-    for key, entry in strings.items():
-        if key not in found:
-            entry["extractionState"] = "stale"
+    for key in [key for key in strings if key not in found]:
+        # A retired string with no translation is simply gone; one that was
+        # translated is kept, marked stale, for a person to decide about.
+        if strings[key].get("localizations"):
+            strings[key]["extractionState"] = "stale"
+        else:
+            del strings[key]
     catalogue["strings"] = dict(sorted(strings.items(), key=lambda item: item[0].lower()))
     CATALOGUE.write_text(json.dumps(catalogue, indent=2, ensure_ascii=False) + "\n")
     stale = sum(1 for entry in strings.values() if entry.get("extractionState") == "stale")

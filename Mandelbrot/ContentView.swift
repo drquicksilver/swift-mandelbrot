@@ -5,6 +5,8 @@ struct ContentView: View {
   @Environment(\.scenePhase) private var scenePhase
   @Environment(\.displayScale) private var displayScale
   @Environment(\.accessibilityReduceMotion) private var reduceMotion
+  /// The companion's share of a wide window, which its divider drags.
+  @AppStorage("CompanionFraction") private var companionFraction = 0.28
   #if os(iOS)
     @Environment(\.horizontalSizeClass) private var sizeClass
     private var sideBySide: Bool { sizeClass != .compact }
@@ -20,7 +22,8 @@ struct ContentView: View {
         // a corner.  Either way the main area keeps the full input surface.
         let panel =
           sideBySide
-          ? CGSize(width: max(220, geometry.size.width * 0.28), height: geometry.size.height)
+          ? CGSize(
+            width: max(220, geometry.size.width * companionFraction), height: geometry.size.height)
           : CGSize(
             width: min(geometry.size.width * 0.42, 220),
             height: min(geometry.size.width * 0.42, 220))
@@ -33,14 +36,18 @@ struct ContentView: View {
             .onChange(of: model.showJulia) { _, _ in
               model.resize(viewerSize(geometry.size, panel), displayScale: displayScale)
             }
+            .onChange(of: companionFraction) { _, _ in
+              model.resize(viewerSize(geometry.size, panel), displayScale: displayScale)
+            }
             .onChange(of: displayScale) { _, scale in
               model.resize(viewerSize(geometry.size, panel), displayScale: scale)
             }
           if model.showJulia && sideBySide {
-            Divider()
+            CompanionDivider(fraction: $companionFraction, width: geometry.size.width)
             CompanionPanel(model: model).frame(width: panel.width)
           }
         }
+        .coordinateSpace(.named(CompanionDivider.space))
         .overlay(alignment: .bottomTrailing) {
           if model.showJulia && !sideBySide {
             CompanionPanel(model: model)
@@ -114,15 +121,15 @@ struct ContentView: View {
     #if os(macOS)
       .toolbar {
         toolbarButton(.reset) { model.perform(.reset) }
-        if abs(model.mainViewport.angle) > 0.001 {
-          Button {
-            model.resetRotation()
-          } label: {
-            Label(ToolbarAction.upright.title, systemImage: ToolbarAction.upright.icon)
-            .rotationEffect(.radians(-model.mainViewport.angle))
-          }
-          .help(ToolbarAction.upright.explanation)
+        // Always present, so the cluster does not reflow as the view turns.
+        Button {
+          model.resetRotation()
+        } label: {
+          Label(ToolbarAction.upright.title, systemImage: ToolbarAction.upright.icon)
+          .rotationEffect(.radians(-model.mainViewport.angle))
         }
+        .help(ToolbarAction.upright.explanation)
+        .disabled(!model.canPerform(.resetRotation))
         toolbarButton(.back) { model.perform(.back) }
         .disabled(!model.canGoBack)
         toolbarButton(.forward) { model.perform(.forward) }
@@ -138,6 +145,11 @@ struct ContentView: View {
         toolbarButton(.settings) { model.showSettings = true }
         toolbarButton(.help) { model.showHelp = true }
       }
+    #endif
+    #if os(macOS)
+      // Where you are, always: the half of "the app never says" that a Mac
+      // title bar already has room for.
+      .navigationSubtitle(model.mainViewport.zoomDescription)
     #endif
     .sheet(isPresented: $model.showDeveloper) { DeveloperPanel(model: model) }
     .sheet(isPresented: $model.showBenchmark) {
@@ -197,6 +209,43 @@ struct ContentView: View {
       .accessibilityIdentifier("viewer" + action.title)
     }
   #endif
+}
+
+/// The line between the view and the companion, which drags to share the
+/// window differently.  Its target is wider than the line it draws.
+struct CompanionDivider: View {
+  static let space = "companionSplit"
+  static let range = 0.15...0.6
+  @Binding var fraction: Double
+  let width: CGFloat
+  var body: some View {
+    Divider()
+      .overlay {
+        Color.clear
+          .frame(width: 9)
+          .contentShape(Rectangle())
+          .gesture(
+            DragGesture(minimumDistance: 1, coordinateSpace: .named(Self.space))
+              .onChanged { drag in
+                let share = 1 - drag.location.x / max(1, width)
+                fraction = min(Self.range.upperBound, max(Self.range.lowerBound, share))
+              }
+          )
+          #if os(macOS)
+            .onHover { inside in
+              if inside { NSCursor.resizeLeftRight.push() } else { NSCursor.pop() }
+            }
+          #endif
+      }
+      .zIndex(1)
+      .accessibilityElement()
+      .accessibilityLabel(Text("Companion width"))
+      .accessibilityValue(Text(fraction.formatted(.percent.precision(.fractionLength(0)))))
+      .accessibilityAdjustableAction { direction in
+        let step = direction == .increment ? 0.05 : -0.05
+        fraction = min(Self.range.upperBound, max(Self.range.lowerBound, fraction + step))
+      }
+  }
 }
 
 /// While the view is rotated, a compass button animates it back to upright.

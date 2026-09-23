@@ -32,7 +32,8 @@ enum ExplorerCommand: String, CaseIterable, Identifiable {
   }
   var key: KeyEquivalent {
     switch self {
-    case .reset: return "h"
+    // ⌘0, the Mac's usual return to actual size.
+    case .reset: return "0"
     case .zoomIn: return "+"
     case .zoomOut: return "-"
     case .left: return .leftArrow
@@ -52,7 +53,7 @@ enum ExplorerCommand: String, CaseIterable, Identifiable {
     case .swapJulia: return "j"
     case .movie: return "m"
     case .benchmark: return "b"
-    case .help: return "/"
+    case .help: return "?"
     }
   }
   var modifiers: EventModifiers {
@@ -60,7 +61,9 @@ enum ExplorerCommand: String, CaseIterable, Identifiable {
     case .left, .right, .up, .down: return []
     case .back, .forward: return [.command, .shift]
     case .swapJulia: return [.command, .shift]
-    case .reset, .help: return [.shift]
+    // A bare "?", which the canvas answers: Command-? belongs to the system's
+    // Help search, and a menu drops a "?" equivalent.
+    case .help: return []
     // Command-comma belongs to Settings, so twisting takes Shift as well.
     case .rotateLeft, .rotateRight: return [.command, .shift]
     default: return [.command]
@@ -68,7 +71,7 @@ enum ExplorerCommand: String, CaseIterable, Identifiable {
   }
   var binding: String {
     switch self {
-    case .reset: return "Shift H"
+    case .reset: return "⌘ 0"
     case .zoomIn: return "⌘ +"
     case .zoomOut: return "⌘ −"
     case .left: return "←"
@@ -91,6 +94,23 @@ enum ExplorerCommand: String, CaseIterable, Identifiable {
     case .help: return "?"
     }
   }
+  /// The Explore menu, in the groups a Mac menu separates: where you are,
+  /// zoom, movement, rotation, detail, places, the companion, the movie.
+  /// Controls lives in the Help menu instead.
+  static let menuGroups: [[ExplorerCommand]] = [
+    [.back, .forward, .reset],
+    [.zoomIn, .zoomOut],
+    [.left, .right, .up, .down],
+    [.rotateLeft, .rotateRight, .resetRotation],
+    [.increaseIterations, .decreaseIterations],
+    [.places, .bookmark],
+    [.julia, .swapJulia],
+    [.movie],
+  ]
+  /// The bare keys are the canvas's own.  As menu shortcuts they would fire
+  /// from anywhere in the window, a text field in a sheet included, so the
+  /// menu lists these without binding them.
+  var bindsInMenu: Bool { modifiers.contains(.command) }
 }
 
 #if os(macOS)
@@ -127,12 +147,12 @@ struct ExplorerCommands: Commands {
         .disabled(explorer?.isPresentingSheet ?? true)
     }
     CommandMenu("Explore") {
-      ForEach(ExplorerCommand.allCases.filter { $0 != .benchmark }) { command in
-        Button(command.title) { explorer?.perform(command) }
-          .keyboardShortcut(command.key, modifiers: command.modifiers)
-          .disabled(!(explorer?.canPerform(command) ?? false))
+      ForEach(Array(ExplorerCommand.menuGroups.enumerated()), id: \.offset) { index, group in
+        if index > 0 { Divider() }
+        ForEach(group) { command in item(command) }
       }
     }
+    CommandGroup(replacing: .help) { item(.help) }
     #if os(macOS)
       if access.optionHeld || developerMenu {
         CommandMenu("Debug") {
@@ -143,6 +163,16 @@ struct ExplorerCommands: Commands {
         }
       }
     #endif
+  }
+
+  @ViewBuilder private func item(_ command: ExplorerCommand) -> some View {
+    let button = Button(command.title) { explorer?.perform(command) }
+      .disabled(!(explorer?.canPerform(command) ?? false))
+    if command.bindsInMenu {
+      button.keyboardShortcut(command.key, modifiers: command.modifiers)
+    } else {
+      button
+    }
   }
 }
 
@@ -157,12 +187,18 @@ struct ExplorerCommands: Commands {
         let arrow: [ExplorerCommand: UInt16] = [
           .left: 123, .right: 124, .down: 125, .up: 126, .back: 123, .forward: 124,
         ]
+        // "?" is Shift-/ on most layouts, so help never compares the Shift
+        // that typing it needs.
+        if command == .help {
+          if event.characters == "?" && flags.subtracting(.shift).isEmpty {
+            return command
+          }
+          continue
+        }
         let matches =
           arrow[command] == event.keyCode
-          || (command == .help
-            ? event.characters == "?"
-            : event.charactersIgnoringModifiers?.lowercased()
-              == String(command.key.character).lowercased())
+          || event.charactersIgnoringModifiers?.lowercased()
+            == String(command.key.character).lowercased()
         if matches && flags == expected {
           return command
         }
