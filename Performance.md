@@ -58,23 +58,25 @@ Traps found the hard way:
 
 ### Headless benchmarks
 
-Build the Release app, then invoke its executable directly with `--benchmark`.
+Build the Release app (`make build` does this), then invoke its executable
+directly with `--benchmark`.
 This selects the command-line entry point before SwiftUI starts; no window is opened.
 
 ```sh
 xcodebuild -project Mandelbrot.xcodeproj -scheme Mandelbrot \
   -configuration Release -destination 'platform=macOS' \
-  -derivedDataPath /tmp/mandelbrot-build CODE_SIGNING_ALLOWED=NO ENABLE_CODE_COVERAGE=NO build
+  -derivedDataPath /tmp/mandelbrot-development CODE_SIGNING_ALLOWED=NO ENABLE_CODE_COVERAGE=NO build
 
-/tmp/mandelbrot-build/Build/Products/Release/Mandelbrot.app/Contents/MacOS/Mandelbrot \
+/tmp/mandelbrot-development/Build/Products/Release/Mandelbrot.app/Contents/MacOS/Mandelbrot \
   --benchmark --variants baseline,parallel,metal \
   --sizes 1024x512,2048x1024 --iterations 200 --warmup 1 --runs 3
 ```
 
 Use `--format json` to capture machine-readable results, including the viewport, each measured
 sample, median seconds, and megapixels per second. The default output is Markdown.
-`--help` lists all options; `--variants all` includes all nine implementations
-(including the FloatFloat `metal-double` renderer). CPU-only runs can select
+`--help` lists all options; `--variants all` selects every renderer the chosen
+pipeline supports (ten exist, including FloatFloat `metal-double` and
+`perturbation`). CPU-only runs can select
 `--variants baseline,parallel` without requiring a Metal device.
 
 The default sizes are fixed for repeatability, rather than the GUI's adaptive size
@@ -86,9 +88,10 @@ gets its own untimed warmups, followed by measured runs using a monotonic clock.
 Zero warmups includes first-use setup costs in the first measured sample.
 
 The process exits with status 0 on success, 2 for invalid options, and 1 if a
-renderer fails (including unavailable Metal). Diagnostics go to stderr. Iterations
-are limited to 65535 to fit the GPU count buffers. Sizes are limited to 16384 per
-dimension and 33554432 pixels in total. Run without `--benchmark` to open the GUI
+renderer fails (including unavailable Metal). Diagnostics go to stderr. The legacy
+path limits iterations to 65,535, the width of its count buffers; `--pipeline gpu`
+and `--pipeline tiles` accept up to 1,000,000. Sizes are limited to 16,384 per
+dimension and 33,554,432 pixels in total. Run without `--benchmark` to open the GUI
 normally. Use Release builds with `ENABLE_CODE_COVERAGE=NO` for performance comparisons;
 the Xcode scheme otherwise enables coverage instrumentation even in Release.
 
@@ -96,7 +99,7 @@ Run the headless CLI integration checks against a built executable with:
 
 ```sh
 python3 tests/test_headless.py \
-  /tmp/mandelbrot-build/Build/Products/Release/Mandelbrot.app/Contents/MacOS/Mandelbrot
+  /tmp/mandelbrot-development/Build/Products/Release/Mandelbrot.app/Contents/MacOS/Mandelbrot
 ```
 
 These checks use CPU renderers so they can run without GPU access.
@@ -108,7 +111,7 @@ CPU Double. This requires GPU access and checks square and non-square viewports.
 `--render` exports a single full-resolution PNG without opening a window. For example:
 
 ```sh
-/tmp/mandelbrot-build/Build/Products/Release/Mandelbrot.app/Contents/MacOS/Mandelbrot \
+/tmp/mandelbrot-development/Build/Products/Release/Mandelbrot.app/Contents/MacOS/Mandelbrot \
   --render --renderer metal-double --size 512x512 \
   --center-real -0.743643987037151 --center-imag 0.13182597420533 \
   --scale 10000000 --iterations 2000 --output floatfloat.png
@@ -116,7 +119,8 @@ CPU Double. This requires GPU access and checks square and non-square viewports.
 
 Horizontal span is `3 / scale`; vertical span follows the image aspect ratio.
 The real coordinate increases left to right; the imaginary coordinate increases
-bottom to top. Center coordinates must be in [-4, 4], and scale in [1e-6, 1e14].
+bottom to top. Center coordinates must be in [-4, 4], and scale in [1e-6, 2^13000]; scales
+beyond 1e14 need the perturbation renderer.
 These bounds are input limits, not a promise of adequate precision at every zoom.
 Image dimensions and iteration limits use the same validation as benchmarks.
 `--counts counts.u16` optionally exports raw iteration counts as little-endian
@@ -127,7 +131,7 @@ directories must already exist. PNG writing is excluded from benchmark timings.
 Benchmark the exact same viewport by replacing the render/output options:
 
 ```sh
-/tmp/mandelbrot-build/Build/Products/Release/Mandelbrot.app/Contents/MacOS/Mandelbrot \
+/tmp/mandelbrot-development/Build/Products/Release/Mandelbrot.app/Contents/MacOS/Mandelbrot \
   --benchmark --variants all --sizes 512x512,1024x1024 \
   --center-real -0.743643987037151 --center-imag 0.13182597420533 \
   --scale 10000000 --iterations 2000 --warmup 1 --runs 5 --format json
@@ -139,7 +143,7 @@ images, raw measurements, accuracy comparisons, and reproduction instructions.
 ### GPU zoom-depth suite
 
 `tests/benchmark_gpu_depths.py` runs eight headless GPU cases: Float at 30× and
-1000×, FloatFloat at 10⁷×, and Perturbation at 10¹⁰⁰×. Each depth uses two
+1000×, FloatFloat at 1e7, and Perturbation at 1e100. Each depth uses two
 iteration caps. Before timing a case, the script exports raw sample records and
 requires both capped and escaped pixels, so an accidentally trivial viewport
 fails the suite; `--compare` also fails if any capped or escaped total differs
@@ -203,7 +207,7 @@ aspect of the hot path, the iteration loop and block fill in
   `DispatchQueue.concurrentPerform`.
 - `simd4-float`: four points per iteration with `SIMD4<Float>`.
 
-| Variant         | 1024x512            | 2048x1024           | 4096x2048           | 8192x4096           |
+| Variant         | 1024×512            | 2048×1024           | 4096×2048           | 8192×4096           |
 | ---             | ---                 | ---                 | ---                 | ---                 |
 | baseline        | 0.121s / 4.32 Mpx/s | 0.476s / 4.41 Mpx/s | 1.901s / 4.41 Mpx/s | 7.524s / 4.46 Mpx/s |
 | scalar-tight    | 0.121s / 4.33 Mpx/s | 0.470s / 4.47 Mpx/s | 1.876s / 4.47 Mpx/s | 7.487s / 4.48 Mpx/s |
@@ -232,7 +236,7 @@ rather than adding a second temporary parameter layout to the legacy lab kernels
 **Correction (2026-09-18): the cause above was misattributed.** The Float kernel
 did slow by roughly that amount, but `MTL_FAST_MATH=NO` was not why. Measured in
 isolation, `-fno-fast-math` is *faster* for this kernel, not slower: 64.6 ms
-versus 74.5 ms at 3456×2234, scale 200, 1000 iterations. Safe math costs nothing
+versus 74.5 ms at 3456×2234, scale 200, 1,000 iterations. Safe math costs nothing
 here.
 
 The real cause was a file-scope `#pragma clang fp contract(off)`. It sat in
@@ -253,15 +257,15 @@ Measured after the fix, GPU compute only, 3456×2234, interleaved best-of-15:
 
 | Case | Feb | Before fix | After fix |
 | --- | ---: | ---: | ---: |
-| scale 1, 1000 iter | 34.7 ms | 36.7 ms | 30.8 ms |
-| scale 200, 1000 iter | 96.1 ms | 107.1 ms | 88.5 ms |
-| scale 5000, 5000 iter | 419.6 ms | 448.9 ms | 358.2 ms |
-| scale 1, 20000 iter | 537.1 ms | 573.5 ms | 443.0 ms |
+| scale 1, 1,000 iter | 34.7 ms | 36.7 ms | 30.8 ms |
+| scale 200, 1,000 iter | 96.1 ms | 107.1 ms | 88.5 ms |
+| scale 5,000, 5,000 iter | 419.6 ms | 448.9 ms | 358.2 ms |
+| scale 1, 20,000 iter | 537.1 ms | 573.5 ms | 443.0 ms |
 
 That is 16–23% faster than before the fix and 8–17% faster than February. These
 absolutes were taken on a thermally loaded machine and run high; the interleaved
 ratios are the meaningful part. The product pipeline (`--pipeline gpu --timing
-kernel`) improved about 10% on best-of-three at both 1000 and 20000 iterations.
+kernel`) improved about 10% on best-of-three at both 1,000 and 20,000 iterations.
 
 The lesson is procedural: this doc's predicted cost and the observed cost matched
 in size, which is why a real bug sat behind a plausible explanation for months.
@@ -295,7 +299,7 @@ backward-compatible CLI comparisons.
 *2026-09-14 · `8c460b1`*
 
 Same M1 Pro protocol and 1e7 viewport as 1.4. Smooth escape radius is 256
-(squared threshold 65536), with `n + 1 - log2(log2(|z|))`; negative sentinel -1
+(squared threshold 65,536), with `n + 1 - log2(log2(|z|))`; negative sentinel -1
 marks capped samples, and far-exterior smooth values are clamped at zero.
 Seven periodic gradient LUTs include a constant-lightness/chroma OKLab wheel.
 Palette, density and offset changes recolour retained samples without iteration work.
@@ -379,7 +383,7 @@ speed comparison with earlier traces.
 | Median per-run p95 compositor GPU duration | 0.250 ms |
 | Worst compositor GPU duration across runs | 1.339 ms |
 | Worst ordinary refinement batch | 1.432 ms |
-| Cold 1e10 refinement, 256², 4000 iterations (median) | 1488.170 ms |
+| Cold 1e10 refinement, 256², 4,000 iterations (median) | 1,488.170 ms |
 | Worst batch during that deep refinement | 2.370 ms |
 | Resident cache after animated trace | 101.5625 MiB |
 | Resident cache after deep refinement | 115.625 MiB |
@@ -488,7 +492,7 @@ exists. `make test` includes the new product goldens.
 *2026-09-14 · `f5c9b0d`*
 
 Five isolated M1 Pro runs: `evidence/product/review-final.json`. Deep rendering
-uses 256², scale 1e10, 4000 iterations and the iOS 150 MiB cache budget.
+uses 256², scale 1e10, 4,000 iterations and the iOS 150 MiB cache budget.
 
 | Measurement | Result |
 | --- | ---: |
@@ -500,7 +504,7 @@ uses 256², scale 1e10, 4000 iterations and the iOS 150 MiB cache budget.
 | Compositor GPU duration, worst observed | 0.888 ms |
 | Last demand update, median of runs | 0.032 ms |
 
-The earlier deep path took 1488.170 ms and retained 115.625 MiB on Mac;
+The earlier deep path took 1,488.170 ms and retained 115.625 MiB on Mac;
 under the phone budget it also reduced sampling detail. The new regression
 requires the requested LOD to survive. Frame statistics now flush their final
 window when work settles, and preserve the worst observed GPU duration.
@@ -519,7 +523,7 @@ On the M1 Pro, Release Swift `-O` and Apple Clang `-O3`, five runs of 10 ×
 | Zoom precision | Bits | Swift BigInt fixed point | Boost cpp_bin_float |
 | --- | ---: | ---: | ---: |
 | 1e100 | 397 | 33.075 ms | 6.240 ms |
-| 1e1000 | 3386 | 864.733 ms | 68.952 ms |
+| 1e1000 | 3,386 | 864.733 ms | 68.952 ms |
 
 Boost wins arithmetic throughput (5.3× / 12.5×). For this first implementation
 we choose the MIT-licensed Swift BigInt: one 1,000-step reference at 1e1000
@@ -780,7 +784,7 @@ no extension. State remains worker-local; capped pixels restart rather than
 retaining a roughly 3 MiB perturbation buffer for each cached tile.
 
 The integration fixture sampled **zero pixels** on a decrease and return, and
-**820 capped pixels** on the next increase. A 201-view 1x–1e30–1x navigation trace
+**820 capped pixels** on the next increase. A 201-view 1×–1e30–1× navigation trace
 sampled 27,424,368 pixels with a fixed limit and 27,427,626 with automatic limits.
 This trace deliberately uses an outside-set location to isolate cache behaviour;
 non-flat seahorse, deep c=i and minibrot tests separately check rendering accuracy.

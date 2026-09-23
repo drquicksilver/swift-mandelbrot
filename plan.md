@@ -571,7 +571,7 @@ cold deep views are too slow on the phones.
 - *Zoom movie keyframes (from 2.8's measurements).* A descent re-derives a
   reference orbit per keyframe because the centre drifts between levels; and
   keyframes render strictly in order, so nothing overlaps the encode. A 101-
-  keyframe descent to 1e30 took 439 s at 640×360.
+  keyframe descent to 1e30 took 1,236 s at 640×360 (Performance.md, 2.8).
 
 **2.17 Tidy up before shipping.** Employers will read this repository.
 - One pixel-mapping convention everywhere: the full-frame CLI and GPU paths
