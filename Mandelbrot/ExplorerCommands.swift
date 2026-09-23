@@ -153,22 +153,50 @@ enum ExplorerCommand: String, CaseIterable, Identifiable {
     }
   }
 #endif
+/// What the menus need to know about the focused window, as a value.  The
+/// model publishes every frame of a pan, and a menu observing it rebuilt the
+/// menu bar with every one -- about seventy times a second, measured.  This
+/// changes only when a menu item's state does.
+struct MenuState: Equatable {
+  var canGoBack = false
+  var canGoForward = false
+  var isRotated = false
+  var showJulia = false
+  var isPresentingSheet = false
+
+  func allows(_ command: ExplorerCommand) -> Bool {
+    if isPresentingSheet { return false }
+    switch command {
+    case .back: return canGoBack
+    case .forward: return canGoForward
+    case .resetRotation: return isRotated
+    case .swapJulia: return showJulia
+    default: return true
+    }
+  }
+}
+
+extension FocusedValues {
+  /// The focused window's model, to act on.  Not observed: see `MenuState`.
+  @Entry var explorer: ExplorerModel?
+  @Entry var explorerMenu: MenuState?
+}
+
 struct ExplorerCommands: Commands {
   #if os(macOS)
     @ObservedObject private var access = DeveloperAccess.shared
     @AppStorage("DeveloperMenuEnabled") private var developerMenu = false
     @Environment(\.openWindow) private var openWindow
   #endif
-  /// Observed, not merely read: a menu item's enabled state has to follow
-  /// the model as it changes, not only when the focused window does.
-  @FocusedObject private var explorer: ExplorerModel?
+  @FocusedValue(\.explorer) private var explorer
+  @FocusedValue(\.explorerMenu) private var menu
   var body: some Commands {
     // Settings is still a sheet on the window it changes, so the standard
     // command opens that sheet rather than a separate Settings scene.
     CommandGroup(replacing: .appSettings) {
       Button("Settings…") { explorer?.showSettings = true }
         .keyboardShortcut(",", modifiers: .command)
-        .disabled(explorer?.isPresentingSheet ?? true)
+        .disabled(menu?.isPresentingSheet ?? true)
     }
     CommandMenu("Explore") {
       ForEach(Array(ExplorerCommand.menuGroups.enumerated()), id: \.offset) { index, group in
@@ -191,7 +219,7 @@ struct ExplorerCommands: Commands {
 
   @ViewBuilder private func item(_ command: ExplorerCommand) -> some View {
     let button = Button(command.title) { explorer?.perform(command) }
-      .disabled(!(explorer?.canPerform(command) ?? false))
+      .disabled(!(menu?.allows(command) ?? false))
     if command.keyRoute == .menu {
       button.keyboardShortcut(command.key, modifiers: command.modifiers)
     } else {

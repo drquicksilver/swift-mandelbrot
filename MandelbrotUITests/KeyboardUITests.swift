@@ -19,14 +19,18 @@ import XCTest
       XCTAssertTrue(canvas.waitForExistence(timeout: 10))
 
       // Home, then in far enough that a small pan changes the place's name.
+      // Each key is followed by a wait for the view to answer it: reading the
+      // value straight after a key press raced the update and was flaky.
       app.typeKey("0", modifierFlags: .command)
       for _ in 0..<3 { app.typeKey("+", modifierFlags: .command) }
-      let zoomed = try XCTUnwrap(canvas.value as? String)
-      XCTAssertTrue(zoomed.hasSuffix("8×"), "⌘+ did not zoom: \(zoomed)")
+      XCTAssertTrue(
+        wait(for: canvas, until: { $0.hasSuffix("8×") }), "⌘+ did not zoom: \(value(canvas))")
+      let zoomed = value(canvas)
 
       app.typeKey(.rightArrow, modifierFlags: [])
-      let moved = try XCTUnwrap(canvas.value as? String)
-      XCTAssertNotEqual(moved, zoomed, "A bare arrow did not move the view")
+      XCTAssertTrue(
+        wait(for: canvas, until: { $0 != zoomed }), "A bare arrow did not move the view")
+      let moved = value(canvas)
 
       // In a sheet's text field the arrows are the field's.
       app.typeKey("l", modifierFlags: .command)
@@ -36,13 +40,27 @@ import XCTest
       field.typeText("ab")
       app.typeKey(.leftArrow, modifierFlags: [])
       field.typeText("c")
-      XCTAssertEqual(field.value as? String, "acb", "The arrow did not move the text cursor")
+      XCTAssertTrue(
+        wait(for: field, until: { $0 == "acb" }),
+        "The arrow did not move the text cursor: \(value(field))")
       app.buttons["Done"].tap()
-      XCTAssertEqual(canvas.value as? String, moved, "An arrow in the text field moved the view")
+      XCTAssertTrue(canvas.waitForExistence(timeout: 5))
+      XCTAssertEqual(value(canvas), moved, "An arrow in the text field moved the view")
 
       // ? is Shift-/ on the keyboard, and opens Controls.
       app.typeKey("/", modifierFlags: .shift)
       XCTAssertTrue(app.navigationBars["Controls"].waitForExistence(timeout: 5))
+    }
+
+    private func value(_ element: XCUIElement) -> String { element.value as? String ?? "" }
+
+    /// Waits up to five seconds for an element's value to satisfy a test.
+    private func wait(for element: XCUIElement, until test: @escaping (String) -> Bool) -> Bool {
+      let predicate = NSPredicate { object, _ in
+        test((object as? XCUIElement)?.value as? String ?? "")
+      }
+      let expectation = XCTNSPredicateExpectation(predicate: predicate, object: element)
+      return XCTWaiter().wait(for: [expectation], timeout: 5) == .completed
     }
   }
 #endif

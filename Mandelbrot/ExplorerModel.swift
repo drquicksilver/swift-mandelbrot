@@ -5,8 +5,11 @@ import SwiftUI
   let tiles = TileStore()
   let bookmarks: LocationStore
   private var tileObservation: AnyCancellable?
-  init(bookmarks: LocationStore? = nil) {
+  /// Where the last location is remembered; tests pass their own.
+  let defaults: UserDefaults
+  init(bookmarks: LocationStore? = nil, defaults: UserDefaults = .standard) {
     self.bookmarks = bookmarks ?? LocationStore()
+    self.defaults = defaults
     // Settled views report their escaped counts; each report may lower the
     // automatic limit.  Delivered after the publishing call returns.
     tileObservation = tiles.$statistics.receive(on: DispatchQueue.main).sink { [weak self] _ in
@@ -185,7 +188,6 @@ import SwiftUI
   @Published var showHelp = false
   @Published var showBenchmark = false
   @Published var showSettings = false
-  @Published var showDeveloper = false
   @Published var showHUD = false
   @Published var showTileOverlay = false { didSet { requestRedraw() } }
   @Published var selection: CGRect?
@@ -238,10 +240,9 @@ import SwiftUI
   }
   /// The crosshair's point as a person reads it: −0.7436 + 0.1318i.
   var juliaPoint: String {
-    let digits = FloatingPointFormatStyle<Double>.number.precision(.fractionLength(4))
-    let real = Double(juliaC.x).formatted(digits).replacingOccurrences(of: "-", with: "−")
-    let sign = juliaC.y < 0 ? "−" : "+"
-    return "\(real) \(sign) \(abs(Double(juliaC.y)).formatted(digits))i"
+    PointFormat.string(
+      x: Double(juliaC.x), y: Double(juliaC.y),
+      style: .number.precision(.fractionLength(4)))
   }
   /// How near the pointer has to be, in points, to take hold of the marker.
   static let markerGrabRadius = 22.0
@@ -431,17 +432,26 @@ import SwiftUI
   static let lastLocationKey = "LastLocation"
   private func rememberLocation() {
     guard remembersLocation, !applyingLocation else { return }
-    UserDefaults.standard.set(location.url.absoluteString, forKey: Self.lastLocationKey)
+    defaults.set(location.url.absoluteString, forKey: Self.lastLocationKey)
   }
   /// Opens where the last session left off, as a place rather than a move.
   func restoreLastLocation() {
     remembersLocation = true
-    guard let text = UserDefaults.standard.string(forKey: Self.lastLocationKey),
+    guard let text = defaults.string(forKey: Self.lastLocationKey),
       let url = URL(string: text), let place = try? Location(url: url)
     else { return }
     apply(place, record: false)
   }
-  private var travelTask: Task<Void, Never>?
+  /// A move to a place in progress, stepped by the motion clock like every
+  /// other animation, so it keeps the display's pace and a gesture stops it.
+  struct Travel {
+    let journey: Journey
+    let place: Location
+    let origin: Location
+    let seconds: Double
+    var start: Double?
+  }
+  private(set) var travelling: Travel?
   /// Goes to a place the way a movie would, as one short continuous move,
   /// so a jump shows where the place is rather than cutting to it.  Under
   /// Reduce Motion, or when there is no route, it is the plain cut.  Any
@@ -458,23 +468,32 @@ import SwiftUI
     // Long enough to follow, short enough not to be a wait: a deep descent
     // is compressed, a near neighbour is not stretched.
     let seconds = min(1.6, max(0.6, journey.minimumDuration * 0.3))
-    let origin = location
-    travelTask = Task { [weak self] in
-      let start = ProcessInfo.processInfo.systemUptime
-      while !Task.isCancelled, let self {
-        let t = min(1, (ProcessInfo.processInfo.systemUptime - start) / seconds)
-        if let view = try? journey.viewport(at: t, duration: journey.requestedDuration) {
-          self.viewport = view
-        }
-        if t >= 1 { break }
-        try? await Task.sleep(for: .milliseconds(16))
-      }
-      guard !Task.isCancelled, let self else { return }
-      // The view has already arrived, so apply's own record would see no
-      // move; the place left is recorded here instead.
-      self.push(origin)
-      self.apply(place, record: false)
+    travelling = Travel(journey: journey, place: place, origin: location, seconds: seconds)
+    motionActive = true
+    requestRedraw()
+  }
+  /// One step of a travel; true while it has further to go.
+  private func advanceTravel(now: Double) -> Bool {
+    guard var travel = travelling else { return false }
+    let start = travel.start ?? now
+    travel.start = start
+    travelling = travel
+    let t = min(1, (now - start) / travel.seconds)
+    if let view = try? travel.journey.viewport(
+      at: t, duration: travel.journey.requestedDuration)
+    {
+      // The direction steers the tile store's prefetch, as a fling's does.
+      zoomDirection =
+        view.logScale > viewport.logScale ? 1 : (view.logScale < viewport.logScale ? -1 : 0)
+      viewport = view
     }
+    guard t >= 1 else { return true }
+    travelling = nil
+    // The view has already arrived, so apply's own record would see no
+    // move; the place left is recorded here instead.
+    push(travel.origin)
+    apply(travel.place, record: false)
+    return false
   }
   func open(_ url: URL) {
     do {
@@ -499,8 +518,7 @@ import SwiftUI
   private var lastMotionTime: Double?
   var zoomDirection = 0
   func stopMotion() {
-    travelTask?.cancel()
-    travelTask = nil
+    travelling = nil
     motion.stop()
     rotationTarget = nil
     motionActive = false
@@ -531,7 +549,7 @@ import SwiftUI
     // The bounds spring belongs to the Mandelbrot view.  While the companion
     // holds the main area nothing pulls it back, so it must not keep the display
     // awake either.
-    motion.active || rotationTarget != nil
+    motion.active || rotationTarget != nil || travelling != nil
       || (!interactionActive && !juliaSwapped && boundsNeeded)
   }
   private(set) var rotationTarget: Double?
@@ -661,6 +679,16 @@ import SwiftUI
     }
     let dt = now - (lastMotionTime ?? now)
     lastMotionTime = now
+    if travelling != nil {
+      if advanceTravel(now: now) {
+        requestRedraw()
+      } else {
+        motionActive = false
+        lastMotionTime = nil
+        zoomDirection = 0
+      }
+      return
+    }
     zoomDirection = motion.zoomVelocity > 0 ? 1 : (motion.zoomVelocity < 0 ? -1 : 0)
     let delta = motion.step(seconds: dt)
     if juliaSwapped {
@@ -761,19 +789,17 @@ import SwiftUI
   /// Whether a sheet covers the window.  The menu bar stays live above one,
   /// and its commands would otherwise act on the view hidden behind it.
   var isPresentingSheet: Bool {
-    showPlaces || showMovie || showSettings || showHelp || showDeveloper || showBenchmark
+    showPlaces || showMovie || showSettings || showHelp || showBenchmark
+  }
+  /// Everything the menus read, and nothing else: see `MenuState`.
+  var menuState: MenuState {
+    MenuState(
+      canGoBack: canGoBack, canGoForward: canGoForward,
+      isRotated: abs(mainViewport.angle) > 0.001, showJulia: showJulia,
+      isPresentingSheet: isPresentingSheet)
   }
   /// Whether a command would do anything now, so a menu can say so.
-  func canPerform(_ command: ExplorerCommand) -> Bool {
-    if isPresentingSheet { return false }
-    switch command {
-    case .back: return canGoBack
-    case .forward: return canGoForward
-    case .resetRotation: return abs(mainViewport.angle) > 0.001
-    case .swapJulia: return showJulia
-    default: return true
-    }
-  }
+  func canPerform(_ command: ExplorerCommand) -> Bool { menuState.allows(command) }
   func perform(_ command: ExplorerCommand) {
     stopMotion()
     // Keyboard navigation settles the instant it runs: nothing else will call

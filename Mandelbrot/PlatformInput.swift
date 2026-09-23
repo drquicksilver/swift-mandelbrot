@@ -9,9 +9,10 @@ import SwiftUI
   struct DoubleClick {
     static let tolerance = 5.0
     private var lastClick: CGPoint?
-    /// Call from `mouseDown`, before anything else uses the event.
-    func isDouble(_ event: NSEvent, at point: CGPoint) -> Bool {
-      guard event.clickCount >= 2, let lastClick else { return false }
+    /// Call from `mouseDown` with the event's `clickCount`, before anything
+    /// else uses it.  Exactly two: a third quick click is not another zoom.
+    func isDouble(clickCount: Int, at point: CGPoint) -> Bool {
+      guard clickCount == 2, let lastClick else { return false }
       return hypot(point.x - lastClick.x, point.y - lastClick.y) <= Self.tolerance
     }
     /// Call from `mouseUp` with where the press began and ended.
@@ -108,7 +109,7 @@ import SwiftUI
       draggingMarker = !selecting && model.isOnJuliaMarker(last)
       markerMoved = false
       if draggingMarker { return }
-      if clicks.isDouble(event, at: last) {
+      if clicks.isDouble(clickCount: event.clickCount, at: last) {
         // Option reverses it, as it does for the zoom tool in most Mac apps.
         model.zoom(event.modifierFlags.contains(.option) ? 0.5 : 2, at: last)
       }
@@ -235,7 +236,7 @@ import SwiftUI
     override func mouseDown(with event: NSEvent) {
       last = convert(event.locationInWindow, from: nil)
       start = last
-      if clicks.isDouble(event, at: last) {
+      if clicks.isDouble(clickCount: event.clickCount, at: last) {
         model.zoomPanel(event.modifierFlags.contains(.option) ? 0.5 : 2, at: last)
       }
     }

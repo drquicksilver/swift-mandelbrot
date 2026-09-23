@@ -37,9 +37,10 @@ strings-check: build ios
 
 # The app's own tests, on the Mac and on an iPad simulator: the iPad is where
 # hardware-keyboard commands differ, and the Mac cannot show it.
-# The first iPad simulator the scheme can build for: naming one picks the
-# newest runtime, which this Xcode may not support.
-IPAD ?= $(shell xcodebuild -project Mandelbrot.xcodeproj -scheme Mandelbrot -showdestinations 2>/dev/null | grep -m1 'platform:iOS Simulator.*name:iPad' | sed -E 's/.*id:([^,]+),.*/\1/')
+# The first available iPad simulator, by id.  simctl answers at once, where
+# xcodebuild -showdestinations can come back empty while the simulator
+# service wakes; naming a model picks the newest runtime, which may not fit.
+IPAD ?= $(shell xcrun simctl list devices available | grep -m1 -E '^ +iPad' | grep -oE '[0-9A-F-]{36}')
 apptests:
 	xcodebuild -quiet -project Mandelbrot.xcodeproj -scheme Mandelbrot -destination 'platform=macOS' -derivedDataPath $(BUILD_DIR)-apptests CODE_SIGNING_ALLOWED=NO test -only-testing:MandelbrotTests
 	xcodebuild -quiet -project Mandelbrot.xcodeproj -scheme Mandelbrot -destination 'platform=iOS Simulator,id=$(IPAD)' -derivedDataPath $(BUILD_DIR)-apptests-ios test -only-testing:MandelbrotTests -only-testing:MandelbrotUITests/KeyboardUITests

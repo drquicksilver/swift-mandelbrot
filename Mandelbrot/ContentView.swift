@@ -26,7 +26,8 @@ struct ContentView: View {
         let panel =
           sideBySide
           ? CGSize(
-            width: max(220, geometry.size.width * companionFraction), height: geometry.size.height)
+            width: max(CompanionDivider.minimumWidth, geometry.size.width * companionFraction),
+            height: geometry.size.height)
           : CGSize(
             width: min(geometry.size.width * 0.42, 220),
             height: min(geometry.size.width * 0.42, 220))
@@ -165,8 +166,6 @@ struct ContentView: View {
       .onChange(of: appearsActive, initial: true) { _, active in
         if active { ExplorerRegistry.shared.current = model }
       }
-    #else
-      .sheet(isPresented: $model.showDeveloper) { DeveloperPanel(model: model) }
     #endif
     .sheet(isPresented: $model.showBenchmark) {
       BenchmarkView(viewport: model.viewport, iterations: model.iterations)
@@ -184,7 +183,8 @@ struct ContentView: View {
     }
     .sheet(isPresented: $model.showSettings) { AppearanceView(model: model) }
     .sheet(isPresented: $model.showHelp) { HelpView() }
-    .focusedSceneObject(model)
+    .focusedSceneValue(\.explorer, model)
+    .focusedSceneValue(\.explorerMenu, model.menuState)
   }
 
   #if os(macOS)
@@ -232,8 +232,20 @@ struct ContentView: View {
 struct CompanionDivider: View {
   static let space = "companionSplit"
   static let range = 0.15...0.6
+  /// The panel is never narrower than this, whatever its share.
+  static let minimumWidth = 220.0
   @Binding var fraction: Double
   let width: CGFloat
+  /// Below the panel's minimum width the line would stop following a drag
+  /// while the stored share kept shrinking, so the share stops there too.
+  private var shares: ClosedRange<Double> {
+    let floor = min(
+      Self.range.upperBound, max(Self.range.lowerBound, Self.minimumWidth / max(1, width)))
+    return floor...Self.range.upperBound
+  }
+  private func clamped(_ share: Double) -> Double {
+    min(shares.upperBound, max(shares.lowerBound, share))
+  }
   var body: some View {
     Divider()
       .overlay {
@@ -243,8 +255,7 @@ struct CompanionDivider: View {
           .gesture(
             DragGesture(minimumDistance: 1, coordinateSpace: .named(Self.space))
               .onChanged { drag in
-                let share = 1 - drag.location.x / max(1, width)
-                fraction = min(Self.range.upperBound, max(Self.range.lowerBound, share))
+                fraction = clamped(1 - drag.location.x / max(1, width))
               }
           )
           #if os(macOS)
@@ -259,7 +270,7 @@ struct CompanionDivider: View {
       .accessibilityValue(Text(fraction.formatted(.percent.precision(.fractionLength(0)))))
       .accessibilityAdjustableAction { direction in
         let step = direction == .increment ? 0.05 : -0.05
-        fraction = min(Self.range.upperBound, max(Self.range.lowerBound, fraction + step))
+        fraction = clamped(fraction + step)
       }
   }
 }
