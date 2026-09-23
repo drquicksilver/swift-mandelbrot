@@ -311,10 +311,12 @@ import Testing
   counts[255] = 1  // An outlier must not decide the fit.
   histogram.add(counts)
   let fit = try #require(AutomaticColourFit.resolve(histogram: histogram))
-  #expect(fit.density > 16)
-  #expect(fit.density < 100_000)
+  // Since 2.11 the fit is in log space: six palette turns across the octaves
+  // between the robust percentiles, with the low one at phase 0.12.
+  let octaves = (96 - 80) / EscapedHistogram.binsPerOctave
+  #expect(abs(Double(fit.density) - octaves / 6) < 0.01)
   let low = pow(2, (80.5) / EscapedHistogram.binsPerOctave)
-  #expect(abs(Double(low) / Double(fit.density) + Double(fit.offset) - 0.12) < 0.02)
+  #expect(abs(log2(low) / Double(fit.density) + Double(fit.offset) - 0.12) < 0.02)
 }
 
 @Test func depthColouringIsDeterministicAndIndependentOfIterationLimit() {
