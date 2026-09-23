@@ -2,17 +2,18 @@
 
 What the renderers cost, how that was measured, and what changed it. The current
 state comes first, then the measurement method and how to reproduce it, then a
-dated log of every experiment, oldest first.
+dated log of every experiment, oldest first. `make docs` aligns the tables for reading in
+a monospace editor; `make docs-check` checks them and every link.
 
 ## Current state (2026-09-23, `f855bf5`)
 
-| Workload | Latest measurement | Where the time goes | Next lever |
-| --- | --- | --- | --- |
-| Cold shallow and medium Float views, 3456×2234, automatic limits | 59–177 ms to every tile ready ([The whole story](#the-whole-story)) | GPU iteration and per-tile round trips, now overlapped | Periodicity checking (plan 2.14) for interior pixels |
-| Cold FloatFloat view, 1e7, 2,200 iterations | 364 ms (same entry) | Mostly GPU iteration | Periodicity checking |
-| Cold deep jumps, 1024×768, 5,000 iterations | 1e100: 758–794 ms; 1e1000: 565–601 ms visible (six `--test-tiles` runs, 2026-09-23) | Perturbation tiles, not broken down at this size; unchanged by the tile batching work | Profile first; a Boost reference backend (plan 2.16) is the measured candidate |
-| Compositor, 3456×2234, settled | 1.30–2.19 ms per frame ([colouring in the compositor](#211-follow-up-colouring-in-the-compositor)) | Four sample fetches and blends per level | — |
-| Zoom movie into the period-312 minibrot, 640×360 | 1,236 s for 101 keyframes ([2.8](#28-zoom-movies)) | Keyframe rendering; which part of it is not measured | Profile one keyframe |
+| Workload                                                         | Latest measurement                                                                                 | Where the time goes                                                                   | Next lever                                                                     |
+| ---------------------------------------------------------------- | -------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------ |
+| Cold shallow and medium Float views, 3456×2234, automatic limits | 59–177 ms to every tile ready ([The whole story](#the-whole-story))                                | GPU iteration and per-tile round trips, now overlapped                                | Periodicity checking (plan 2.14) for interior pixels                           |
+| Cold FloatFloat view, 1e7, 2,200 iterations                      | 364 ms (same entry)                                                                                | Mostly GPU iteration                                                                  | Periodicity checking                                                           |
+| Cold deep jumps, 1024×768, 5,000 iterations                      | 1e100: 758–794 ms; 1e1000: 565–601 ms visible (six `--test-tiles` runs, 2026-09-23)                | Perturbation tiles, not broken down at this size; unchanged by the tile batching work | Profile first; a Boost reference backend (plan 2.16) is the measured candidate |
+| Compositor, 3456×2234, settled                                   | 1.30–2.19 ms per frame ([colouring in the compositor](#211-follow-up-colouring-in-the-compositor)) | Four sample fetches and blends per level                                              | —                                                                              |
+| Zoom movie into the period-312 minibrot, 640×360                 | 1,236 s for 101 keyframes ([2.8](#28-zoom-movies))                                                 | Keyframe rendering; which part of it is not measured                                  | Profile one keyframe                                                           |
 
 Open risks: since `f855bf5` a tile batch can run for up to 4 ms while another
 tile shares the GPU, and whether that delays frames at 120 Hz is unmeasured (see
@@ -207,15 +208,15 @@ aspect of the hot path, the iteration loop and block fill in
   `DispatchQueue.concurrentPerform`.
 - `simd4-float`: four points per iteration with `SIMD4<Float>`.
 
-| Variant         | 1024×512            | 2048×1024           | 4096×2048           | 8192×4096           |
-| ---             | ---                 | ---                 | ---                 | ---                 |
-| baseline        | 0.121s / 4.32 Mpx/s | 0.476s / 4.41 Mpx/s | 1.901s / 4.41 Mpx/s | 7.524s / 4.46 Mpx/s |
-| scalar-tight    | 0.121s / 4.33 Mpx/s | 0.470s / 4.47 Mpx/s | 1.876s / 4.47 Mpx/s | 7.487s / 4.48 Mpx/s |
-| coord-precompute| 0.127s / 4.13 Mpx/s | 0.468s / 4.48 Mpx/s | 1.870s / 4.48 Mpx/s | 7.463s / 4.50 Mpx/s |
-| unsafe-buffer   | 0.123s / 4.25 Mpx/s | 0.470s / 4.46 Mpx/s | 1.863s / 4.50 Mpx/s | 7.459s / 4.50 Mpx/s |
-| float-math      | 0.123s / 4.28 Mpx/s | 0.471s / 4.45 Mpx/s | 1.883s / 4.46 Mpx/s | 7.491s / 4.48 Mpx/s |
-| parallel        | 0.022s / 23.84 Mpx/s| 0.072s / 29.25 Mpx/s| 0.282s / 29.78 Mpx/s| 1.114s / 30.12 Mpx/s|
-| simd4-float     | 0.136s / 3.85 Mpx/s | 0.533s / 3.93 Mpx/s | 2.108s / 3.98 Mpx/s | 8.424s / 3.98 Mpx/s |
+| Variant          | 1024×512             | 2048×1024            | 4096×2048            | 8192×4096            |
+| ---------------- | -------------------- | -------------------- | -------------------- | -------------------- |
+| baseline         | 0.121s / 4.32 Mpx/s  | 0.476s / 4.41 Mpx/s  | 1.901s / 4.41 Mpx/s  | 7.524s / 4.46 Mpx/s  |
+| scalar-tight     | 0.121s / 4.33 Mpx/s  | 0.470s / 4.47 Mpx/s  | 1.876s / 4.47 Mpx/s  | 7.487s / 4.48 Mpx/s  |
+| coord-precompute | 0.127s / 4.13 Mpx/s  | 0.468s / 4.48 Mpx/s  | 1.870s / 4.48 Mpx/s  | 7.463s / 4.50 Mpx/s  |
+| unsafe-buffer    | 0.123s / 4.25 Mpx/s  | 0.470s / 4.46 Mpx/s  | 1.863s / 4.50 Mpx/s  | 7.459s / 4.50 Mpx/s  |
+| float-math       | 0.123s / 4.28 Mpx/s  | 0.471s / 4.45 Mpx/s  | 1.883s / 4.46 Mpx/s  | 7.491s / 4.48 Mpx/s  |
+| parallel         | 0.022s / 23.84 Mpx/s | 0.072s / 29.25 Mpx/s | 0.282s / 29.78 Mpx/s | 1.114s / 30.12 Mpx/s |
+| simd4-float      | 0.136s / 3.85 Mpx/s  | 0.533s / 3.93 Mpx/s  | 2.108s / 3.98 Mpx/s  | 8.424s / 3.98 Mpx/s  |
 
 Only parallelism mattered: 6.8× at the largest size. The scalar changes and
 `Float` stayed within 5% of the baseline, and `simd4-float` was about 12% slower.
@@ -255,12 +256,12 @@ their multiply-adds back.
 
 Measured after the fix, GPU compute only, 3456×2234, interleaved best-of-15:
 
-| Case | Feb | Before fix | After fix |
-| --- | ---: | ---: | ---: |
-| scale 1, 1,000 iter | 34.7 ms | 36.7 ms | 30.8 ms |
-| scale 200, 1,000 iter | 96.1 ms | 107.1 ms | 88.5 ms |
-| scale 5,000, 5,000 iter | 419.6 ms | 448.9 ms | 358.2 ms |
-| scale 1, 20,000 iter | 537.1 ms | 573.5 ms | 443.0 ms |
+| Case                    |      Feb | Before fix | After fix |
+| ----------------------- | -------: | ---------: | --------: |
+| scale 1, 1,000 iter     |  34.7 ms |    36.7 ms |   30.8 ms |
+| scale 200, 1,000 iter   |  96.1 ms |   107.1 ms |   88.5 ms |
+| scale 5,000, 5,000 iter | 419.6 ms |   448.9 ms |  358.2 ms |
+| scale 1, 20,000 iter    | 537.1 ms |   573.5 ms |  443.0 ms |
 
 That is 16–23% faster than before the fix and 8–17% faster than February. These
 absolutes were taken on a thermally loaded machine and run high; the interleaved
@@ -281,12 +282,12 @@ FloatFloat investigation; median of five samples after one warmup. Raw samples:
 CPU-precomputed FloatFloat coordinates remove per-pixel divisions. The product
 viewer performs no image readback; MTKView samples the GPU colour texture.
 
-| Scope | Renderer | 512² ms | 1024² ms |
-| --- | --- | ---: | ---: |
-| kernel | metal | 4.351 | 16.562 |
-| kernel | metal-double | 20.094 | 75.324 |
-| end-to-end | metal | 4.962 | 17.705 |
-| end-to-end | metal-double | 20.656 | 76.025 |
+| Scope      | Renderer     | 512² ms | 1024² ms |
+| ---------- | ------------ | ------: | -------: |
+| kernel     | metal        |   4.351 |   16.562 |
+| kernel     | metal-double |  20.094 |   75.324 |
+| end-to-end | metal        |   4.962 |   17.705 |
+| end-to-end | metal-double |  20.656 |   76.025 |
 
 Kernel time is the compute command buffer GPU duration; end-to-end includes
 allocation, submission, computation and GPU colouring to a completed texture. It
@@ -305,12 +306,12 @@ Seven periodic gradient LUTs include a constant-lightness/chroma OKLab wheel.
 Palette, density and offset changes recolour retained samples without iteration work.
 The independent smooth Double oracle and all legacy/product goldens pass.
 
-| Scope | Renderer | 512² ms | 1024² ms |
-| --- | --- | ---: | ---: |
-| kernel | metal | 4.279 | 12.656 |
-| kernel | metal-double | 18.865 | 73.138 |
-| end-to-end | metal | 4.070 | 14.011 |
-| end-to-end | metal-double | 19.945 | 73.523 |
+| Scope      | Renderer     | 512² ms | 1024² ms |
+| ---------- | ------------ | ------: | -------: |
+| kernel     | metal        |   4.279 |   12.656 |
+| kernel     | metal-double |  18.865 |   73.138 |
+| end-to-end | metal        |   4.070 |   14.011 |
+| end-to-end | metal-double |  19.945 |   73.523 |
 
 Samples: `evidence/product/1.5-smooth-palettes.json`; PNG:
 `evidence/product/smooth-blue-gold.png`. GPU rendering defaults to smooth colouring.
@@ -378,15 +379,15 @@ passed. The trace now adds 40 fractional-zoom frames with 8 ms sleeps while
 refinement/prefetch run, so its 487.619 ms median duration is deliberately not a
 speed comparison with earlier traces.
 
-| Measurement | Result |
-| --- | ---: |
-| Median per-run p95 compositor GPU duration | 0.250 ms |
-| Worst compositor GPU duration across runs | 1.339 ms |
-| Worst ordinary refinement batch | 1.432 ms |
+| Measurement                                           |       Result |
+| ----------------------------------------------------- | -----------: |
+| Median per-run p95 compositor GPU duration            |     0.250 ms |
+| Worst compositor GPU duration across runs             |     1.339 ms |
+| Worst ordinary refinement batch                       |     1.432 ms |
 | Cold 1e10 refinement, 256², 4,000 iterations (median) | 1,488.170 ms |
-| Worst batch during that deep refinement | 2.370 ms |
-| Resident cache after animated trace | 101.5625 MiB |
-| Resident cache after deep refinement | 115.625 MiB |
+| Worst batch during that deep refinement               |     2.370 ms |
+| Resident cache after animated trace                   | 101.5625 MiB |
+| Resident cache after deep refinement                  |  115.625 MiB |
 
 The deep viewport is `(-0.743643887037151, 0.13182590390533)`, with automatic
 per-tile precision. Cold refinement includes the entire ancestor chain; it is
@@ -494,15 +495,15 @@ exists. `make test` includes the new product goldens.
 Five isolated M1 Pro runs: `evidence/product/review-final.json`. Deep rendering
 uses 256², scale 1e10, 4,000 iterations and the iOS 150 MiB cache budget.
 
-| Measurement | Result |
-| --- | ---: |
-| Useful deep coverage, median | 71.333 ms |
-| Complete deep detail, median | 161.353 ms |
-| Deep resident cache | 9.375 MiB |
-| Deep GPU batch, worst observed | 2.066 ms |
-| Compositor p95, median of runs | 0.315 ms |
-| Compositor GPU duration, worst observed | 0.888 ms |
-| Last demand update, median of runs | 0.032 ms |
+| Measurement                             |     Result |
+| --------------------------------------- | ---------: |
+| Useful deep coverage, median            |  71.333 ms |
+| Complete deep detail, median            | 161.353 ms |
+| Deep resident cache                     |  9.375 MiB |
+| Deep GPU batch, worst observed          |   2.066 ms |
+| Compositor p95, median of runs          |   0.315 ms |
+| Compositor GPU duration, worst observed |   0.888 ms |
+| Last demand update, median of runs      |   0.032 ms |
 
 The earlier deep path took 1,488.170 ms and retained 115.625 MiB on Mac;
 under the phone budget it also reduced sampling detail. The new regression
@@ -520,10 +521,10 @@ verify the generated ProMotion boolean; `make test` and `make format-check` pass
 On the M1 Pro, Release Swift `-O` and Apple Clang `-O3`, five runs of 10 ×
 1,000 bounded reference iterations gave these median times:
 
-| Zoom precision | Bits | Swift BigInt fixed point | Boost cpp_bin_float |
-| --- | ---: | ---: | ---: |
-| 1e100 | 397 | 33.075 ms | 6.240 ms |
-| 1e1000 | 3,386 | 864.733 ms | 68.952 ms |
+| Zoom precision |  Bits | Swift BigInt fixed point | Boost cpp_bin_float |
+| -------------- | ----: | -----------------------: | ------------------: |
+| 1e100          |   397 |                33.075 ms |            6.240 ms |
+| 1e1000         | 3,386 |               864.733 ms |           68.952 ms |
 
 Boost wins arithmetic throughput (5.3× / 12.5×). For this first implementation
 we choose the MIT-licensed Swift BigInt: one 1,000-step reference at 1e1000
@@ -568,11 +569,11 @@ Controlled BLA on/off comparison on the M1 Pro: centre c=i, 256×192,
 fresh CPU reference creation, BLA preparation and completed GPU colour output;
 it excludes readback and PNG encoding. Full-image runs do not reuse references.
 
-| Scale | BLA off, total | BLA on, total | GPU off | GPU on |
-| --- | ---: | ---: | ---: | ---: |
-| 1e50 | 17.481 ms | 14.422 ms | 12.867 ms | 10.444 ms |
-| 1e200 | 55.531 ms | 25.916 ms | 41.604 ms | 17.758 ms |
-| 1e1000 | 400.274 ms | 141.457 ms | 239.611 ms | 30.194 ms |
+| Scale  | BLA off, total | BLA on, total |    GPU off |    GPU on |
+| ------ | -------------: | ------------: | ---------: | --------: |
+| 1e50   |      17.481 ms |     14.422 ms |  12.867 ms | 10.444 ms |
+| 1e200  |      55.531 ms |     25.916 ms |  41.604 ms | 17.758 ms |
+| 1e1000 |     400.274 ms |    141.457 ms | 239.611 ms | 30.194 ms |
 
 At 1e1000, BLA makes this GPU workload **7.9× faster**, and the full render
 **2.8× faster**. It skips about 123 million individual pixel iterations per
@@ -657,10 +658,10 @@ demand updates and GPU time. The iPhone 16 Pro is listed as unavailable by
 M1 Pro, 64×48, median of three runs after one warmup, including fresh CPU
 reference generation, BLA preparation and completed GPU colouring (no readback):
 
-| Location | BLA off | Fixed 32 | Hierarchy | Longest applied jump |
-| --- | ---: | ---: | ---: | ---: |
-| c=i, 1e1000, 5,000 iterations | 158.94 ms | 114.14 ms | 107.98 ms | 2,048 |
-| period-312 minibrot, 1e100, 60,000 iterations | 735.11 ms | 440.05 ms | 434.44 ms | 16,384 |
+| Location                                      |   BLA off |  Fixed 32 | Hierarchy | Longest applied jump |
+| --------------------------------------------- | --------: | --------: | --------: | -------------------: |
+| c=i, 1e1000, 5,000 iterations                 | 158.94 ms | 114.14 ms | 107.98 ms |                2,048 |
+| period-312 minibrot, 1e100, 60,000 iterations | 735.11 ms | 440.05 ms | 434.44 ms |               16,384 |
 
 Raw data: `evidence/review-deep/hierarchy.json`. Run
 `python3 tests/precision/measure_review.py APP hierarchy` to reproduce all three
@@ -717,9 +718,9 @@ arithmetic-only numbers above. Raw five-run results and pins are in
 Saved-reference generation at the exact period-312 minibrot fixture, cap 60,000:
 
 | Precision | Swift median | Boost median | Swift / Boost orbit length | Per-iteration speedup |
-| --- | ---: | ---: | ---: | ---: |
-| 461 bits | 112.04 ms | 20.92 ms | 32,789 / 32,205 | 5.26× |
-| 512 bits | 135.49 ms | 23.84 ms | 37,280 / 37,251 | 5.68× |
+| --------- | -----------: | -----------: | -------------------------: | --------------------: |
+| 461 bits  |    112.04 ms |     20.92 ms |            32,789 / 32,205 |                 5.26× |
+| 512 bits  |    135.49 ms |     23.84 ms |            37,280 / 37,251 |                 5.68× |
 
 Both include saving FloatFloat mantissas with separate exponents. Different
 rounding changes these chaotic escape lengths, so the last column normalises
@@ -746,9 +747,9 @@ this session; no on-device frame-rate claim is made.
 Final M1 Pro runs after separate sample storage, same 64×48 scenes, median of
 three measured runs after one warmup, fresh references, completed GPU colour:
 
-| Location | BLA off | Fixed 32 | Hierarchy |
-| --- | ---: | ---: | ---: |
-| c=i, 1e1000, 5,000 iterations | 176.77 ms | 118.66 ms | 112.58 ms |
+| Location                           |   BLA off |  Fixed 32 | Hierarchy |
+| ---------------------------------- | --------: | --------: | --------: |
+| c=i, 1e1000, 5,000 iterations      | 176.77 ms | 118.66 ms | 112.58 ms |
 | minibrot, 1e100, 60,000 iterations | 791.34 ms | 476.73 ms | 489.47 ms |
 
 `evidence/review-deep/final.json` includes every timing and component counter.
@@ -809,11 +810,11 @@ paused frontier does not trigger a rebase or reset pixel state.
 
 Three isolated cold product runs at the actual automatic limit produced:
 
-| Measurement | Median | Range |
-| --- | ---: | ---: |
-| First deep tile ready | 41.51 ms | 41.19–48.76 ms |
-| All required tiles ready | 233.20 ms | 227.25–275.26 ms |
-| Reference values needed | 4,098 | identical in all runs |
+| Measurement              |    Median |                 Range |
+| ------------------------ | --------: | --------------------: |
+| First deep tile ready    |  41.51 ms |        41.19–48.76 ms |
+| All required tiles ready | 233.20 ms |      227.25–275.26 ms |
+| Reference values needed  |     4,098 | identical in all runs |
 
 Run `APP --benchmark-reference`, or
 `python3 tests/precision/measure_followup.py APP` to record all runs and images.
@@ -823,10 +824,10 @@ or physical-phone frame pacing. Raw data: `evidence/followup/measurements.json`.
 Comparable fresh full-image runs (64×48, three runs after one warmup, reference
 preparation and GPU colour included) now measure:
 
-| Location | BLA off | Fixed 32-step blocks | Hierarchy |
-| --- | ---: | ---: | ---: |
-| c=i, 1e1000, 5,000 iterations | 158.90 ms | 107.97 ms | 108.62 ms |
-| minibrot, 1e100, 60,000 iterations | 702.51 ms | 426.91 ms | 432.36 ms |
+| Location                           |   BLA off | Fixed 32-step blocks | Hierarchy |
+| ---------------------------------- | --------: | -------------------: | --------: |
+| c=i, 1e1000, 5,000 iterations      | 158.90 ms |            107.97 ms | 108.62 ms |
+| minibrot, 1e100, 60,000 iterations | 702.51 ms |            426.91 ms | 432.36 ms |
 
 The last two columns are similar here; there is no claim of an end-to-end
 hierarchy win. Both use the production compounded radius. Raw data and component
@@ -843,12 +844,12 @@ validity radius, with lengths through 16,384. Errors are normalised by the large
 of the final magnitude and the sum of the two linear output-term magnitudes,
 so cancellation does not create misleading relative errors.
 
-| Scene/policy | Largest BLA-vs-Decimal error | Largest ordinary-GPU-vs-Decimal error |
-| --- | ---: | ---: |
-| c=i, compound | 1.31e-14 | 1.35e-14 |
-| c=i, fixed per jump | 2.39e-15 | 1.35e-14 |
-| minibrot, compound | 5.99e-14 | 9.01e-13 |
-| minibrot, fixed per jump | 7.35e-15 | 1.11e-12 |
+| Scene/policy             | Largest BLA-vs-Decimal error | Largest ordinary-GPU-vs-Decimal error |
+| ------------------------ | ---------------------------: | ------------------------------------: |
+| c=i, compound            |                     1.31e-14 |                              1.35e-14 |
+| c=i, fixed per jump      |                     2.39e-15 |                              1.35e-14 |
+| minibrot, compound       |                     5.99e-14 |                              9.01e-13 |
+| minibrot, fixed per jump |                     7.35e-15 |                              1.11e-12 |
 
 The strict test limits are 1e-12 for BLA versus Decimal and 1e-10 for ordinary
 recurrence and BLA-versus-ordinary differences. Raw results are in
@@ -890,12 +891,12 @@ minimum scale. The coverage cap is a tenth of the budget (at least 30 MiB, and
 never more than the bytes left after the detail band). When choosing detail, the
 store reserves room for the root and offsets 1–2.
 
-| Settled scene | Coverage bytes available | Near offsets planned | Sparse offsets planned |
-| --- | ---: | ---: | ---: |
-| phone, shallow | 10 MiB | 2 of 8, plus root | 1 (offset 15) |
-| phone, 1e1000 | 30 MiB | 5 of 8 | 0 of 6 |
-| Mac, shallow | 50 MiB | 8 of 8, plus root | 1 (offset 15) |
-| Mac, 1e1000 | 50 MiB | 8 of 8 | 2 of 6 |
+| Settled scene  | Coverage bytes available | Near offsets planned | Sparse offsets planned |
+| -------------- | -----------------------: | -------------------: | ---------------------: |
+| phone, shallow |                   10 MiB |    2 of 8, plus root |          1 (offset 15) |
+| phone, 1e1000  |                   30 MiB |               5 of 8 |                 0 of 6 |
+| Mac, shallow   |                   50 MiB |    8 of 8, plus root |          1 (offset 15) |
+| Mac, 1e1000    |                   50 MiB |               8 of 8 |                 2 of 6 |
 
 A shallow view reaches its minimum scale a few levels out, so its sparse tail
 collapses to the single rung that still fits inside the bounds — offset 15 in both
@@ -909,10 +910,10 @@ the detail level, so they are placeholders at 1/8–1/16 resolution.
 Cold jumps at 1024×768, 5,000 iterations, best of two runs per mode in the same
 process:
 
-| Cold jump | Visible view ready, with coverage | Without coverage |
-| --- | ---: | ---: |
-| c=i, 1e100 | 783.8 ms | 779.6 ms |
-| c=i, 1e1000 | 582.7 ms | 574.8 ms |
+| Cold jump   | Visible view ready, with coverage | Without coverage |
+| ----------- | --------------------------------: | ---------------: |
+| c=i, 1e100  |                          783.8 ms |         779.6 ms |
+| c=i, 1e1000 |                          582.7 ms |         574.8 ms |
 
 The test allows 25% + 30 ms. Moving at 1e1000 (1024×768, 120 frames alternating
 zoom and pan, with the worker running): demand update p95 **0.49 ms** (limit 4 ms),
@@ -932,10 +933,10 @@ fresh render at the lowered limit match to the byte. Counts reaching 1.5× those
 the ceiling came from release it. Further zooming grows the ceiling at the
 estimate's slope.
 
-| View (256×192) | Depth estimate | Highest escaped | Settled limit | Picture difference |
-| --- | ---: | ---: | ---: | ---: |
-| c=i, 1e1000 | 266,000 | 2,707 | 5,600 | 0/255 |
-| empty space, 1024× | 1,000 | < 100 | 200 | — |
+| View (256×192)     | Depth estimate | Highest escaped | Settled limit | Picture difference |
+| ------------------ | -------------: | --------------: | ------------: | -----------------: |
+| c=i, 1e1000        |        266,000 |           2,707 |         5,600 |              0/255 |
+| empty space, 1024× |          1,000 |           < 100 |           200 |                  — |
 
 The depth-only slope is unchanged at 80 per level. At c=i, 1e1000 it overshoots
 about 100× (266,000 against about 2,700 needed). At the period-312 minibrot at
@@ -973,11 +974,11 @@ tile cache, compositor and encoder. Automatic depth per keyframe; HEVC. Every ro
 names its destination: the cost depends far more on what is at the bottom than on
 how deep it is, so a row without one cannot be reproduced or compared.
 
-| Movie | Destination | Keyframes | Frames | Render time | File |
-| --- | --- | ---: | ---: | ---: | ---: |
-| 1280×720, 8 s, 30 fps | Seahorse Valley, 4e3 | 13 | 240 | 2.6 s | 3.1 MiB |
-| 1920×1080, 8 s, 30 fps | the point i, 1e12 | 41 | 240 | 9.6 s | 3.5 MiB |
-| 640×360, 4 s, 30 fps | period-312 minibrot, 1e30 | 101 | 120 | 1,236 s | 0.5 MiB |
+| Movie                  | Destination               | Keyframes | Frames | Render time |    File |
+| ---------------------- | ------------------------- | --------: | -----: | ----------: | ------: |
+| 1280×720, 8 s, 30 fps  | Seahorse Valley, 4e3      |        13 |    240 |       2.6 s | 3.1 MiB |
+| 1920×1080, 8 s, 30 fps | the point i, 1e12         |        41 |    240 |       9.6 s | 3.5 MiB |
+| 640×360, 4 s, 30 fps   | period-312 minibrot, 1e30 |       101 |    120 |     1,236 s | 0.5 MiB |
 
 The earlier numbers here (242.4 s to 1e12, 439.3 s to 1e30) named no destination
 and are not reproducible: the 1e12 row's command takes 9.1 s at the very commit
@@ -1063,11 +1064,11 @@ found by `make tiles`, `make product` and `make deep`, which had failed since:
 **Cost**, `--benchmark-compositor`, M1 Pro, 3456×2234, settled tiles, median
 of 30 draws after 5 warm-ups:
 
-| View | 2.11 (one read) | Four reads, divide per sample | Four reads, divide per pixel |
-| --- | ---: | ---: | ---: |
-| Whole set, between levels, depth colour | 1.21 ms | 3.41 ms | 2.19 ms |
-| Whole set, between levels, fixed colour | — | 4.01 ms | 2.14 ms |
-| Seahorse Valley, on a level, depth colour | 0.77–0.92 ms | 2.04 ms | 1.30–1.49 ms |
+| View                                      | 2.11 (one read) | Four reads, divide per sample | Four reads, divide per pixel |
+| ----------------------------------------- | --------------: | ----------------------------: | ---------------------------: |
+| Whole set, between levels, depth colour   |         1.21 ms |                       3.41 ms |                      2.19 ms |
+| Whole set, between levels, fixed colour   |               — |                       4.01 ms |                      2.14 ms |
+| Seahorse Valley, on a level, depth colour |    0.77–0.92 ms |                       2.04 ms |                 1.30–1.49 ms |
 
 Removing the phase and the palette lookup entirely left 1.81 ms between
 levels: the four fetches and blends of two levels are the floor, and `gather`
@@ -1094,15 +1095,15 @@ zoom-out ladder. It now takes the measurement either way.
 `--test-tiles` diagnostics, same machine, before and after (three runs each
 where noisy):
 
-| Measure | Before | After |
-| --- | ---: | ---: |
+| Measure                               |                         Before |                  After |
+| ------------------------------------- | -----------------------------: | ---------------------: |
 | Mac shallow view: LOD / visible tiles | 17.00 / 96 (clamped by memory) | 17.60 / 306 (as asked) |
-| Mac deep ladder | offsets to 32 | offsets to 512 |
-| Phone shallow ladder | 2 of 8 offsets | 8 of 8 |
-| Phone deep: LOD / ladder | 3331 / 5 offsets | 3332 / 7 offsets |
-| Cache bytes, cache check | 149 MB | 96 MB |
-| Cold 1e100 jump, visible ready | 805–817 ms | 782–786 ms |
-| Deep 1e1000, whole plan ready | 540–544 ms | 764–774 ms |
+| Mac deep ladder                       |                  offsets to 32 |         offsets to 512 |
+| Phone shallow ladder                  |                 2 of 8 offsets |                 8 of 8 |
+| Phone deep: LOD / ladder              |               3331 / 5 offsets |       3332 / 7 offsets |
+| Cache bytes, cache check              |                         149 MB |                  96 MB |
+| Cold 1e100 jump, visible ready        |                     805–817 ms |             782–786 ms |
+| Deep 1e1000, whole plan ready         |                     540–544 ms |             764–774 ms |
 
 The last row is more work, not slower work: "ready" there waits for the whole
 plan, whose zoom-out coverage grew by about a third (24 → 32 and 44 → 60 tiles
@@ -1125,14 +1126,14 @@ without colour conversion, readback, or PNG encoding. The baseline is commit
 `409a30e`. Each build was run twice, alternating; the table gives the second
 pair. Raw samples are in [evidence/gpu-float](evidence/gpu-float/).
 
-| Case | Capped pixels | Baseline ms | Final ms | Speedup | At 2048×1536 |
-| --- | ---: | ---: | ---: | ---: | ---: |
-| Float, slow exterior, 500 | 144,412 / 196,608 | 0.658 | 0.220 | 3.0× | 9.72 → 2.31 ms, 4.2× |
-| Float, slow exterior, 2,000 | 134,493 / 196,608 | 2.476 | 0.743 | 3.3× | 36.06 → 6.83 ms, 5.3× |
-| Float, period-two bulb edge, 500 | 120,247 / 196,608 | 0.564 | 0.204 | 2.8× | 8.30 → 2.40 ms, 3.5× |
-| Float, period-two bulb edge, 2,000 | 118,014 / 196,608 | 2.024 | 0.671 | 3.0× | 29.59 → 6.70 ms, 4.4× |
-| FloatFloat, 2,000 / 5,000 | 19,266 / 15,147 of 49,152 | 4.13 / 9.46 | 4.12 / 9.48 | — | |
-| Perturbation, 25,000 / 30,000 | 44 / 4 of 192 | 87.7 / 152.1 | 87.7 / 155.8 | — | |
+| Case                               |             Capped pixels |  Baseline ms |     Final ms | Speedup |          At 2048×1536 |
+| ---------------------------------- | ------------------------: | -----------: | -----------: | ------: | --------------------: |
+| Float, slow exterior, 500          |         144,412 / 196,608 |        0.658 |        0.220 |    3.0× |  9.72 → 2.31 ms, 4.2× |
+| Float, slow exterior, 2,000        |         134,493 / 196,608 |        2.476 |        0.743 |    3.3× | 36.06 → 6.83 ms, 5.3× |
+| Float, period-two bulb edge, 500   |         120,247 / 196,608 |        0.564 |        0.204 |    2.8× |  8.30 → 2.40 ms, 3.5× |
+| Float, period-two bulb edge, 2,000 |         118,014 / 196,608 |        2.024 |        0.671 |    3.0× | 29.59 → 6.70 ms, 4.4× |
+| FloatFloat, 2,000 / 5,000          | 19,266 / 15,147 of 49,152 |  4.13 / 9.46 |  4.12 / 9.48 |       — |                       |
+| Perturbation, 25,000 / 30,000      |             44 / 4 of 192 | 87.7 / 152.1 | 87.7 / 155.8 |       — |                       |
 
 The Float change rejects points strictly inside the main cardioid or
 period-two bulb before iterating, with a small margin at their boundaries. It
@@ -1194,23 +1195,23 @@ median of three. "Ready" is from demand to every planned tile finished, so it
 excludes process start, compositing and PNG encoding; "GPU busy" is the summed
 kernel time over that interval.
 
-| View, cap | Variant | Ready | GPU busy | Batches | Longest batch |
-| --- | --- | ---: | ---: | ---: | ---: |
-| Whole set, 1,000 | before | 536 ms | 6% | 1,316 | 0.45 ms |
-| | cap only | 544 ms | 5% | 1,316 | 0.30 ms |
-| | cap + start | **362 ms** | 6% | 526 | 0.43 ms |
-| Seahorse Valley (−0.745 + 0.11i, 100×), 2,000 | before | 1,112 ms | 9% | 2,897 | 0.87 ms |
-| | cap only | 1,011 ms | 10% | 2,502 | 0.87 ms |
-| | cap + start | **743 ms** | 12% | 1,253 | 0.92 ms |
-| Float neck (−0.75 + 0.1i, 30×), 20,000 | before | 3,333 ms | 11% | 12,658 | 0.40 ms |
-| | cap only | 1,160 ms | 23% | 2,831 | 1.35 ms |
-| | cap + start | **962 ms** | 28% | 1,924 | 1.44 ms |
-| Period-3 bulb (−0.1226 + 0.7449i, 10×), 20,000 | before | 2,907 ms | 37% | 7,546 | 1.00 ms |
-| | cap only | 1,696 ms | 61% | 2,191 | 1.38 ms |
-| | cap + start | **1,596 ms** | 65% | 1,712 | 1.85 ms |
-| FloatFloat (1e7 reference location), 5,000 | before | 1,190 ms | 33% | 2,712 | 0.97 ms |
-| | cap only | 951 ms | 40% | 1,644 | 1.13 ms |
-| | cap + start | **809 ms** | 46% | 1,040 | 1.28 ms |
+| View, cap                                      | Variant     |        Ready | GPU busy | Batches | Longest batch |
+| ---------------------------------------------- | ----------- | -----------: | -------: | ------: | ------------: |
+| Whole set, 1,000                               | before      |       536 ms |       6% |   1,316 |       0.45 ms |
+|                                                | cap only    |       544 ms |       5% |   1,316 |       0.30 ms |
+|                                                | cap + start |   **362 ms** |       6% |     526 |       0.43 ms |
+| Seahorse Valley (−0.745 + 0.11i, 100×), 2,000  | before      |     1,112 ms |       9% |   2,897 |       0.87 ms |
+|                                                | cap only    |     1,011 ms |      10% |   2,502 |       0.87 ms |
+|                                                | cap + start |   **743 ms** |      12% |   1,253 |       0.92 ms |
+| Float neck (−0.75 + 0.1i, 30×), 20,000         | before      |     3,333 ms |      11% |  12,658 |       0.40 ms |
+|                                                | cap only    |     1,160 ms |      23% |   2,831 |       1.35 ms |
+|                                                | cap + start |   **962 ms** |      28% |   1,924 |       1.44 ms |
+| Period-3 bulb (−0.1226 + 0.7449i, 10×), 20,000 | before      |     2,907 ms |      37% |   7,546 |       1.00 ms |
+|                                                | cap only    |     1,696 ms |      61% |   2,191 |       1.38 ms |
+|                                                | cap + start | **1,596 ms** |      65% |   1,712 |       1.85 ms |
+| FloatFloat (1e7 reference location), 5,000     | before      |     1,190 ms |      33% |   2,712 |       0.97 ms |
+|                                                | cap only    |       951 ms |      40% |   1,644 |       1.13 ms |
+|                                                | cap + start |   **809 ms** |      46% |   1,040 |       1.28 ms |
 
 That is 1.5×, 1.5×, 3.5×, 1.8× and 1.5× to a finished view. Whole-command
 wall time from the shipped build (median of three, against the instrumented
@@ -1244,27 +1245,27 @@ time, batches, longest batch), interleaved, median of three cold
 views are mostly exterior with interior at the edges, chosen to catch a start
 batch sized from cheap early tiles overrunning on a heavy one.
 
-| View, cap | Before | Cap + start | + fold | Total speedup |
-| --- | ---: | ---: | ---: | ---: |
-| Whole set, 1,000 | 515 ms | 338 ms | **221 ms** | 2.3× |
-| Seahorse Valley (−0.745 + 0.11i, 100×), 2,000 | 1,059 ms | 688 ms | **494 ms** | 2.1× |
-| Float neck (−0.75 + 0.1i, 30×), 20,000 | 3,296 ms | 884 ms | **691 ms** | 4.8× |
-| Period-3 bulb (−0.1226 + 0.7449i, 10×), 20,000 | 2,877 ms | 1,565 ms | **1,439 ms** | 2.0× |
-| FloatFloat (1e7 reference location), 5,000 | 1,167 ms | 782 ms | **662 ms** | 1.8× |
-| Cardioid edge (0.28 + 0.53i, 3×), 20,000 | 1,514 ms | 468 ms | **375 ms** | 4.0× |
-| Period-3 minibrot (−1.77, 20×), 20,000 | 2,200 ms | 577 ms | **430 ms** | 5.1× |
-| Period-4 bulb (−0.16 + 1.035i, 30×), 20,000 | 3,215 ms | 776 ms | **572 ms** | 5.6× |
+| View, cap                                      |   Before | Cap + start |       + fold | Total speedup |
+| ---------------------------------------------- | -------: | ----------: | -----------: | ------------: |
+| Whole set, 1,000                               |   515 ms |      338 ms |   **221 ms** |          2.3× |
+| Seahorse Valley (−0.745 + 0.11i, 100×), 2,000  | 1,059 ms |      688 ms |   **494 ms** |          2.1× |
+| Float neck (−0.75 + 0.1i, 30×), 20,000         | 3,296 ms |      884 ms |   **691 ms** |          4.8× |
+| Period-3 bulb (−0.1226 + 0.7449i, 10×), 20,000 | 2,877 ms |    1,565 ms | **1,439 ms** |          2.0× |
+| FloatFloat (1e7 reference location), 5,000     | 1,167 ms |      782 ms |   **662 ms** |          1.8× |
+| Cardioid edge (0.28 + 0.53i, 3×), 20,000       | 1,514 ms |      468 ms |   **375 ms** |          4.0× |
+| Period-3 minibrot (−1.77, 20×), 20,000         | 2,200 ms |      577 ms |   **430 ms** |          5.1× |
+| Period-4 bulb (−0.16 + 1.035i, 30×), 20,000    | 3,215 ms |      776 ms |   **572 ms** |          5.6× |
 
-| View | GPU busy: before → cap → fold | Longest batch: before → cap → fold |
-| --- | ---: | ---: |
-| Whole set | 6% → 7% → 23% | 0.43 → 0.43 → 0.83 ms |
-| Seahorse Valley | 10% → 14% → 24% | 0.92 → 1.08 → 1.73 ms |
-| Float neck | 11% → 30% → 39% | 0.43 → 1.46 → 1.42 ms |
-| Period-3 bulb | 38% → 65% → 72% | 0.99 → 1.40 → 2.04 ms |
-| FloatFloat | 34% → 48% → 59% | 0.99 → 1.28 → 1.80 ms |
-| Cardioid edge | 15% → 37% → 48% | 0.47 → 1.39 → 1.23 ms |
-| Period-3 minibrot | 8% → 21% → 34% | 0.36 → 1.23 → 1.42 ms |
-| Period-4 bulb | 7% → 16% → 27% | 0.90 → 1.81 → 1.36 ms |
+| View              | GPU busy: before → cap → fold | Longest batch: before → cap → fold |
+| ----------------- | ----------------------------: | ---------------------------------: |
+| Whole set         |                 6% → 7% → 23% |              0.43 → 0.43 → 0.83 ms |
+| Seahorse Valley   |               10% → 14% → 24% |              0.92 → 1.08 → 1.73 ms |
+| Float neck        |               11% → 30% → 39% |              0.43 → 1.46 → 1.42 ms |
+| Period-3 bulb     |               38% → 65% → 72% |              0.99 → 1.40 → 2.04 ms |
+| FloatFloat        |               34% → 48% → 59% |              0.99 → 1.28 → 1.80 ms |
+| Cardioid edge     |               15% → 37% → 48% |              0.47 → 1.39 → 1.23 ms |
+| Period-3 minibrot |                8% → 21% → 34% |              0.36 → 1.23 → 1.42 ms |
+| Period-4 bulb     |                7% → 16% → 27% |              0.90 → 1.81 → 1.36 ms |
 
 Every image is byte-identical between the cap and fold builds. Most ranges
 were within 4% of the median; the exceptions are the whole set with the fold
@@ -1302,29 +1303,29 @@ image is byte-identical across the four builds. Raw runs:
 At the limits the app chooses automatically (`IterationPolicy.estimate`),
 which is what a viewer sees on arrival:
 
-| View | Limit | Before | Cap + start | + Fold | + Two in flight | Total |
-| --- | ---: | ---: | ---: | ---: | ---: | ---: |
-| Whole set | 200 | 401 ms | 277 ms | 160 ms | **90 ms** | 4.5× |
-| Seahorse Valley (−0.745 + 0.11i, 100×) | 800 | 781 ms | 587 ms | 283 ms | **177 ms** | 4.4× |
-| Float neck (−0.75 + 0.1i, 30×) | 600 | 552 ms | 412 ms | 192 ms | **117 ms** | 4.7× |
-| Period-3 bulb (−0.1226 + 0.7449i, 10×) | 600 | 381 ms | 280 ms | 143 ms | **99 ms** | 3.9× |
-| FloatFloat (1e7 reference location) | 2,200 | 792 ms | 547 ms | 452 ms | **364 ms** | 2.2× |
-| Cardioid edge (0.28 + 0.53i, 3×) | 400 | 224 ms | 187 ms | 85 ms | **59 ms** | 3.8× |
-| Period-3 minibrot (−1.77, 20×) | 600 | 400 ms | 298 ms | 141 ms | **84 ms** | 4.7× |
-| Period-4 bulb (−0.16 + 1.035i, 30×) | 600 | 580 ms | 427 ms | 202 ms | **116 ms** | 5.0× |
+| View                                   | Limit | Before | Cap + start | + Fold | + Two in flight | Total |
+| -------------------------------------- | ----: | -----: | ----------: | -----: | --------------: | ----: |
+| Whole set                              |   200 | 401 ms |      277 ms | 160 ms |       **90 ms** |  4.5× |
+| Seahorse Valley (−0.745 + 0.11i, 100×) |   800 | 781 ms |      587 ms | 283 ms |      **177 ms** |  4.4× |
+| Float neck (−0.75 + 0.1i, 30×)         |   600 | 552 ms |      412 ms | 192 ms |      **117 ms** |  4.7× |
+| Period-3 bulb (−0.1226 + 0.7449i, 10×) |   600 | 381 ms |      280 ms | 143 ms |       **99 ms** |  3.9× |
+| FloatFloat (1e7 reference location)    | 2,200 | 792 ms |      547 ms | 452 ms |      **364 ms** |  2.2× |
+| Cardioid edge (0.28 + 0.53i, 3×)       |   400 | 224 ms |      187 ms |  85 ms |       **59 ms** |  3.8× |
+| Period-3 minibrot (−1.77, 20×)         |   600 | 400 ms |      298 ms | 141 ms |       **84 ms** |  4.7× |
+| Period-4 bulb (−0.16 + 1.035i, 30×)    |   600 | 580 ms |      427 ms | 202 ms |      **116 ms** |  5.0× |
 
 At raised limits:
 
-| View | Limit | Before | Cap + start | + Fold | + Two in flight | Total |
-| --- | ---: | ---: | ---: | ---: | ---: | ---: |
-| Whole set | 1,000 | 538 ms | 354 ms | 164 ms | **98 ms** | 5.5× |
-| Seahorse Valley | 2,000 | 1,105 ms | 707 ms | 514 ms | **306 ms** | 3.6× |
-| Float neck | 20,000 | 3,445 ms | 925 ms | 719 ms | **475 ms** | 7.3× |
-| Period-3 bulb | 20,000 | 2,981 ms | 1,559 ms | 1,455 ms | **1,315 ms** | 2.3× |
-| FloatFloat | 5,000 | 1,191 ms | 800 ms | 672 ms | **553 ms** | 2.2× |
-| Cardioid edge | 20,000 | 1,574 ms | 466 ms | 375 ms | **277 ms** | 5.7× |
-| Period-3 minibrot | 20,000 | 2,282 ms | 601 ms | 440 ms | **298 ms** | 7.7× |
-| Period-4 bulb | 20,000 | 3,391 ms | 824 ms | 576 ms | **354 ms** | 9.6× |
+| View              |  Limit |   Before | Cap + start |   + Fold | + Two in flight | Total |
+| ----------------- | -----: | -------: | ----------: | -------: | --------------: | ----: |
+| Whole set         |  1,000 |   538 ms |      354 ms |   164 ms |       **98 ms** |  5.5× |
+| Seahorse Valley   |  2,000 | 1,105 ms |      707 ms |   514 ms |      **306 ms** |  3.6× |
+| Float neck        | 20,000 | 3,445 ms |      925 ms |   719 ms |      **475 ms** |  7.3× |
+| Period-3 bulb     | 20,000 | 2,981 ms |    1,559 ms | 1,455 ms |    **1,315 ms** |  2.3× |
+| FloatFloat        |  5,000 | 1,191 ms |      800 ms |   672 ms |      **553 ms** |  2.2× |
+| Cardioid edge     | 20,000 | 1,574 ms |      466 ms |   375 ms |      **277 ms** |  5.7× |
+| Period-3 minibrot | 20,000 | 2,282 ms |      601 ms |   440 ms |      **298 ms** |  7.7× |
+| Period-4 bulb     | 20,000 | 3,391 ms |      824 ms |   576 ms |      **354 ms** |  9.6× |
 
 All but five of the 64 series spread by at most 10% of their median. Four
 spread by 10–13%, and one by 43%: the whole set at 1,000 with two in flight

@@ -1,7 +1,7 @@
 BUILD_DIR ?= /tmp/mandelbrot-development
 APP = $(BUILD_DIR)/Build/Products/Release/Mandelbrot.app/Contents/MacOS/Mandelbrot
 
-.PHONY: build test unit cli golden smooth tiles product ios ios-device format format-check bla strings strings-check apptests
+.PHONY: build test unit cli golden smooth tiles product ios ios-device format format-check bla strings strings-check apptests docs docs-check
 build:
 	xcodebuild -quiet -project Mandelbrot.xcodeproj -scheme Mandelbrot -configuration Release -destination 'platform=macOS' -derivedDataPath $(BUILD_DIR) CODE_SIGNING_ALLOWED=NO ENABLE_CODE_COVERAGE=NO build
 unit:
@@ -62,6 +62,12 @@ format:
 	rg --files -g '*.swift' -g '!Mandelbrot/Core/Vendor/**' -0 | xargs -0 xcrun swift-format format --configuration .swift-format --in-place
 format-check:
 	rg --files -g '*.swift' -g '!Mandelbrot/Core/Vendor/**' -0 | xargs -0 xcrun swift-format lint --configuration .swift-format --strict
+
+# Aligns Performance.md's tables for monospace reading and checks its links.
+docs:
+	python3 tools/check_docs.py --fix Performance.md
+docs-check:
+	python3 tools/check_docs.py Performance.md
 
 ios-device:
 	xcodebuild -quiet -project Mandelbrot.xcodeproj -scheme Mandelbrot -configuration Release -destination 'generic/platform=iOS' -derivedDataPath $(BUILD_DIR)-device CODE_SIGNING_ALLOWED=NO ENABLE_CODE_COVERAGE=NO build
