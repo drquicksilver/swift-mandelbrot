@@ -4,6 +4,7 @@ import CoreGraphics
 import CoreVideo
 import Foundation
 import Metal
+import os
 
 struct MovieSettings: Equatable, Sendable {
   var duration = 12.0
@@ -24,7 +25,9 @@ struct MovieSettings: Equatable, Sendable {
   /// the frame rate: 0.30–0.45 bytes per pixel-second across five measured
   /// journeys (720p and 1080p, 30 and 60 fps, 8 to 16 s). This takes the top
   /// of that range.  The old per-frame figure predicted 119 MB for a movie
-  /// that wrote 10.8.
+  /// that wrote 10.8.  Measured with the Mac's encoder only: only the Mac
+  /// sheet shows it, and an iPhone's encoder needs its own measurement on a
+  /// device (the simulator encodes with the Mac's) before its sheet does.
   static func estimatedBytes(_ settings: MovieSettings) -> Double {
     Double(settings.width * settings.height) * settings.duration * 0.45
   }
@@ -115,7 +118,7 @@ struct MovieCounts: Equatable, Sendable {
     path: ZoomPath, settings: MovieSettings, colouring: ColourSettings, to url: URL,
     store: TileStore? = nil, colourSchedule: MovieColourSchedule? = nil
   ) async throws -> URL {
-    guard let gpu = GPUContext.shared else { throw GPUFailure("GPU unavailable") }
+    guard let gpu = GPUContext.shared else { throw MovieFailure.gpuUnavailable }
     isRendering = true
     progress = 0
     startedAt = ProcessInfo.processInfo.systemUptime
@@ -127,7 +130,12 @@ struct MovieCounts: Equatable, Sendable {
       stage = ""
     }
     try? FileManager.default.removeItem(at: url)
-    let writer = try AVAssetWriter(outputURL: url, fileType: .mov)
+    let writer: AVAssetWriter
+    do {
+      writer = try AVAssetWriter(outputURL: url, fileType: .mov)
+    } catch {
+      throw MovieFailure.writerFailed(error)
+    }
     // HEVC where the hardware takes it, H.264 otherwise.
     func makeInput(_ codec: AVVideoCodecType) -> AVAssetWriterInput {
       let input = AVAssetWriterInput(
@@ -149,15 +157,15 @@ struct MovieCounts: Equatable, Sendable {
         kCVPixelBufferHeightKey as String: settings.height,
         kCVPixelBufferMetalCompatibilityKey as String: true,
       ])
-    guard writer.canAdd(input) else { throw GPUFailure("The movie writer rejected its input") }
+    guard writer.canAdd(input) else { throw MovieFailure.unsupportedSettings }
     writer.add(input)
     guard writer.startWriting() else {
-      throw GPUFailure(writer.error.map { String(describing: $0) } ?? "The movie writer failed")
+      throw MovieFailure.writerFailed(writer.error)
     }
     writer.startSession(atSourceTime: .zero)
     var cache: CVMetalTextureCache?
     CVMetalTextureCacheCreate(nil, nil, gpu.device, nil, &cache)
-    guard let cache else { throw GPUFailure("No Metal texture cache for the movie") }
+    guard let cache else { throw MovieFailure.cannotDraw("no Metal texture cache") }
 
     let size = CGSize(width: settings.width, height: settings.height)
     // The viewer's own default, not a fixed 512 MiB: on a phone that was 3.4x
@@ -237,16 +245,16 @@ struct MovieCounts: Equatable, Sendable {
         try await Task.sleep(for: .milliseconds(5))
       }
       guard let pool = adaptor.pixelBufferPool else {
-        throw GPUFailure("The movie writer has no pixel buffers")
+        throw MovieFailure.writerFailed(writer.error)
       }
       var buffer: CVPixelBuffer?
       CVPixelBufferPoolCreatePixelBuffer(nil, pool, &buffer)
-      guard let buffer else { throw GPUFailure("Out of movie pixel buffers") }
+      guard let buffer else { throw MovieFailure.outOfMemory }
       var metalTexture: CVMetalTexture?
       CVMetalTextureCacheCreateTextureFromImage(
         nil, cache, buffer, nil, .bgra8Unorm, settings.width, settings.height, 0, &metalTexture)
       guard let metalTexture, let target = CVMetalTextureGetTexture(metalTexture) else {
-        throw GPUFailure("Could not draw into a movie frame")
+        throw MovieFailure.cannotDraw("no texture for a pixel buffer")
       }
       let descriptor = MTLRenderPassDescriptor()
       descriptor.colorAttachments[0].texture = target
@@ -256,7 +264,7 @@ struct MovieCounts: Equatable, Sendable {
         red: 0.01, green: 0.01, blue: 0.02, alpha: 1)
       guard let command = gpu.displayQueue.makeCommandBuffer(),
         let encoder = command.makeRenderCommandEncoder(descriptor: descriptor)
-      else { throw GPUFailure("GPU queue unavailable for the movie") }
+      else { throw MovieFailure.gpuUnavailable }
       encoder.setRenderPipelineState(gpu.moviePipeline)
       encoder.setFragmentBytes(&uniforms, length: MemoryLayout<Uniforms>.stride, index: 0)
       encoder.setFragmentTexture(first, index: 0)
@@ -267,8 +275,7 @@ struct MovieCounts: Equatable, Sendable {
       let stamp = CMTime(
         value: CMTimeValue(frame), timescale: CMTimeScale(settings.framesPerSecond))
       guard adaptor.append(buffer, withPresentationTime: stamp) else {
-        throw GPUFailure(
-          writer.error.map(\.localizedDescription) ?? "A movie frame was rejected")
+        throw MovieFailure.writerFailed(writer.error)
       }
       progress = Double(frame + 1) / Double(frames)
       stage = String(localized: "Frame \(frame + 1) of \(frames)")
@@ -277,7 +284,7 @@ struct MovieCounts: Equatable, Sendable {
     }
     input.markAsFinished()
     await writer.finishWriting()
-    if let failure = writer.error { throw GPUFailure(failure.localizedDescription) }
+    if let failure = writer.error { throw MovieFailure.writerFailed(failure) }
     tiles.cancel()
     output = url
     return url
@@ -294,9 +301,11 @@ struct MovieCounts: Equatable, Sendable {
     store: TileStore? = nil
   ) async throws -> URL {
     guard settings.duration >= journey.requestedDuration else {
-      throw PrecisionError(
-        "This journey needs at least \(Int(ceil(journey.requestedDuration))) seconds for a smooth camera move"
-      )
+      throw UserError(
+        String(
+          localized:
+            "This journey needs at least \(Int(ceil(journey.requestedDuration))) seconds for a smooth camera move."
+        ))
     }
     let schedule = try await makeColourSchedule(
       for: journey, settings: settings, colouring: colouring)
@@ -307,7 +316,7 @@ struct MovieCounts: Equatable, Sendable {
         path: path, settings: settings, colouring: colouring, to: url, store: store,
         colourSchedule: schedule)
     }
-    guard let gpu = GPUContext.shared else { throw GPUFailure("GPU unavailable") }
+    guard let gpu = GPUContext.shared else { throw MovieFailure.gpuUnavailable }
     isRendering = true
     progress = 0
     startedAt = ProcessInfo.processInfo.systemUptime
@@ -319,7 +328,12 @@ struct MovieCounts: Equatable, Sendable {
       stage = ""
     }
     try? FileManager.default.removeItem(at: url)
-    let writer = try AVAssetWriter(outputURL: url, fileType: .mov)
+    let writer: AVAssetWriter
+    do {
+      writer = try AVAssetWriter(outputURL: url, fileType: .mov)
+    } catch {
+      throw MovieFailure.writerFailed(error)
+    }
     func makeInput(_ codec: AVVideoCodecType) -> AVAssetWriterInput {
       AVAssetWriterInput(
         mediaType: .video,
@@ -338,15 +352,15 @@ struct MovieCounts: Equatable, Sendable {
         kCVPixelBufferHeightKey as String: settings.height,
         kCVPixelBufferMetalCompatibilityKey as String: true,
       ])
-    guard writer.canAdd(input) else { throw GPUFailure("The movie writer rejected its input") }
+    guard writer.canAdd(input) else { throw MovieFailure.unsupportedSettings }
     writer.add(input)
     guard writer.startWriting() else {
-      throw GPUFailure(writer.error?.localizedDescription ?? "The movie writer failed")
+      throw MovieFailure.writerFailed(writer.error)
     }
     writer.startSession(atSourceTime: .zero)
     var cache: CVMetalTextureCache?
     CVMetalTextureCacheCreate(nil, nil, gpu.device, nil, &cache)
-    guard let cache else { throw GPUFailure("No Metal texture cache for the movie") }
+    guard let cache else { throw MovieFailure.cannotDraw("no Metal texture cache") }
 
     let size = CGSize(width: settings.width, height: settings.height)
     let tiles = store ?? TileStore(budgetBytes: Self.defaultBudgetBytes)
@@ -387,20 +401,20 @@ struct MovieCounts: Equatable, Sendable {
         try await Task.sleep(for: .milliseconds(5))
       }
       guard let pool = adaptor.pixelBufferPool else {
-        throw GPUFailure("The movie writer has no pixel buffers")
+        throw MovieFailure.writerFailed(writer.error)
       }
       var buffer: CVPixelBuffer?
       CVPixelBufferPoolCreatePixelBuffer(nil, pool, &buffer)
-      guard let buffer else { throw GPUFailure("Out of movie pixel buffers") }
+      guard let buffer else { throw MovieFailure.outOfMemory }
       var metalTexture: CVMetalTexture?
       CVMetalTextureCacheCreateTextureFromImage(
         nil, cache, buffer, nil, .bgra8Unorm, settings.width, settings.height, 0, &metalTexture)
       guard let metalTexture, let target = CVMetalTextureGetTexture(metalTexture) else {
-        throw GPUFailure("Could not draw into a movie frame")
+        throw MovieFailure.cannotDraw("no texture for a pixel buffer")
       }
       guard let command = gpu.displayQueue.makeCommandBuffer(),
         let blit = command.makeBlitCommandEncoder()
-      else { throw GPUFailure("GPU queue unavailable for the movie") }
+      else { throw MovieFailure.gpuUnavailable }
       blit.copy(
         from: source, sourceSlice: 0, sourceLevel: 0, sourceOrigin: MTLOriginMake(0, 0, 0),
         sourceSize: MTLSize(width: settings.width, height: settings.height, depth: 1), to: target,
@@ -410,7 +424,7 @@ struct MovieCounts: Equatable, Sendable {
       let stamp = CMTime(
         value: CMTimeValue(frame), timescale: CMTimeScale(settings.framesPerSecond))
       guard adaptor.append(buffer, withPresentationTime: stamp) else {
-        throw GPUFailure(writer.error?.localizedDescription ?? "A movie frame was rejected")
+        throw MovieFailure.writerFailed(writer.error)
       }
       progress = Double(frame + 1) / Double(frames)
       counts.frame = frame + 1
@@ -418,7 +432,7 @@ struct MovieCounts: Equatable, Sendable {
     }
     input.markAsFinished()
     await writer.finishWriting()
-    if let failure = writer.error { throw GPUFailure(failure.localizedDescription) }
+    if let failure = writer.error { throw MovieFailure.writerFailed(failure) }
     tiles.cancel()
     output = url
     return url
@@ -468,7 +482,7 @@ struct MovieCounts: Equatable, Sendable {
         try? FileManager.default.removeItem(at: url)
         self.error = nil
       } catch {
-        self.error = Self.message(for: error)
+        self.error = Self.explain(error)
       }
     }
   }
@@ -484,7 +498,7 @@ struct MovieCounts: Equatable, Sendable {
         try? FileManager.default.removeItem(at: url)
         self.error = nil
       } catch {
-        self.error = Self.message(for: error)
+        self.error = Self.explain(error)
       }
     }
   }
@@ -500,33 +514,106 @@ struct MovieCounts: Equatable, Sendable {
     return String(localized: "About \(text) left")
   }
 
-  static let writeFailure =
-    String(
-      localized: "The movie couldn’t be written. Check there is room on the disk, then try again.")
+  /// What a person is told when something about a movie fails: what
+  /// happened and what to do about it.  A `UserError` is already that
+  /// sentence; a `MovieFailure` has one of its own; anything else was written
+  /// for the code, so it gets `fallback`, which says what could not be done.
+  static func message(
+    for error: Error,
+    fallback: String = String(localized: "The movie couldn’t be rendered. Try again.")
+  ) -> String {
+    if let error = error as? UserError { return error.message }
+    if let error = error as? MovieFailure { return error.message }
+    return fallback
+  }
 
-  /// What a person is told when a render fails: what happened and what to do
-  /// about it, never the thrown text, which is written for the code.  A
-  /// journey's own errors are already sentences and pass through.
-  static func message(for error: Error) -> String {
-    if let error = error as? PrecisionError { return error.description }
-    let nsError = error as NSError
-    if nsError.domain == NSCocoaErrorDomain,
-      [NSFileWriteNoPermissionError, NSFileWriteVolumeReadOnlyError].contains(nsError.code)
-    {
-      return String(
-        localized:
-          "The movie couldn’t be saved in that folder. Choose another folder, then try again.")
+  /// `message(for:)`, after recording the error as it was thrown: the
+  /// sentence replaces it on screen, so the log is where its cause survives.
+  static func explain(
+    _ error: Error,
+    fallback: String = String(localized: "The movie couldn’t be rendered. Try again.")
+  ) -> String {
+    if !(error is UserError) {
+      log.error("Movie failed: \(String(describing: error), privacy: .public)")
     }
-    let text = String(describing: error)
-    if text.contains("GPU") {
+    return message(for: error, fallback: fallback)
+  }
+  static let log = Logger(subsystem: "uk.co.jellybean.Mandelbrot", category: "movie")
+}
+
+/// Why a movie could not be made, in terms that decide what to tell a person.
+/// The underlying error, where there is one, is kept for the log.
+enum MovieFailure: Error, CustomStringConvertible {
+  /// No Metal device or command queue.
+  case gpuUnavailable
+  /// The encoder will not take these settings.
+  case unsupportedSettings
+  /// The writer could not open, start, take a frame or finish.
+  case writerFailed(Error?)
+  /// No pixel buffer to draw a frame into.
+  case outOfMemory
+  /// A frame could not be drawn, for the reason given.
+  case cannotDraw(String)
+
+  var description: String {
+    switch self {
+    case .gpuUnavailable: return "GPU unavailable"
+    case .unsupportedSettings: return "The movie writer rejected its input settings"
+    case .writerFailed(let error):
+      return "The movie writer failed: \(error.map { String(describing: $0) } ?? "no error given")"
+    case .outOfMemory: return "Out of movie pixel buffers"
+    case .cannotDraw(let reason): return "Could not draw a movie frame: \(reason)"
+    }
+  }
+
+  var message: String {
+    switch self {
+    case .gpuUnavailable:
       return String(
         localized: "The graphics processor isn’t available, so the movie couldn’t be rendered.")
-    }
-    if text.contains("pixel buffers") {
+    case .unsupportedSettings:
+      return String(
+        localized: "This device can’t encode a movie with these settings. Try a lower resolution.")
+    case .outOfMemory:
       return String(
         localized: "The movie ran out of memory. Try a lower resolution, then try again.")
+    case .cannotDraw:
+      return String(localized: "The movie’s frames couldn’t be drawn. Try again.")
+    case .writerFailed(let error):
+      switch error.map(Self.fileProblem) ?? nil {
+      case .permission:
+        return String(
+          localized:
+            "The movie couldn’t be saved in that folder. Choose another folder, then try again.")
+      case .space:
+        return String(
+          localized: "There isn’t room on the disk for the movie. Free some space, then try again.")
+      case nil:
+        return String(localized: "The movie couldn’t be written. Try again.")
+      }
     }
-    return writeFailure
+  }
+
+  enum FileProblem { case permission, space }
+  /// Looks through an error and the errors it wraps -- AVFoundation reports
+  /// file trouble as an underlying error -- for a cause a person can act on.
+  static func fileProblem(_ error: Error) -> FileProblem? {
+    var next: NSError? = error as NSError
+    while let error = next {
+      switch (error.domain, error.code) {
+      case (NSCocoaErrorDomain, NSFileWriteNoPermissionError),
+        (NSCocoaErrorDomain, NSFileWriteVolumeReadOnlyError),
+        (NSPOSIXErrorDomain, Int(EACCES)), (NSPOSIXErrorDomain, Int(EPERM)),
+        (NSPOSIXErrorDomain, Int(EROFS)):
+        return .permission
+      case (NSCocoaErrorDomain, NSFileWriteOutOfSpaceError), (NSPOSIXErrorDomain, Int(ENOSPC)),
+        (AVFoundationErrorDomain, AVError.Code.diskFull.rawValue):
+        return .space
+      default:
+        next = error.userInfo[NSUnderlyingErrorKey] as? NSError
+      }
+    }
+    return nil
   }
 }
 

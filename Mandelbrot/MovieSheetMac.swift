@@ -40,6 +40,7 @@
     @Environment(\.dismiss) private var dismiss
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     private static let completion = "completion"
+    static let unplannable = String(localized: "This journey can’t be planned.")
     @State private var startChoice: UUID?
     @State private var settings = MovieSettings()
     @State private var outcome: MovieOutcome?
@@ -620,11 +621,10 @@
       movies.output = nil
       do {
         guard let journey else {
-          throw PrecisionError(
-            journeyProblem ?? String(localized: "This journey can’t be planned."))
+          throw UserError(journeyProblem ?? MovieSheetMac.unplannable)
         }
         guard !durationIsTooShort else {
-          throw PrecisionError(
+          throw UserError(
             String(localized: "This journey needs at least \(seconds(requiredDuration)).")
           )
         }
@@ -637,7 +637,7 @@
           journey: journey, settings: movieSettings, colouring: model.colouring,
           to: library.destination(named: MovieNaming.fileName()))
       } catch {
-        problem = MovieRenderer.message(for: error)
+        problem = MovieRenderer.explain(error)
       }
     }
 
@@ -681,7 +681,7 @@
         }
       } catch {
         journey = nil
-        journeyProblem = MovieRenderer.message(for: error)
+        journeyProblem = MovieRenderer.explain(error, fallback: MovieSheetMac.unplannable)
       }
     }
 
@@ -725,7 +725,7 @@
               settings.duration = ceil(route.minimumDuration)
             }
           } catch {
-            journeyProblem = MovieRenderer.message(for: error)
+            journeyProblem = MovieRenderer.explain(error, fallback: MovieSheetMac.unplannable)
           }
         })
     }

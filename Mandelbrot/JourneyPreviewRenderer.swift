@@ -52,7 +52,8 @@ import Foundation
       } catch {
         try? FileManager.default.removeItem(at: destination)
         guard request == self.request else { return }
-        self.error = MovieRenderer.message(for: error)
+        self.error = MovieRenderer.explain(
+          error, fallback: String(localized: "The preview couldn’t be made."))
         self.isRendering = false
       }
     }

@@ -150,7 +150,7 @@ struct MovieView: View {
       model.movies.start(
         path: path, settings: settings, colouring: model.colouring, to: url)
     } catch {
-      problem = MovieRenderer.message(for: error)
+      problem = MovieRenderer.explain(error)
     }
   }
 }
@@ -194,7 +194,8 @@ struct PlaceChoices: View {
   }
 
   #Preview("Failed") {
-    MovieView(model: previewModel(), movies: .posed(failure: MovieRenderer.writeFailure))
+    MovieView(
+      model: previewModel(), movies: .posed(failure: MovieFailure.writerFailed(nil).message))
   }
 
   #Preview("Finished") {
