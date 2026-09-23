@@ -213,3 +213,24 @@ Test failures that predate 2.12 (identical on `a463931`): `make tiles`
 mismatch) and `make deep`'s minibrot check (`AssertionError: 189`). The core
 test that also failed there, the auto-contrast fit, was stale after 2.11 and
 is corrected in `ce720d2`.
+
+## Review follow-up, 23 September 2026
+
+`reviews/2026-09-23-2.12-ux-pass.md` found six things; all are addressed.
+
+1. **The iPad lost its bare keys** (stage 5). Keys now route per platform:
+   the Mac canvas hears the bare keys, and an iPad binds them in the menu, its
+   only route. A unit test checks every key Help lists has a live route, and a
+   UI test drives an iPad simulator's keyboard; both fail on stage 5's routing.
+   The UI test also confirmed that iPadOS gives a text field its arrows first.
+2. **The menu bar ran on every frame.** Measured at about 70 evaluations a
+   second during a drag; with an `Equatable` `MenuState` it ran 3 times.
+3. **Errors were sorted by their text.** Movie failures are typed, their
+   causes are logged, and only `UserError` text is ever shown.
+4. **Place travel ran on its own timer.** It is stepped by the motion clock.
+5. **The catalogue churned between Xcode and `make strings`.** The tool is
+   Swift now and writes exactly what Xcode writes, checked against Xcode's
+   own rewrite.
+6. **The smaller items**, including the review's list of tests.
+
+`make apptests` runs the app's tests on the Mac and an iPad simulator.
