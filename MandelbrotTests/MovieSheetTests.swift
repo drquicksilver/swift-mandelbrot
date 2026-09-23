@@ -26,15 +26,12 @@ import Testing
     thumbnail.release()
   }
 
-  #if os(macOS)
-    @Test func zoomReadsPlainlyUntilTheDigitsStopMeaningAnything() throws {
-      #expect(MovieSheetMac.zoom(Location.gallery[0]) == "1×")
-      #expect(MovieSheetMac.zoom(Location.gallery[1]) == "4,000×")
-      // A 1e100 descent: an exponent, not a hundred digits.
-      let deep = MovieSheetMac.zoom(Location.gallery.last!)
-      #expect(deep.hasSuffix("e100×"))
-    }
-  #endif
+  @Test func galleryZoomsReadPlainlyUntilTheDigitsStopMeaningAnything() throws {
+    #expect(Location.gallery[0].zoomDescription == "1×")
+    #expect(Location.gallery[1].zoomDescription.hasPrefix("4"))
+    // A 1e100 descent: an exponent, not a hundred digits.
+    #expect(Location.gallery.last!.zoomDescription.hasSuffix("e100×"))
+  }
 
   #if os(macOS)
     /// The sandbox has to let a movie reach the folder the sheet names, which

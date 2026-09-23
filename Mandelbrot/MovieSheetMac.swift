@@ -192,14 +192,15 @@
               Text("From:").frame(width: 52, alignment: .trailing)
               Picker("", selection: $startChoice) {
                 ForEach(places) { place in
-                  Text(place.name.isEmpty ? "\(place.scale)×" : place.name).tag(place.id as UUID?)
+                  Text(place.name.isEmpty ? place.zoomDescription : place.name).tag(
+                    place.id as UUID?)
                 }
               }
               .labelsHidden()
             }
             HStack(alignment: .firstTextBaseline, spacing: 8) {
               Text("To:").frame(width: 52, alignment: .trailing)
-              Text("Current view (\(MovieSheetMac.zoom(end)))")
+              Text("Current view (\(end.zoomDescription))")
             }
             if let journey {
               Text(journey.description())
@@ -261,15 +262,14 @@
 
     private func timeline(_ route: Journey) -> some View {
       VStack(alignment: .leading, spacing: 8) {
-        if let suggestedOverviewLog, let overviewLog = overviewLog(route) {
+        if let suggestedOverviewLog, overviewLog(route) != nil {
           VStack(alignment: .leading, spacing: 4) {
-            HStack {
-              Text("Overview").font(.callout.weight(.medium))
-              Spacer()
-              Text(overviewScaleDescription(overviewLog))
-                .font(.caption.monospacedDigit()).foregroundStyle(.secondary)
-            }
-            Slider(value: overviewScale, in: (suggestedOverviewLog - 4)...suggestedOverviewLog)
+            ValueSlider(
+              "Overview", value: overviewScale,
+              in: (suggestedOverviewLog - 4)...suggestedOverviewLog,
+              format: overviewScaleDescription
+            )
+            .font(.callout)
             Text(
               "Pull back for more context; the right end is the closest overview that keeps both places in view."
             )
@@ -289,12 +289,10 @@
                 .font(.caption).foregroundStyle(.secondary)
             }
             Spacer()
-            Stepper(
-              "\(seconds(segment.duration))", value: segmentDuration(index),
-              in: segment.minimum...120, step: 1
+            ValueStepper(
+              "Duration", value: segmentDuration(index), in: segment.minimum...120, unit: "s"
             )
             .labelsHidden()
-            Text(seconds(segment.duration)).font(.caption.monospacedDigit())
           }
           .padding(8)
           .background(Color.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: 7))
@@ -348,10 +346,8 @@
           }
           GridRow {
             Text("Duration:").gridColumnAlignment(.trailing)
-            HStack(spacing: 6) {
-              TextField("", value: duration, format: .number).frame(width: 56)
-              Text("seconds").foregroundStyle(.secondary)
-            }
+            ValueStepper("Duration", value: duration, in: 2...120, unit: "seconds")
+              .labelsHidden()
           }
           GridRow {
             Text("Frame rate:").gridColumnAlignment(.trailing)
@@ -364,10 +360,8 @@
           }
           GridRow {
             Text("Palette cycles:").gridColumnAlignment(.trailing)
-            HStack(spacing: 6) {
-              TextField("", value: cycles, format: .number).frame(width: 56)
-              Stepper("", value: cycles, in: 0...16).labelsHidden()
-            }
+            ValueStepper("Palette cycles", value: $settings.paletteCycles, in: 0...16)
+              .labelsHidden()
           }
           GridRow {
             Color.clear.frame(height: 0)
@@ -411,19 +405,6 @@
       }
       .font(.callout)
       .frame(width: 150, alignment: .leading)
-    }
-
-    /// A zoom to read rather than parse: plain digits up to ten billion, an
-    /// exponent past that, where the digits stop meaning anything.
-    static func zoom(_ location: Location) -> String {
-      guard let view = try? location.viewport() else { return location.scale }
-      if view.logScale < 33 {
-        return pow(2, view.logScale).formatted(.number.precision(.fractionLength(0))) + "×"
-      }
-      let decimal = view.logScale / log2(10)
-      let exponent = Int(floor(decimal))
-      let mantissa = pow(10, decimal - Double(exponent))
-      return "\(mantissa.formatted(.number.precision(.fractionLength(1))))e\(exponent)×"
     }
 
     // MARK: Output
@@ -606,15 +587,8 @@
           refreshJourney()
         })
     }
-    private var duration: Binding<Int> {
-      Binding(
-        get: { Int(settings.duration) },
-        set: { settings.duration = Double(max(2, min(120, $0))) })
-    }
-    private var cycles: Binding<Int> {
-      Binding(
-        get: { Int(settings.paletteCycles) },
-        set: { settings.paletteCycles = Double(max(0, min(16, $0))) })
+    private var duration: Binding<Double> {
+      Binding(get: { settings.duration }, set: { settings.duration = $0.rounded() })
     }
 
     private func render() {
@@ -736,10 +710,8 @@
     }
 
     private func overviewScaleDescription(_ logScale: Double) -> String {
-      if logScale >= 0 {
-        return "\(pow(2, logScale).formatted(.number.precision(.fractionLength(1))))×"
-      }
-      return "\(pow(2, -logScale).formatted(.number.precision(.fractionLength(1))))× wider"
+      if logScale >= 0 { return ZoomFormat.string(logScale: logScale) }
+      return "\(ZoomFormat.string(logScale: -logScale)) wider"
     }
 
     private func seconds(_ value: Double) -> String {

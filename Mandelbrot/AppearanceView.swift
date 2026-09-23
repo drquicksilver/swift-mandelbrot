@@ -19,18 +19,19 @@ struct AppearanceView: View {
               Color(red: Double(rgb.x), green: Double(rgb.y), blue: Double(rgb.z))
             }
           }.frame(height: 32).clipShape(RoundedRectangle(cornerRadius: 8))
-          LabeledContent(
-            "Exterior contrast",
-            value: String(format: "×%.2g", model.densityAdjustment))
-          Slider(value: $model.densityAdjustment, in: 0.25...4)
-          Text("Palette phase adjustment")
-          Slider(value: $model.offsetAdjustment, in: -1...1)
+          ValueSlider("Colour spacing", value: $model.densityAdjustment.double, in: 0.25...4) {
+            $0.formatted(.number.precision(.fractionLength(2))) + "×"
+          }
+          ValueSlider("Colour shift", value: $model.offsetAdjustment.double, in: -1...1) {
+            $0.formatted(
+              .number.precision(.fractionLength(2)).sign(strategy: .always(includingZero: false)))
+          }
           Picker(
             "Colour mode",
             selection: Binding(
               get: { model.isDepthColouring ? 0 : 1 },
-              set: { $0 == 0 ? model.useDepthColouring() : () }))
-          {
+              set: { $0 == 0 ? model.useDepthColouring() : () })
+          ) {
             Text("Depth").tag(0)
             Text("Pinned").tag(1)
           }.pickerStyle(.segmented)
@@ -45,9 +46,8 @@ struct AppearanceView: View {
         Section("Detail") {
           Toggle("Automatic iteration limit", isOn: $model.automaticIterations)
           if model.automaticIterations {
-            Stepper(
-              "Detail ×\(model.detailMultiplier, specifier: "%.2g")",
-              value: $model.detailMultiplier, in: 0.25...16, step: 0.25)
+            ValueStepper(
+              "Detail", value: $model.detailMultiplier, in: 0.25...16, step: 0.25, unit: "×")
           } else {
             TextField("Iteration limit", value: $model.manualIterations, format: .number)
             HStack {

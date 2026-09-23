@@ -1,0 +1,33 @@
+import Foundation
+import Testing
+
+@testable import MandelbrotCore
+
+private let english = Locale(identifier: "en_GB")
+
+@Test func zoomReadsAsDigitsThenExponent() {
+  let cases: [(Double, String)] = [
+    (0, "1×"), (-1, "0.5×"), (log2(2.5), "2.5×"), (log2(1_048_576), "1,048,576×"),
+    // The audit found this printed as 2.0000000000000004e9×.
+    (log2(2e9), "2,000,000,000×"),
+    (log2(1.5e10), "1.5e10×"), (log2(3.4e27), "3.4e27×"),
+    // A mantissa that rounds up carries into the exponent.
+    (log2(9.97e20), "1.0e21×"),
+  ]
+  for (logScale, expected) in cases {
+    #expect(ZoomFormat.string(logScale: logScale, locale: english) == expected)
+  }
+}
+
+@Test func zoomFollowsTheLocale() {
+  let german = Locale(identifier: "de_DE")
+  #expect(ZoomFormat.string(logScale: log2(1_048_576), locale: german) == "1.048.576×")
+  #expect(ZoomFormat.string(logScale: log2(2.5), locale: german) == "2,5×")
+}
+
+@Test func zoomOfALocationIgnoresItsExactDecimal() {
+  let place = Location(real: "-0.75", imag: "0.1", scale: "2.0000000000000004e9")
+  #expect(place.zoomDescription.hasPrefix("2"))
+  #expect(!place.zoomDescription.contains("0000000000000004"))
+  #expect(ZoomFormat.string(logScale: .nan) == "—")
+}

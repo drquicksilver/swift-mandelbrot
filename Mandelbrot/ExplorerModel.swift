@@ -420,7 +420,7 @@ import SwiftUI
     var place = location
     place.name =
       name?.isEmpty == false
-      ? name! : "\(viewport.scaleDescription.prefix(12))× view"
+      ? name! : "\(viewport.zoomDescription) view"
     bookmarks.add(place)
   }
   var motion = Motion()

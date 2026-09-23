@@ -124,6 +124,13 @@ struct ExplorerCommands: Commands {
   #endif
   @FocusedValue(\.explorer) private var explorer
   var body: some Commands {
+    // Settings is still a sheet on the window it changes, so the standard
+    // command opens that sheet rather than a separate Settings scene.
+    CommandGroup(replacing: .appSettings) {
+      Button("Settings…") { explorer?.showSettings = true }
+        .keyboardShortcut(",", modifiers: .command)
+        .disabled(explorer == nil)
+    }
     CommandMenu("Explore") {
       ForEach(ExplorerCommand.allCases.filter { $0 != .benchmark }) { command in
         Button(command.title) { explorer?.perform(command) }

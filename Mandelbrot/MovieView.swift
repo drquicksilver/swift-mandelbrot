@@ -34,10 +34,10 @@ struct MovieView: View {
         Section("Journey") {
           Picker("From", selection: $startChoice) {
             ForEach(Location.gallery + model.bookmarks.bookmarks) { place in
-              Text(place.name.isEmpty ? place.scale : place.name).tag(place.id as UUID?)
+              Text(place.name.isEmpty ? place.zoomDescription : place.name).tag(place.id as UUID?)
             }
           }
-          LabeledContent("To", value: "This view, \(end.scale)×")
+          LabeledContent("To", value: "This view, \(end.zoomDescription)")
           if let levels = try? ZoomPath(start: start, end: end).keyframeLevels.count {
             LabeledContent("Keyframes", value: "\(levels)")
           } else {
@@ -50,17 +50,13 @@ struct MovieView: View {
               Text(option.name).tag(option.name)
             }
           }
-          Stepper(
-            "Duration \(Int(settings.duration)) s", value: $settings.duration, in: 2...120,
-            step: 1)
+          ValueStepper("Duration", value: $settings.duration, in: 2...120, unit: "s")
           Picker("Frame rate", selection: $settings.framesPerSecond) {
             Text("24").tag(24)
             Text("30").tag(30)
             Text("60").tag(60)
           }
-          Stepper(
-            "Palette cycles \(settings.paletteCycles, specifier: "%.0f")",
-            value: $settings.paletteCycles, in: 0...16, step: 1)
+          ValueStepper("Palette cycles", value: $settings.paletteCycles, in: 0...16)
           Toggle("Ease in and out", isOn: $settings.eased)
           LabeledContent("Frames", value: "\(settings.frameCount)")
         }

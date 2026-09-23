@@ -9,10 +9,14 @@ struct PlacesView: View {
     NavigationStack {
       List {
         Section("This view") {
-          LabeledContent("Centre", value: model.viewport.centerDescription)
-            .lineLimit(2).truncationMode(.middle).font(.caption.monospaced())
-          LabeledContent("Scale", value: model.viewport.scaleDescription)
-            .lineLimit(1).truncationMode(.tail).font(.caption.monospaced())
+          // The centre is the one number here that needs every digit, so it
+          // can be selected and copied; the zoom is for reading.
+          LabeledContent("Centre") {
+            Text(model.viewport.centerDescription)
+              .lineLimit(2).truncationMode(.middle).font(.caption.monospaced())
+              .textSelection(.enabled)
+          }
+          LabeledContent("Zoom", value: model.viewport.zoomDescription)
           HStack {
             TextField("Name this view", text: $name)
             Button("Bookmark") {
@@ -51,7 +55,7 @@ struct PlacesView: View {
       } label: {
         VStack(alignment: .leading) {
           Text(place.name.isEmpty ? "Untitled" : place.name)
-          Text("\(place.scale)× · \(place.palette.title)")
+          Text("\(place.zoomDescription) · \(place.palette.title)")
             .font(.caption).foregroundStyle(.secondary)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
