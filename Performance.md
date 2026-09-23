@@ -1,6 +1,62 @@
-# Mandelbrot Performance Experiments
+# Mandelbrot Performance
 
-## Headless benchmarks (macOS)
+What the renderers cost, how that was measured, and what changed it. The current
+state comes first, then the measurement method and how to reproduce it, then a
+dated log of every experiment, oldest first.
+
+## Current state (2026-09-23, `f855bf5`)
+
+| Workload | Latest measurement | Where the time goes | Next lever |
+| --- | --- | --- | --- |
+| Cold shallow and medium Float views, 3456×2234, automatic limits | 59–177 ms to every tile ready ([The whole story](#the-whole-story)) | GPU iteration and per-tile round trips, now overlapped | Periodicity checking (plan 2.14) for interior pixels |
+| Cold FloatFloat view, 1e7, 2,200 iterations | 364 ms (same entry) | Mostly GPU iteration | Periodicity checking |
+| Cold deep jumps, 1024×768, 5,000 iterations | 1e100: 758–794 ms; 1e1000: 565–601 ms visible (six `--test-tiles` runs, 2026-09-23) | Perturbation tiles, not broken down at this size; unchanged by the tile batching work | Profile first; a Boost reference backend (plan 2.16) is the measured candidate |
+| Compositor, 3456×2234, settled | 1.30–2.19 ms per frame ([colouring in the compositor](#211-follow-up-colouring-in-the-compositor)) | Four sample fetches and blends per level | — |
+| Zoom movie into the period-312 minibrot, 640×360 | 1,236 s for 101 keyframes ([2.8](#28-zoom-movies)) | Keyframe rendering; which part of it is not measured | Profile one keyframe |
+
+Open risks: since `f855bf5` a tile batch can run for up to 4 ms while another
+tile shares the GPU, and whether that delays frames at 120 Hz is unmeasured (see
+[Not yet measured](#not-yet-measured)).
+
+## Method
+
+Unless an entry says otherwise, measurements are:
+
+- On an Apple M1 Pro (16-core GPU); macOS 26.6 as of 2026-09-23, not recorded
+  before that.
+- From a Release build with code coverage off (`make build`); the Xcode scheme
+  otherwise instruments Release builds.
+- Headless (`--benchmark`, `--render`, `--test-tiles`), so no window, display
+  sync or UI work competes.
+- Medians after discarded warm-up runs, with ranges where they matter.
+- For before/after comparisons, both commits built and run interleaved in one
+  session, so they share machine conditions.
+
+Traps found the hard way:
+
+- **GPU clock.** The M1 Pro GPU raises its clock only under sustained load. A
+  sub-millisecond kernel separated by CPU work can run at about a third of full
+  clock for dozens of runs, then switch part-way through a series, so a median
+  of such a series measures the clock state, not the kernel. Render a larger
+  primer size first in the same process (`--sizes PRIMER,SIZE`), take enough
+  runs, and report the spread: a 10–90% spread above about 10% means the clock
+  moved. Heavier kernels (FloatFloat at 4 ms and above, perturbation) are
+  stable without priming. Comparisons before 2026-09-23 that used a few
+  sub-millisecond GPU runs from a fresh process may be affected.
+- **`powermetrics` residency is not kernel time.** It reported the GPU 96%
+  active at its top clock while the tile worker's command buffers were
+  executing for about a tenth of the time. Sum `gpuEndTime − gpuStartTime`
+  over command buffers instead.
+- **Other load.** A running copy of the app or the iOS simulator, or other
+  work on the machine, can slow a run two to four times. On 2026-09-23 one
+  `--test-tiles` run failed a timing check this way and twelve interleaved
+  reruns passed.
+- **Causes.** Isolate the variable before recording why something got faster or
+  slower; see the correction in [1.2 follow-up](#12-follow-up-strict-float-math-cost).
+
+## How to measure
+
+### Headless benchmarks
 
 Build the Release app, then invoke its executable directly with `--benchmark`.
 This selects the command-line entry point before SwiftUI starts; no window is opened.
@@ -47,72 +103,7 @@ These checks use CPU renderers so they can run without GPU access.
 Set `MANDELBROT_TEST_METAL=1` to also run the deep-zoom accuracy regression against
 CPU Double. This requires GPU access and checks square and non-square viewports.
 
-### GPU zoom-depth suite (2026-09-23)
-
-`tests/benchmark_gpu_depths.py` runs eight headless GPU cases: Float at 30× and
-1000×, FloatFloat at 10⁷×, and Perturbation at 10¹⁰⁰×. Each depth uses two
-iteration caps. Before timing a case, the script exports raw sample records and
-requires both capped and escaped pixels, so an accidentally trivial viewport
-fails the suite; `--compare` also fails if any capped or escaped total differs
-from an earlier results file. Run it against a Release app with:
-
-```sh
-python3 tests/benchmark_gpu_depths.py \
-  /tmp/mandelbrot-development/Build/Products/Release/Mandelbrot.app/Contents/MacOS/Mandelbrot \
-  --output /tmp/gpu-depths.json [--compare earlier.json]
-```
-
-**GPU clock.** The M1 Pro GPU raises its clock only under sustained load. A
-sub-millisecond kernel separated by CPU work can run at about a third of full
-clock for dozens of runs, then switch part-way through a series. Medians of
-such series measure the clock state, not the kernel. A first attempt at this
-comparison took a median of seven runs from a fresh process and reported
-1.1–1.4× for the 2,000-iteration Float cases, where the true figure is about 3×.
-The script therefore renders a larger primer size (16× the pixels) in the same
-process before each light case. It then measures 30 runs after 5 warmups, and
-reports the 10–90% spread; a spread above about 10% means the clock moved.
-
-**Results.** GPU compute kernel medians on an Apple M1 Pro (16 GPU cores),
-without colour conversion, readback, or PNG encoding. The baseline is commit
-`409a30e`. Each build was run twice, alternating; the table gives the second
-pair. Raw samples are in [evidence/gpu-float](evidence/gpu-float/).
-
-| Case | Capped pixels | Baseline ms | Final ms | Speedup | At 2048×1536 |
-| --- | ---: | ---: | ---: | ---: | ---: |
-| Float, slow exterior, 500 | 144,412 / 196,608 | 0.658 | 0.220 | 3.0× | 9.72 → 2.31 ms, 4.2× |
-| Float, slow exterior, 2,000 | 134,493 / 196,608 | 2.476 | 0.743 | 3.3× | 36.06 → 6.83 ms, 5.3× |
-| Float, period-two bulb edge, 500 | 120,247 / 196,608 | 0.564 | 0.204 | 2.8× | 8.30 → 2.40 ms, 3.5× |
-| Float, period-two bulb edge, 2,000 | 118,014 / 196,608 | 2.024 | 0.671 | 3.0× | 29.59 → 6.70 ms, 4.4× |
-| FloatFloat, 2,000 / 5,000 | 19,266 / 15,147 of 49,152 | 4.13 / 9.46 | 4.12 / 9.48 | — | |
-| Perturbation, 25,000 / 30,000 | 44 / 4 of 192 | 87.7 / 152.1 | 87.7 / 155.8 | — | |
-
-The Float change rejects points strictly inside the main cardioid or
-period-two bulb before iterating, with a small margin at their boundaries. It
-is used by both the full-image and resumable tile kernels. All eight cases have
-the same capped/escaped totals before and after. The Float boundary regression
-also compares capped pixels against CPU Double, and the tile integration
-diagnostics pass.
-
-The skipped pixels account for 78–92% of capped pixels in these views, and a
-coarse CPU count puts the iterations saved at 4.1×, 7.1×, 3.6× and 4.3× for the
-four Float cases. The 2048×1536 timings follow that closely, except that the slow
-exterior at 2,000 gains 5.3× against the 7.1× estimate (not yet explained). At
-512×384 the gain is about 3× throughout; that grid is probably too small to fill
-the GPU, though this is untested. In the
-first alternating run, one light case (bulb edge, 500) settled at an
-intermediate clock (0.274 ms, 27% spread); the second run is the clean one.
-FloatFloat and Perturbation are unchanged; their differences are measurement
-variation.
-
-Other measured experiments were discarded before this re-measurement, using the
-earlier seven-run method: caching squared orbit components changed a few
-classifications and did not give a repeatable win; testing the iteration cap
-before the escape condition gave mixed times; and compute threadgroup heights of
-4 and 16 each improved some scenes while slowing others relative to the existing
-height of 8. Because that method was sensitive to clock state, those small
-differences deserve a second look with the primed harness.
-
-## PNG export and deep-zoom benchmarks
+### PNG export and raw samples
 
 `--render` exports a single full-resolution PNG without opening a window. For example:
 
@@ -145,65 +136,70 @@ Benchmark the exact same viewport by replacing the render/output options:
 See [the FloatFloat investigation](evidence/floatfloat/README.md) for before/after
 images, raw measurements, accuracy comparisons, and reproduction instructions.
 
-This document outlines independent experiments to measure performance impacts in the Mandelbrot renderer. Each experiment changes a single aspect of the computation so you can isolate effects. The hot path is the iteration loop and block fill in `MandelbrotRenderer.iterations`.
+### GPU zoom-depth suite
 
-## Phase 1
+`tests/benchmark_gpu_depths.py` runs eight headless GPU cases: Float at 30× and
+1000×, FloatFloat at 10⁷×, and Perturbation at 10¹⁰⁰×. Each depth uses two
+iteration caps. Before timing a case, the script exports raw sample records and
+requires both capped and escaped pixels, so an accidentally trivial viewport
+fails the suite; `--compare` also fails if any capped or escaped total differs
+from an earlier results file. Light cases render a primer size with 16× the
+pixels first in the same process, then 30 runs after 5 warm-ups, and the
+suite reports each case's 10–90% spread (see [Method](#method)). Run it against
+a Release app with:
 
-### Experiment 1.1 — Scalar loop tightening (cache squares + `for` loop) (`scalar-tight`)
-**Goal:** Improve instruction count and branch predictability in the iteration loop.
+```sh
+python3 tests/benchmark_gpu_depths.py \
+  /tmp/mandelbrot-development/Build/Products/Release/Mandelbrot.app/Contents/MacOS/Mandelbrot \
+  --output /tmp/gpu-depths.json [--compare earlier.json]
+```
 
-**Change:** Replace the `while` condition with a `for iteration in 0..<maxIterations` loop and maintain cached squares (`zr2`, `zi2`). Update squares each iteration and break when `zr2 + zi2 > 4`.
+### Tile renders
 
-**Hypothesis:** Fewer multiplications and simpler branching reduce cycle count in the inner loop.
+`--render --pipeline tiles` renders through the same tile store, worker and
+compositor as the viewer. `--test-tiles` runs the tile integration checks and
+prints their timings and counters as JSON; `tests/measure_tiles.py APP STAGE`
+repeats it five times and saves the runs under `evidence/product`.
 
----
+The ready times, summed kernel times and batch counts in the tile batching
+entries came from a small measurement patch applied identically to every build
+compared, not from a committed option: it printed the time from `update` to
+`waitUntilReady`, and summed each tile batch's `gpuEndTime − gpuStartTime`.
 
-### Experiment 1.2 — Coordinate precompute (incremental real/imag) (`coord-precompute`)
-**Goal:** Reduce divisions and repeated arithmetic per block.
+## Not yet measured
 
-**Change:** Precompute `realStep` and `imagStep` once, then compute `real`/`imag` using multiply-adds instead of division per block.
+- **Phones.** Frame pacing at 60 Hz (iPhone 11 Pro) and 120 Hz (iPhone 16 Pro),
+  heat and throttling over a session, peak memory and idle energy (plan 2.15).
+  Every measurement here is from the Mac.
+- **Frame pacing under heavy refinement.** Tile batches of up to 4 ms since
+  `f855bf5`; the compositor trace in `--test-tiles` refines too lightly to test
+  it, and does not measure how long a frame waits to start.
+- **Cold jumps in the viewer.** The tile batching gains are measured through the
+  CLI, whose main actor has nothing else to do.
+- **Cross-device image tolerances.** The product goldens' budgets were set on
+  one Mac ([independent product image
+  validation](#review-independent-product-image-validation)).
+- **What a minibrot movie keyframe costs**, split into reference, BLA
+  preparation and GPU time ([2.8](#28-zoom-movies)).
+- **A Boost reference backend in the product** (plan 2.16); only the library
+  comparison has been measured.
 
-**Hypothesis:** Lower per-block arithmetic cost improves throughput, especially for small block sizes.
+## Log
 
----
+### Phase 1: CPU renderer experiments
 
-### Experiment 1.3 — Unsafe buffer writes (bounds-check elimination) (`unsafe-buffer`)
-**Goal:** Reduce overhead in the block fill loop.
+The first experiments, on the original CPU renderer. Each variant changed one
+aspect of the hot path, the iteration loop and block fill in
+`MandelbrotRenderer.iterations`, so that its effect could be isolated:
 
-**Change:** Use `values.withUnsafeMutableBufferPointer` to write via raw pointers, precomputing row offsets to reduce index math and bounds checks.
-
-**Hypothesis:** Fewer bounds checks + fewer index computations improve write throughput.
-
----
-
-### Experiment 1.4 — `Float` vs `Double` (`float-math`)
-**Goal:** Trade precision for faster arithmetic and potential SIMD throughput.
-
-**Change:** Convert the iteration math to `Float` (or add a `Float`-specialized path) while keeping output iterations as `Int`.
-
-**Hypothesis:** Reduced register pressure and faster math yield faster renders at modest zooms.
-
----
-
-### Experiment 1.5 — Parallel outer loop (`parallel`)
-**Goal:** Exploit multi-core scaling.
-
-**Change:** Parallelize the outer `y` block loop using `DispatchQueue.concurrentPerform` (or a task queue of blocks).
-
-**Hypothesis:** Near-linear speedup for larger images with enough blocks.
-
----
-
-### Experiment 1.6 — SIMD batching (`simd4-float`)
-**Goal:** Increase arithmetic throughput by evaluating multiple points per iteration.
-
-**Change:** Use `SIMD4<Float>` or `SIMD8<Float>` to iterate multiple points at once (especially if `blockSize == 1`).
-
-**Hypothesis:** Vectorization yields significant speedups in the inner loop.
-
----
-
-### Phase 1 Results
+- `scalar-tight`: a `for` loop with cached squares.
+- `coord-precompute`: step sizes computed once, multiply-adds instead of a
+  division per block.
+- `unsafe-buffer`: raw-pointer writes with precomputed row offsets.
+- `float-math`: `Float` instead of `Double`.
+- `parallel`: the outer row loop spread over cores with
+  `DispatchQueue.concurrentPerform`.
+- `simd4-float`: four points per iteration with `SIMD4<Float>`.
 
 | Variant         | 1024x512            | 2048x1024           | 4096x2048           | 8192x4096           |
 | ---             | ---                 | ---                 | ---                 | ---                 |
@@ -215,7 +211,10 @@ This document outlines independent experiments to measure performance impacts in
 | parallel        | 0.022s / 23.84 Mpx/s| 0.072s / 29.25 Mpx/s| 0.282s / 29.78 Mpx/s| 1.114s / 30.12 Mpx/s|
 | simd4-float     | 0.136s / 3.85 Mpx/s | 0.533s / 3.93 Mpx/s | 2.108s / 3.98 Mpx/s | 8.424s / 3.98 Mpx/s |
 
-## 1.2 follow-up: strict Float math cost
+Only parallelism mattered: 6.8× at the largest size. The scalar changes and
+`Float` stayed within 5% of the baseline, and `simd4-float` was about 12% slower.
+
+### 1.2 follow-up: strict Float math cost
 
 The controlled `evidence/floatfloat/benchmarks-{before,after}.json` measurements
 at scale 1e7 show the Float kernel's end-to-end cost increasing from 8.907 ms to
@@ -264,7 +263,7 @@ The lesson is procedural: this doc's predicted cost and the observed cost matche
 in size, which is why a real bug sat behind a plausible explanation for months.
 Isolate the variable before recording a cause.
 
-## 1.4: GPU-resident product pipeline
+### 1.4: GPU-resident product pipeline
 
 M1 Pro, Release, coverage disabled, same 1e7 viewport and 2000 iterations as the
 FloatFloat investigation; median of five samples after one warmup. Raw samples:
@@ -285,7 +284,7 @@ excludes display synchronization and PNG readback. Use `--pipeline gpu --timing
 kernel` or `--timing end-to-end`; the legacy lab path remains the default for
 backward-compatible CLI comparisons.
 
-## 1.5: smooth colouring and palettes
+### 1.5: smooth colouring and palettes
 
 Same M1 Pro protocol and 1e7 viewport as 1.4. Smooth escape radius is 256
 (squared threshold 65536), with `n + 1 - log2(log2(|z|))`; negative sentinel -1
@@ -306,7 +305,7 @@ Samples: `evidence/product/1.5-smooth-palettes.json`; PNG:
 Use `--colouring legacy` for unchanged integer-count exports, or `--samples file.f32`
 for float32 smooth samples. `--palette`, `--density`, and `--offset` control appearance.
 
-## 1.8: frame-rate-independent navigation
+### 1.8: frame-rate-independent navigation
 
 Pan/zoom inertia integrates exponential decay analytically. The unit test compares
 half a second of motion at 60 and 120 Hz: displacement and scale differ by less
@@ -317,7 +316,7 @@ and numerical validation, not a measured claim of 120 fps on a physical phone.
 Both macOS tests and the iPhone/iPad simulator build pass. Physical testing on the
 iPhone 11 Pro and iPhone 16 Pro remains necessary for touch feel and frame pacing.
 
-## 2.1(a): fixed-level tile renderer
+### 2.1(a): fixed-level tile renderer
 
 The headless integration trace computes a 512×320 view, pans with overlap, and
 changes palette. It verifies sample-texture reuse and no recomputation on palette
@@ -329,7 +328,7 @@ The first stage deliberately holds the selected level fixed for panning; multile
 fallback is the next stage. `--render --pipeline tiles` exercises the compositor
 without opening a window. `make test` includes its headless integration checks.
 
-## 2.1(b): multilevel fallback
+### 2.1(b): multilevel fallback
 
 The trace now includes a zoom snapshot taken before refinement finishes. A magenta
 clear sentinel detects uncovered pixels: zero holes in every run. Median complete
@@ -347,7 +346,7 @@ Raw runs: `evidence/product/2.1c-blending.json`. This is offscreen integration
 time, not a measurement of display refresh rate. `make test` passes, including
 an actual GPU render with known coarse/base/fine colours and blend weights.
 
-## 2.1(d): bounded refinement, mipmaps and LRU cache
+### 2.1(d): bounded refinement, mipmaps and LRU cache
 
 Five isolated Release runs on Apple M1 Pro, using `tests/measure_tiles.py`. Raw
 results: `evidence/product/2.1d-cache.json`. All numerical and cache assertions
@@ -389,7 +388,7 @@ build pass. Interactive GUI inspection was unavailable because Computer Use
 permissions remained pending. Physical iPhone 11 Pro (60 Hz) and iPhone 16 Pro
 (120 Hz) pacing and touch feel remain to be measured.
 
-## Uniform threadgroup compatibility fix
+### Uniform threadgroup compatibility fix
 
 All three dispatch sites now use `dispatchThreadgroups` with rounded-up group
 counts. Kernels reject padded threads before reading or writing memory. This
@@ -400,7 +399,7 @@ and both legacy Metal benchmark renderers.
 resumption comparisons and all 258×258 tile/colour/mipmap kernels. Five M1 Pro
 traces are in `evidence/product/uniform-dispatch.json`: median trace 483.178 ms, median per-run p95 compositor GPU duration 0.377 ms, worst deep-refinement GPU batch 2.564 ms. These are host measurements; the device that reported the assertion still needs a rebuilt-app run.
 
-## Review: local ancestor scheduling
+### Review: local ancestor scheduling
 
 Five M1 Pro traces (`evidence/product/review-local-levels.json`), now using the
 iPhone 150 MiB budget for the 1e10 deep test. The requested LOD is preserved.
@@ -412,7 +411,7 @@ Only the visible level and two nearby ancestors are required. Distant cached
 ancestors remain eligible for LRU reuse. This replaces 148 required deep tiles
 with 12 (9.375 MiB), without raising the budget or changing precision.
 
-## Review: iteration-change continuity
+### Review: iteration-change continuity
 
 Old detailed tiles survive repeated iteration changes until replacement detail
 has completed its 125 ms fade. Both base and fine colours can blend against
@@ -420,14 +419,14 @@ the previous generation. The regression compares the pre-change and immediate
 post-change PNG pixels exactly, then checks final-generation metadata and cleanup.
 Five M1 Pro traces: median per-run p95 compositor GPU time 0.144 ms; worst observed 0.773 ms. Raw: `evidence/product/review-fallback.json`.
 
-## Review: immutable palette textures
+### Review: immutable palette textures
 
 Seven lookup textures are created once during GPU initialisation, not once per
 tile recolour. Identity checks and all palette/sample tests pass. Five M1 Pro
 traces (`evidence/product/review-palette-cache.json`): median elapsed 467.361 ms. The trace includes fixed sleeps, so
 this is a regression measurement rather than an isolated palette speedup claim.
 
-## Review: event-driven drawing and demand
+### Review: event-driven drawing and demand
 
 Settled MTKViews pause; tile completion, appearance changes and navigation wake
 them. Motion and unfinished fades sustain the display timer. Unchanged demand
@@ -439,7 +438,7 @@ demand update 0.028 ms. The hardware HUD now measures recent drawable presentati
 from GPU duration. Simulator Metal does not expose presentation timestamps.
 Actual phone idle energy use and display pacing still require device measurement.
 
-## Review: independent product image validation
+### Review: independent product image validation
 
 The four CPU-authored pixel-centre fixtures use the ink palette. On M1 Pro,
 whole-set, fractional-offset and mip-boundary images had no pixels with a
@@ -452,7 +451,7 @@ headroom is retained rather than fitting thresholds exactly to one device.
 Cross-device tolerance calibration remains open until comparable device data
 exists. `make test` includes the new product goldens.
 
-## Review stabilisation: final measurements
+### Review stabilisation: final measurements
 
 Five isolated M1 Pro runs: `evidence/product/review-final.json`. Deep rendering
 uses 256², scale 1e10, 4000 iterations and the iOS 150 MiB cache budget.
@@ -476,7 +475,7 @@ rendering. These are implementation and offscreen measurements, not claims of
 measured phone battery savings or sustained 120 fps. Both iOS build targets
 verify the generated ProMotion boolean; `make test` and `make format-check` pass.
 
-## 2.2a — reference arithmetic library spike
+### 2.2a — reference arithmetic library spike
 
 On the M1 Pro, Release Swift `-O` and Apple Clang `-O3`, five runs of 10 ×
 1,000 bounded reference iterations gave these median times:
@@ -498,7 +497,7 @@ Sources, pinned versions and reproduction instructions are in
 [tests/precision](tests/precision/README.md); raw measurements are in
 [evidence/deep](evidence/deep). No LGPL dependencies ship in the app.
 
-## 2.2b — validated GPU perturbation before BLA
+### 2.2b — validated GPU perturbation before BLA
 
 A 256×192 endpoint-sampled image centred on c=i at 1e1000, 5,000 iterations,
 three runs after one warmup: median **356.553 ms end to end**, including CPU
@@ -518,7 +517,7 @@ including its two nearby ancestor levels. A 7×5 whole-set diagnostic triggers
 three cancellation glitches and three reference orbits. `make test` includes
 the deep comparisons and verifies that re-referencing actually runs.
 
-## 2.2c — BLA and shared tile references
+### 2.2c — BLA and shared tile references
 
 Controlled BLA on/off comparison on the M1 Pro: centre c=i, 256×192,
 5,000 iterations, median of three runs after one warmup. End-to-end includes
@@ -553,7 +552,7 @@ reference reuse, bounded residency, fade/fallback coverage and cancellation.
 about frame rates on either iPhone. Simulator and unsigned device builds cover
 compilation and packaging, not physical presentation timing.
 
-## Deep-zoom review: rebase first and harder goldens
+### Deep-zoom review: rebase first and harder goldens
 
 The new independent Decimal fixture solves z_936(c)=z_624(c) beside a period-312
 minibrot, at 1e100 and 60,000 iterations. Its 16×12 samples escape between 22,734
@@ -576,7 +575,7 @@ Comparable 64×48, three-run/one-warmup measurements of both locations are store
 in `evidence/review-deep/rebasing.json` and reproduced by
 `tests/precision/measure_review.py APP STAGE`.
 
-## Deep-zoom review: reusable references
+### Deep-zoom review: reusable references
 
 References now use 256-bit precision bands and satisfy shorter/lower-precision
 requests without recomputation. The cache is owned by the tile worker, budgeted
@@ -588,7 +587,7 @@ Unit tests verify one computation for concurrent 400/401-bit requests, reuse at
 band. Product tests verify scratch-buffer identity reuse and unchanged hard-image
 error budgets. Miss computation no longer blocks unrelated actor cache hits.
 
-## Deep-zoom review: CPU drawing geometry
+### Deep-zoom review: CPU drawing geometry
 
 Same-anchor UVs and cell positions now use integer keys, bounds are cached, and
 one nearby tile origin is converted from high precision per frame. A 120-frame
@@ -599,7 +598,7 @@ GPU execution or total UI frame time. Raw counters are in
 demand updates and GPU time. The iPhone 16 Pro is listed as unavailable by
 `devicectl`, and no iPhone 11 Pro is connected, so phone timings remain unmeasured.
 
-## Deep-zoom review: hierarchical BLA
+### Deep-zoom review: hierarchical BLA
 
 M1 Pro, 64×48, median of three runs after one warmup, including fresh CPU
 reference generation, BLA preparation and completed GPU colouring (no readback):
@@ -625,7 +624,7 @@ sample error is 207.35 with seven colour-boundary outliers out of 192 pixels.
 These finite-precision boundary errors remain covered by the previously declared
 budgets, rather than being presented as exact agreement.
 
-## Deep-zoom review: iteration depth and smooth precision
+### Deep-zoom review: iteration depth and smooth precision
 
 Product GPU rendering now supports one million iterations, with an exact UInt32
 escape count and a separate Float32 correction in each eight-byte raw record.
@@ -648,7 +647,7 @@ request no longer reserves a million reference entries. The mip/palette test's
 cache increases from 40 to 64 MiB to keep complete sibling groups resident with
 the larger raw records; separate constrained-cache and eviction tests remain.
 
-## Deep-zoom review: reproducible library decision
+### Deep-zoom review: reproducible library decision
 
 `python3 tests/precision/reproduce.py` fetches the pinned Boost 1.90 repositories,
 verifies clean revisions, and builds both comparisons. Swift now explicitly uses
@@ -680,7 +679,7 @@ needs the same hard numerical/tiled goldens, cancellation and cache tests, plus
 measurements on iPhone 11 Pro and iPhone 16 Pro. Neither phone was available in
 this session; no on-device frame-rate claim is made.
 
-## Final review validation
+### Final review validation
 
 Final M1 Pro runs after separate sample storage, same 64×48 scenes, median of
 three measured runs after one warmup, fresh references, completed GPU colour:
@@ -711,7 +710,7 @@ PNG. Mac tests, strict formatting, iOS Simulator and physical-target builds pass
 both iOS builds include the verified MIT notice. Neither target phone was available
 for actual frame-pacing measurements.
 
-## Follow-up review: automatic depth without cache resets
+### Follow-up review: automatic depth without cache resets
 
 The cache now retains iteration-labelled raw samples. Lowering the limit performs
 colour/mip work but no orbit sampling; returning to an already computed higher
@@ -730,7 +729,7 @@ session, cleared deep anchors/bounds and released cached deep reference storage.
 Raw observations are in `evidence/followup/navigation.txt` and
 `evidence/followup/tile-validation.json`; timings are observations, not CI limits.
 
-## Follow-up review: streamed reference latency
+### Follow-up review: streamed reference latency
 
 At c=i and 1e1000, the automatic policy selects 266,000 iterations. The earlier
 reference-only experiment measured 0.91–0.99 seconds to prepare that complete
@@ -767,7 +766,7 @@ The last two columns are similar here; there is no claim of an end-to-end
 hierarchy win. Both use the production compounded radius. Raw data and component
 timings are in `evidence/review-deep/followup.json`.
 
-## Follow-up review: BLA margin decision
+### Follow-up review: BLA margin decision
 
 `make bla` now runs 440 isolated GPU jump cases against ordinary GPU recurrence
 and independent 180-digit Decimal recurrence, using the same packed reference
@@ -807,7 +806,7 @@ Final `make test`, `make format-check`, `make ios` and `make ios-device` pass.
 Neither target phone was available: devicectl lists the iPhone 16 Pro as unavailable
 and no iPhone 11 Pro. Actual device validation remains outstanding.
 
-## 2.4 coverage: sized ladder and realistic budgets
+### 2.4 coverage: sized ladder and realistic budgets
 
 Measured headlessly on the Apple M1 Pro with `make tiles`, with each device's real
 budget. Drawables: phone 1206×2622 at 150 MiB, Mac 3456×2234 at 500 MiB. Each
@@ -849,7 +848,7 @@ The test allows 25% + 30 ms. Moving at 1e1000 (1024×768, 120 frames alternating
 zoom and pan, with the worker running): demand update p95 **0.49 ms** (limit 4 ms),
 frame plan p95 **0.37 ms** (limit 2 ms).
 
-## 2.3: observed ceiling and cheaper raises
+### 2.3: observed ceiling and cheaper raises
 
 Measured headlessly on the Apple M1 Pro with `make tiles`.
 
@@ -893,7 +892,7 @@ coverage and nothing was extended ("increase sampled 0 capped pixels"). At
 256×192 it extends 14,536 capped pixels and verifies escaped samples are
 unchanged.
 
-## 2.8 Zoom movies
+### 2.8 Zoom movies
 
 Measured on the Apple M1 Pro with the CLI (`--movie`), which shares the viewer's
 tile cache, compositor and encoder. Automatic depth per keyframe; HEVC. Every row
@@ -963,7 +962,7 @@ the frame whose blend is nearest a half and measures its outer 8% alone: **19.1
 It renders the triple spiral rather than the seahorse valley, whose border is a
 smooth gradient that clamps to nearly the right colour and hid this.
 
-## 2.11 follow-up: colouring in the compositor
+### 2.11 follow-up: colouring in the compositor
 
 2.11 moved colouring from per-tile colour textures into the compositor, which
 colours each level's samples as it draws, so a palette or depth mapping is a
@@ -998,7 +997,7 @@ phase was the lever: dividing by the density once per pixel instead of once per
 sample took a third off. Filtering costs about 1 ms a frame at full resolution
 over 2.11's unfiltered read.
 
-## 2.11 follow-up: tiles hold only their samples
+### 2.11 follow-up: tiles hold only their samples
 
 Each tile also carried a colour texture, painted when the tile was made,
 repainted when the detail limit changed and box-averaged into its parent,
@@ -1030,7 +1029,55 @@ in the deep coverage runs), while the visible band itself arrived slightly
 sooner. The same memory now buys a level more detail where the budget was
 binding, and a fuller zoom-out ladder everywhere.
 
-## Tile refinement: fewer, longer batches (2026-09-23)
+### Skipping the main cardioid and bulb
+
+A first attempt at this comparison took a median of seven runs, each from a
+fresh process, and reported 1.1–1.4× for the 2,000-iteration Float cases, where
+the true figure is about 3×: the GPU clock, not the kernel, set those medians
+(see [Method](#method)). The suite was then changed to prime the clock, and the
+comparison repeated.
+
+**Results.** GPU compute kernel medians on an Apple M1 Pro (16 GPU cores),
+without colour conversion, readback, or PNG encoding. The baseline is commit
+`409a30e`. Each build was run twice, alternating; the table gives the second
+pair. Raw samples are in [evidence/gpu-float](evidence/gpu-float/).
+
+| Case | Capped pixels | Baseline ms | Final ms | Speedup | At 2048×1536 |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Float, slow exterior, 500 | 144,412 / 196,608 | 0.658 | 0.220 | 3.0× | 9.72 → 2.31 ms, 4.2× |
+| Float, slow exterior, 2,000 | 134,493 / 196,608 | 2.476 | 0.743 | 3.3× | 36.06 → 6.83 ms, 5.3× |
+| Float, period-two bulb edge, 500 | 120,247 / 196,608 | 0.564 | 0.204 | 2.8× | 8.30 → 2.40 ms, 3.5× |
+| Float, period-two bulb edge, 2,000 | 118,014 / 196,608 | 2.024 | 0.671 | 3.0× | 29.59 → 6.70 ms, 4.4× |
+| FloatFloat, 2,000 / 5,000 | 19,266 / 15,147 of 49,152 | 4.13 / 9.46 | 4.12 / 9.48 | — | |
+| Perturbation, 25,000 / 30,000 | 44 / 4 of 192 | 87.7 / 152.1 | 87.7 / 155.8 | — | |
+
+The Float change rejects points strictly inside the main cardioid or
+period-two bulb before iterating, with a small margin at their boundaries. It
+is used by both the full-image and resumable tile kernels. All eight cases have
+the same capped/escaped totals before and after. The Float boundary regression
+also compares capped pixels against CPU Double, and the tile integration
+diagnostics pass.
+
+The skipped pixels account for 78–92% of capped pixels in these views, and a
+coarse CPU count puts the iterations saved at 4.1×, 7.1×, 3.6× and 4.3× for the
+four Float cases. The 2048×1536 timings follow that closely, except that the slow
+exterior at 2,000 gains 5.3× against the 7.1× estimate (not yet explained). At
+512×384 the gain is about 3× throughout; that grid is probably too small to fill
+the GPU, though this is untested. In the
+first alternating run, one light case (bulb edge, 500) settled at an
+intermediate clock (0.274 ms, 27% spread); the second run is the clean one.
+FloatFloat and Perturbation are unchanged; their differences are measurement
+variation.
+
+Other measured experiments were discarded before this re-measurement, using the
+earlier seven-run method: caching squared orbit components changed a few
+classifications and did not give a repeatable win; testing the iteration cap
+before the escape condition gave mixed times; and compute threadgroup heights of
+4 and 16 each improved some scenes while slowing others relative to the existing
+height of 8. Because that method was sensitive to clock state, those small
+differences deserve a second look with the primed harness.
+
+### Tile refinement: fewer, longer batches (2026-09-23)
 
 The tile worker computes a Float or FloatFloat tile as a series of resumable
 batches, one command buffer each, awaited in turn. Batches were capped at 512
@@ -1088,7 +1135,7 @@ The longest batch rose from about 1 ms to at most 1.85 ms. That is the price:
 the compositor waits behind a batch, and at 120 Hz a frame is 8.3 ms. It has
 not been measured on a phone.
 
-### Statistics in the last batch
+#### Statistics in the last batch
 
 Each finished tile then took two more round trips: a pass counting capped
 pixels and the highest escaped count, and a histogram pass. Both now run in a
@@ -1137,7 +1184,7 @@ overran; the worst batch anywhere was 2.04 ms. That does not prove a heavy
 tile can never follow cheap ones with an oversized start: seeding the cost
 estimate from a calibration batch on an all-interior tile would bound that.
 
-### Two tiles in flight
+#### Two tiles in flight
 
 The worker now runs two slots, each claiming, refining and storing tiles, so
 one tile's round trips and main-actor bookkeeping overlap the other's GPU work.
@@ -1149,7 +1196,7 @@ refines its first tile alone, so a worker that cannot allocate at all fails and
 spends its retry budget exactly as before; the tile diagnostics caught the
 change in failure behaviour when both slots started at once.
 
-### The whole story
+#### The whole story
 
 Four builds with the same measurement patch, interleaved, median of three cold
 `--render --pipeline tiles` runs at 3456×2234 on the M1 Pro: `ebabdf3`
