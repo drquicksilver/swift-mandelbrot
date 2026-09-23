@@ -56,6 +56,10 @@ struct TileStatistics: Equatable, Codable {
 @MainActor final class TileStore: ObservableObject {
   @Published private(set) var statistics = TileStatistics()
   var grid = TileGrid(anchor: CGPoint(x: -0.5, y: 0))
+  /// How long new detail takes to fade in.  Zero under Reduce Motion; the
+  /// store still holds a replaced record for the usual time, so nothing else
+  /// about its lifetime changes.
+  var fadeDuration = TilePresentation.fadeDuration
   private(set) var records: [TileKey: TileRecord] = [:]
   private(set) var visible: [TileKey] = []
   private(set) var needed: Set<TileKey> = []
@@ -845,7 +849,8 @@ struct TileStatistics: Equatable, Codable {
     previous: TileRecord?, fade: Float
   ) {
     if let existing = baseTransitions[key], existing.record === record {
-      let fade = TilePresentation.fade(readyAt: existing.since, now: now)
+      let fade = TilePresentation.fade(
+        readyAt: existing.since, now: now, duration: fadeDuration)
       // Once the fade is over the old record is not drawn again, and holding it
       // keeps its textures alive for as long as the view stays still.
       // Once the fade is over the old record is not drawn again, and holding it
@@ -863,7 +868,7 @@ struct TileStatistics: Equatable, Codable {
     // one presented record to another fades from the moment of the switch.
     let since = previous == nil ? record.readyAt : now
     baseTransitions[key] = BaseTransition(record: record, previous: previous, since: since)
-    return (previous, TilePresentation.fade(readyAt: since, now: now))
+    return (previous, TilePresentation.fade(readyAt: since, now: now, duration: fadeDuration))
   }
   /// Drops the records finished fades still hold.  `presentBase` does this for
   /// a cell it is asked about; a cell that stops being drawn never asks again.

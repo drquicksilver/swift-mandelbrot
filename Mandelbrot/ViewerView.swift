@@ -21,6 +21,23 @@ struct ViewerView: View {
               y: imageCenter.y - geometry.size.height / 2)
         }
         PlatformInput(model: model)
+          .accessibilityElement()
+          .accessibilityLabel(model.juliaSwapped ? Text("Julia set") : Text("Mandelbrot set"))
+          .accessibilityValue(model.location.suggestedName)
+          .accessibilityHint(Text("Swipe up or down to zoom in or out."))
+          .accessibilityAddTraits(.allowsDirectInteraction)
+          .accessibilityAdjustableAction { direction in
+            switch direction {
+            case .increment: model.perform(.zoomIn)
+            case .decrement: model.perform(.zoomOut)
+            @unknown default: break
+            }
+          }
+          .accessibilityAction(named: Text("Move left")) { model.perform(.left) }
+          .accessibilityAction(named: Text("Move right")) { model.perform(.right) }
+          .accessibilityAction(named: Text("Move up")) { model.perform(.up) }
+          .accessibilityAction(named: Text("Move down")) { model.perform(.down) }
+          .accessibilityAction(named: Text("Reset view")) { model.perform(.reset) }
         // The crosshair sits above the input surface but takes no hits: the
         // input view owns the pointer, and grabs the marker itself.
         JuliaMarker(model: model)
@@ -82,7 +99,12 @@ struct CompanionPanel: View {
           model.juliaSwapped
             ? "Mandelbrot set" : "Julia set for \(model.juliaPoint)" as LocalizedStringKey
         )
-        .font(.caption2.monospacedDigit()).padding(6)
+        .font(.caption2.monospacedDigit())
+        // One line, shrinking before it wraps: at the largest text sizes the
+        // caption otherwise covered the whole image it describes.
+        .lineLimit(1).minimumScaleFactor(0.5)
+        .dynamicTypeSize(...DynamicTypeSize.xLarge)
+        .padding(6)
         .background(.regularMaterial, in: Capsule()).padding(6)
         .allowsHitTesting(false)
         HStack(spacing: 4) {
@@ -102,12 +124,15 @@ struct CompanionPanel: View {
             model.resetPanel()
           }
         }
-        .padding(6)
+        .dynamicTypeSize(...DynamicTypeSize.xxxLarge)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
       }
       .onAppear { model.panelSize = geometry.size }
       .onChange(of: geometry.size) { _, size in model.panelSize = size }
     }
+    // A container, so each button and the caption keep their own labels
+    // rather than all reading as the panel.
+    .accessibilityElement(children: .contain)
     .accessibilityIdentifier("companionPanel")
     .accessibilityLabel(
       model.juliaSwapped ? Text("Mandelbrot companion") : Text("Julia companion"))
@@ -121,10 +146,13 @@ struct CompanionPanel: View {
     -> some View
   {
     Button(action: action) {
+      // The circle stays small so the three leave the image in view; the
+      // target around it is the full 44 points.
       Image(systemName: icon).font(.caption)
-        .frame(width: 26, height: 26)
+        .frame(minWidth: 26, minHeight: 26)
         .background(.regularMaterial, in: Circle())
-        .contentShape(Circle())
+        .frame(minWidth: 44, minHeight: 44)
+        .contentShape(Rectangle())
     }
     .buttonStyle(.plain)
     .help(title)

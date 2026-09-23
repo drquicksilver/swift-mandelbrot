@@ -452,9 +452,15 @@ import SwiftUI
     lastMotionTime = nil
     zoomDirection = 0
   }
+  /// Reduce Motion, from the environment: no inertia, no springs, no fades.
+  /// What a gesture does directly is unchanged.
+  var reduceMotion = false {
+    didSet { tiles.fadeDuration = reduceMotion ? 0 : TilePresentation.fadeDuration }
+  }
   func fling(
     pan: CGPoint = .zero, zoom: Double = 0, rotation: Double = 0, anchor: CGPoint? = nil
   ) {
+    guard !reduceMotion else { return }
     motion.velocity = SIMD2(max(-4000, min(4000, pan.x)), max(-4000, min(4000, pan.y)))
     motion.zoomVelocity = max(-4, min(4, zoom))
     // A snap, just decided by endTwist, owns the angle: a fling must not undo it.
@@ -518,6 +524,11 @@ import SwiftUI
     let nearest = (angle / quarter).rounded() * quarter
     guard abs(Viewport.normalised(angle - nearest)) <= 3 * Double.pi / 180 else { return }
     guard angle != Viewport.normalised(nearest) else { return }
+    if reduceMotion {
+      setAngle(Viewport.normalised(nearest))
+      hapticTick()
+      return
+    }
     rotationTarget = Viewport.normalised(nearest)
     motion.rotationVelocity = 0
     requestRedraw()
@@ -526,10 +537,20 @@ import SwiftUI
   /// Animates back to upright, for the compass button.
   func resetRotation() {
     guard mainViewport.angle != 0 else { return }
+    if reduceMotion {
+      setAngle(0)
+      recordHistory()
+      return
+    }
     motion.rotationVelocity = 0
     rotationTarget = 0
     motionActive = true
     requestRedraw()
+  }
+  /// Turns straight to an angle about the view's centre, as the spring would
+  /// arrive at it.
+  private func setAngle(_ angle: Double) {
+    rotate(Viewport.normalised(angle - mainViewport.angle))
   }
   private func hapticTick() {
     #if os(iOS)

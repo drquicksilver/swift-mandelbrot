@@ -4,6 +4,7 @@ struct ContentView: View {
   @StateObject private var model = ExplorerModel()
   @Environment(\.scenePhase) private var scenePhase
   @Environment(\.displayScale) private var displayScale
+  @Environment(\.accessibilityReduceMotion) private var reduceMotion
   #if os(iOS)
     @Environment(\.horizontalSizeClass) private var sizeClass
     private var sideBySide: Bool { sizeClass != .compact }
@@ -92,6 +93,11 @@ struct ContentView: View {
           viewerButton(.help) { model.showHelp = true }
         }
         .padding(4)
+        // Symbols grow with Dynamic Type only so far: at the accessibility
+        // sizes seven of them overflowed the capsule and each other.  The
+        // buttons keep their labels, which VoiceOver and Large Content Viewer
+        // read at any size.
+        .dynamicTypeSize(...DynamicTypeSize.xxxLarge)
         .background(.regularMaterial, in: Capsule())
         .padding(12)
       }
@@ -99,7 +105,11 @@ struct ContentView: View {
     .onOpenURL { url in model.open(url) }
     .onChange(of: scenePhase) { _, phase in model.setActive(phase == .active) }
     .onDisappear { model.setActive(false) }
-    .onAppear { model.setActive(true) }
+    .onAppear {
+      model.reduceMotion = reduceMotion
+      model.setActive(true)
+    }
+    .onChange(of: reduceMotion) { _, reduce in model.reduceMotion = reduce }
     .background(.black)
     #if os(macOS)
       .toolbar {
@@ -175,10 +185,13 @@ struct ContentView: View {
       Button(action: perform) {
         Label(action.title, systemImage: action.icon)
           .labelStyle(.iconOnly)
-          .frame(width: 44, height: 44)
+          .frame(minWidth: 44, minHeight: 44)
           .contentShape(Rectangle())
       }
       .buttonStyle(.plain)
+      .accessibilityShowsLargeContentViewer {
+        Label(action.title, systemImage: action.icon)
+      }
       .help(action.explanation)
       .accessibilityHint(action.explanation)
       .accessibilityIdentifier("viewer" + action.title)

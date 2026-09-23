@@ -35,6 +35,8 @@ struct PlacesView: View {
                 .buttonStyle(.bordered)
               #else
                 .buttonStyle(.borderless)
+                .frame(minWidth: 44, minHeight: 44)
+                .contentShape(Rectangle())
               #endif
           }
           ShareLink("Share link", item: model.location.url)

@@ -79,7 +79,10 @@ struct TileDrawUniforms {
       params.previousFineUV = uv(cell: cell, source: previousFine.bounds)
       params.baseMix = coarse === base ? 1 : transition.fade
       params.fineFade =
-        previousFine === fine ? 1 : TilePresentation.fade(readyAt: fine.readyAt, now: now)
+        previousFine === fine
+        ? 1
+        : TilePresentation.fade(
+          readyAt: fine.readyAt, now: now, duration: store.fadeDuration)
       let baseIsPlaceholder = store.isPlaceholder(base)
       let fineIsGenuine = fine !== base && !store.isPlaceholder(fine)
       // The cross-fade weight only means anything when the base really is this
@@ -91,7 +94,8 @@ struct TileDrawUniforms {
         : baseIsPlaceholder && fineIsGenuine
           ? 1
           : (previousFine === fine && store.records[fine.key] === fine
-            ? TilePresentation.fineWeight(lod: store.lod, readyAt: fine.readyAt, now: now)
+            ? TilePresentation.fineWeight(
+              lod: store.lod, readyAt: fine.readyAt, now: now, duration: store.fadeDuration)
             : Float(store.lod - floor(store.lod)))
       params.spin = SIMD4(
         Float(cos(viewport.angle)), Float(sin(viewport.angle)), Float(size.width),

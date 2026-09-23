@@ -63,4 +63,7 @@ import Testing
   #expect(TilePresentation.fade(readyAt: 1, now: 2) == 1)
   #expect(TilePresentation.fineWeight(lod: 4.25, readyAt: 1, now: 1.0625) == 0.125)
   #expect(TilePresentation.fineWeight(lod: 4, readyAt: 1, now: 2) == 0)
+  // Reduce Motion: no fade at all.
+  #expect(TilePresentation.fade(readyAt: 1, now: 1, duration: 0) == 1)
+  #expect(TilePresentation.fade(readyAt: 1, now: 0.5, duration: 0) == 0)
 }
