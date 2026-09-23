@@ -33,9 +33,7 @@ struct MovieView: View {
       Form {
         Section("Journey") {
           Picker("From", selection: $startChoice) {
-            ForEach(Location.gallery + model.bookmarks.bookmarks) { place in
-              Text(place.name.isEmpty ? place.zoomDescription : place.name).tag(place.id as UUID?)
-            }
+            PlaceChoices(bookmarks: model.bookmarks.bookmarks)
           }
           LabeledContent("To", value: "This view, \(end.zoomDescription)")
           if (try? ZoomPath(start: start, end: end)) != nil,
@@ -79,11 +77,12 @@ struct MovieView: View {
           if movies.isRendering {
             VStack(alignment: .leading) {
               ProgressView(value: movies.progress)
-              Text(movies.stage).font(.caption).foregroundStyle(.secondary)
+              Text([movies.stage, movies.timeRemaining].compactMap { $0 }.joined(separator: " · "))
+                .font(.caption).foregroundStyle(.secondary)
             }
             Button("Cancel", role: .destructive) { movies.cancel() }
           } else {
-            Button("Render Movie") { render() }
+            Button(movies.error == nil ? "Render Movie" : "Try Again") { render() }
           }
           if let error = movies.error ?? problem {
             Text(error).font(.caption).foregroundStyle(.red)
@@ -153,6 +152,25 @@ struct MovieView: View {
     } catch {
       problem = MovieRenderer.message(for: error)
     }
+  }
+}
+
+/// The places a movie can start from, famous ones and the user's own under
+/// their own headings, tagged for a picker selecting a place's id.
+struct PlaceChoices: View {
+  let bookmarks: [Location]
+  var body: some View {
+    Section("Famous places") {
+      ForEach(Location.gallery) { place in choice(place) }
+    }
+    if !bookmarks.isEmpty {
+      Section("Bookmarks") {
+        ForEach(bookmarks) { place in choice(place) }
+      }
+    }
+  }
+  private func choice(_ place: Location) -> some View {
+    Text(place.name.isEmpty ? place.zoomDescription : place.name).tag(place.id as UUID?)
   }
 }
 

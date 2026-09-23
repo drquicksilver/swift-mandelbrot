@@ -111,6 +111,13 @@ struct BenchmarkView: View {
           }
         }
         Text(model.status).font(.caption)
+        if model.rows.isEmpty && !model.running {
+          ContentUnavailableView(
+            "No Results Yet", systemImage: "gauge.with.dots.needle.33percent",
+            description: Text(
+              "Run the benchmarks to time every renderer on this view. The results can be shared as a Markdown table."
+            ))
+        }
         ForEach(model.rows) { row in
           LabeledContent(
             "\(row.renderer.title) · \(row.size)²", value: String(format: "%.3f s", row.seconds))

@@ -5,6 +5,9 @@ struct ContentView: View {
   @Environment(\.scenePhase) private var scenePhase
   @Environment(\.displayScale) private var displayScale
   @Environment(\.accessibilityReduceMotion) private var reduceMotion
+  #if os(macOS)
+    @Environment(\.appearsActive) private var appearsActive
+  #endif
   /// The companion's share of a wide window, which its divider drags.
   @AppStorage("CompanionFraction") private var companionFraction = 0.28
   #if os(iOS)
@@ -105,7 +108,13 @@ struct ContentView: View {
         // buttons keep their labels, which VoiceOver and Large Content Viewer
         // read at any size.
         .dynamicTypeSize(...DynamicTypeSize.xxxLarge)
-        .background(.regularMaterial, in: Capsule())
+        // Dark material whatever the system appearance: over a pale band of
+        // the set a light capsule left its glyphs grey on cream.  A tint
+        // under it keeps a floor on the contrast however bright the image.
+        .foregroundStyle(.white)
+        .background(.ultraThinMaterial, in: Capsule())
+        .background(Color.black.opacity(0.35), in: Capsule())
+        .environment(\.colorScheme, .dark)
         .padding(12)
       }
     #endif
@@ -114,6 +123,7 @@ struct ContentView: View {
     .onDisappear { model.setActive(false) }
     .onAppear {
       model.reduceMotion = reduceMotion
+      model.restoreLastLocation()
       model.setActive(true)
     }
     .onChange(of: reduceMotion) { _, reduce in model.reduceMotion = reduce }
@@ -151,7 +161,13 @@ struct ContentView: View {
       // title bar already has room for.
       .navigationSubtitle(model.mainViewport.zoomDescription)
     #endif
-    .sheet(isPresented: $model.showDeveloper) { DeveloperPanel(model: model) }
+    #if os(macOS)
+      .onChange(of: appearsActive, initial: true) { _, active in
+        if active { ExplorerRegistry.shared.current = model }
+      }
+    #else
+      .sheet(isPresented: $model.showDeveloper) { DeveloperPanel(model: model) }
+    #endif
     .sheet(isPresented: $model.showBenchmark) {
       BenchmarkView(viewport: model.viewport, iterations: model.iterations)
     }

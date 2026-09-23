@@ -38,6 +38,8 @@
     @StateObject private var toImage = LocationThumbnail()
     @StateObject private var preview = JourneyPreviewRenderer()
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    private static let completion = "completion"
     @State private var startChoice: UUID?
     @State private var settings = MovieSettings()
     @State private var outcome: MovieOutcome?
@@ -106,15 +108,27 @@
     var body: some View {
       VStack(spacing: 0) {
         header
-        ScrollView {
-          VStack(alignment: .leading, spacing: 18) {
-            section("Journey") { journeyCard }
-            section("Movie Settings") { settingsCard }
-            section("Output") { outputCard }
-            if case .complete(let outcome) = phase { completionCard(outcome) }
+        ScrollViewReader { scroller in
+          ScrollView {
+            VStack(alignment: .leading, spacing: 18) {
+              section("Journey") { journeyCard }
+              section("Movie Settings") { settingsCard }
+              section("Output") { outputCard }
+              if case .complete(let outcome) = phase {
+                completionCard(outcome).id(Self.completion)
+              }
+            }
+            .padding(.horizontal, 20)
+            .padding(.bottom, 18)
           }
-          .padding(.horizontal, 20)
-          .padding(.bottom, 18)
+          // The finished movie arrives below everything it was made from, so
+          // the sheet brings it into view rather than leaving it off the end.
+          .onChange(of: outcome) { _, finished in
+            guard finished != nil else { return }
+            withAnimation(reduceMotion ? nil : .default) {
+              scroller.scrollTo(Self.completion, anchor: .bottom)
+            }
+          }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .disabled(isRendering)
@@ -194,10 +208,7 @@
             HStack(spacing: 8) {
               Text("From:").frame(width: 52, alignment: .trailing)
               Picker("", selection: $startChoice) {
-                ForEach(places) { place in
-                  Text(place.name.isEmpty ? place.zoomDescription : place.name).tag(
-                    place.id as UUID?)
-                }
+                PlaceChoices(bookmarks: model.bookmarks.bookmarks)
               }
               .labelsHidden()
             }
@@ -217,7 +228,9 @@
           .frame(maxWidth: .infinity, alignment: .leading)
           thumbnail(toImage, caption: String(localized: "This view"))
         }
-        if journey != nil {
+        // The preview is for choosing; once a render starts it would be an
+        // empty box under a stale caption, so it steps aside.
+        if journey != nil, case .settings = phase {
           DisclosureGroup("Journey Preview", isExpanded: $previewExpanded) {
             journeyPreview
           }
@@ -491,6 +504,9 @@
           ProgressView(value: movies.progress)
           HStack {
             Text(detail).font(.caption).foregroundStyle(.secondary)
+            if let left = movies.timeRemaining {
+              Text("· \(left)").font(.caption).foregroundStyle(.secondary)
+            }
             Spacer()
             Button("Cancel") { movies.cancel() }
           }
@@ -531,7 +547,7 @@
               Button("Render Another Movie") { reset() }.buttonStyle(.borderedProminent)
             } else {
               Button("Cancel") { dismiss() }
-              Button("Render Movie") { render() }
+              Button(movies.error == nil ? "Render Movie" : "Try Again") { render() }
                 .buttonStyle(.borderedProminent)
                 .disabled(journey == nil || durationIsTooShort)
             }

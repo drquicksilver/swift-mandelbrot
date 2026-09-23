@@ -134,6 +134,7 @@ struct ExplorerCommands: Commands {
   #if os(macOS)
     @ObservedObject private var access = DeveloperAccess.shared
     @AppStorage("DeveloperMenuEnabled") private var developerMenu = false
+    @Environment(\.openWindow) private var openWindow
   #endif
   /// Observed, not merely read: a menu item's enabled state has to follow
   /// the model as it changes, not only when the focused window does.
@@ -156,7 +157,7 @@ struct ExplorerCommands: Commands {
     #if os(macOS)
       if access.optionHeld || developerMenu {
         CommandMenu("Debug") {
-          Button("Developer Panel") { explorer?.showDeveloper = true }
+          Button("Developer Panel") { openWindow(id: DeveloperWindow.id) }
           Button(ExplorerCommand.benchmark.title) { explorer?.perform(.benchmark) }
             .keyboardShortcut(
               ExplorerCommand.benchmark.key, modifiers: ExplorerCommand.benchmark.modifiers)

@@ -27,9 +27,9 @@ struct PlacesView: View {
           HStack {
             TextField("Name this view", text: $name, prompt: Text(model.location.suggestedName))
               .onSubmit(bookmark)
-            // Borderless, so a click or tap reaches the button itself rather
-            // than the row: a bordered button in a list row shares its hits
-            // with the row, and the first click after typing went to the field.
+            // The first click after typing used to go to the field.  On the
+            // Mac a bordered button takes it; on iPhone a borderless one keeps
+            // a tap on the row from firing it.
             Button("Bookmark", action: bookmark)
               #if os(macOS)
                 .buttonStyle(.bordered)
@@ -39,7 +39,11 @@ struct PlacesView: View {
                 .contentShape(Rectangle())
               #endif
           }
-          ShareLink("Share link", item: model.location.url)
+          // Both rows lead with a control whose text is inset, and the list
+          // aligned their separators to that text, leaving a stub.
+          .alignmentGuide(.listRowSeparatorLeading) { _ in 0 }
+          ShareLink("Share Link", item: model.location.url)
+            .alignmentGuide(.listRowSeparatorLeading) { _ in 0 }
         }
         if !bookmarks.bookmarks.isEmpty {
           Section("Bookmarks") {
@@ -69,7 +73,7 @@ struct PlacesView: View {
   private func row(_ place: Location) -> some View {
     HStack {
       Button {
-        model.apply(place)
+        model.travel(to: place)
         dismiss()
       } label: {
         VStack(alignment: .leading) {

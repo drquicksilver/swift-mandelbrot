@@ -58,6 +58,8 @@ struct MovieCounts: Equatable, Sendable {
 @MainActor final class MovieRenderer: ObservableObject {
   @Published private(set) var progress = 0.0
   @Published private(set) var isRendering = false
+  /// When the current render began, for the time-remaining estimate.
+  private var startedAt: Double?
   @Published private(set) var stage = ""
   /// Both counters a render moves through, so a sheet can show the one it is on
   /// and the one it is between.  Keyframes are where the time goes -- one full
@@ -116,6 +118,7 @@ struct MovieCounts: Equatable, Sendable {
     guard let gpu = GPUContext.shared else { throw GPUFailure("GPU unavailable") }
     isRendering = true
     progress = 0
+    startedAt = ProcessInfo.processInfo.systemUptime
     error = nil
     counts = MovieCounts()
     keyframeLimits = []
@@ -307,6 +310,7 @@ struct MovieCounts: Equatable, Sendable {
     guard let gpu = GPUContext.shared else { throw GPUFailure("GPU unavailable") }
     isRendering = true
     progress = 0
+    startedAt = ProcessInfo.processInfo.systemUptime
     error = nil
     counts = MovieCounts()
     keyframeLimits = []
@@ -483,6 +487,17 @@ struct MovieCounts: Equatable, Sendable {
         self.error = Self.message(for: error)
       }
     }
+  }
+
+  /// Roughly how long is left, from the pace so far, once there has been
+  /// enough of the render to judge it by; nil before that.
+  var timeRemaining: String? {
+    guard isRendering, let startedAt, progress >= 0.03, progress < 1 else { return nil }
+    let elapsed = ProcessInfo.processInfo.systemUptime - startedAt
+    let left = Duration.seconds(max(1, elapsed / progress * (1 - progress)))
+    let text = left.formatted(
+      .units(allowed: [.hours, .minutes, .seconds], width: .abbreviated, maximumUnitCount: 1))
+    return String(localized: "About \(text) left")
   }
 
   static let writeFailure =

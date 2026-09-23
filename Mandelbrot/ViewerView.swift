@@ -60,23 +60,27 @@ struct JuliaMarker: View {
     if let point = model.juliaMarker {
       let pinned = model.juliaPinned
       ZStack {
+        // Each white stroke sits on a wider dark one, so the crosshair reads
+        // on the pale bands of a palette as well as on the black of the set.
+        cross.stroke(.black.opacity(0.6), lineWidth: 3)
+        Circle().stroke(.black.opacity(0.6), lineWidth: 3.5).frame(width: 18, height: 18)
         Circle().fill(pinned ? Color.white.opacity(0.9) : .clear)
           .frame(width: 7, height: 7)
         Circle().stroke(.white, lineWidth: 1.5).frame(width: 18, height: 18)
-        Path { path in
-          path.move(to: CGPoint(x: 0, y: 14))
-          path.addLine(to: CGPoint(x: 28, y: 14))
-          path.move(to: CGPoint(x: 14, y: 0))
-          path.addLine(to: CGPoint(x: 14, y: 28))
-        }
-        .stroke(.white, lineWidth: 1)
-        .frame(width: 28, height: 28)
-        .opacity(0.8)
+        cross.stroke(.white, lineWidth: 1)
       }
-      .shadow(radius: 2)
+      .frame(width: 28, height: 28)
       .position(x: point.x, y: point.y)
       .allowsHitTesting(false)
       .accessibilityHidden(true)
+    }
+  }
+  private var cross: Path {
+    Path { path in
+      path.move(to: CGPoint(x: 0, y: 14))
+      path.addLine(to: CGPoint(x: 28, y: 14))
+      path.move(to: CGPoint(x: 14, y: 0))
+      path.addLine(to: CGPoint(x: 14, y: 28))
     }
   }
 }

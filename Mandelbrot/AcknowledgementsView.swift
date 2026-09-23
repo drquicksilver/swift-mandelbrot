@@ -1,6 +1,9 @@
 import SwiftUI
 
 struct AcknowledgementsView: View {
+  /// Closes whatever presented this page, which a pushed page cannot reach
+  /// through its own `dismiss`.
+  var done: (() -> Void)? = nil
   private var notice: String {
     guard let url = Bundle.main.url(forResource: "LICENSE", withExtension: "md"),
       let text = try? String(contentsOf: url, encoding: .utf8)
@@ -41,5 +44,8 @@ struct AcknowledgementsView: View {
         )
       }.frame(maxWidth: .infinity, alignment: .leading).padding()
     }.navigationTitle("Acknowledgements")
+      .toolbar {
+        if let done { Button("Done", action: done) }
+      }
   }
 }

@@ -40,5 +40,9 @@ struct MandelbrotApp: App {
       ContentView()
     }
     .commands { ExplorerCommands() }
+    #if os(macOS)
+      Window("Developer", id: DeveloperWindow.id) { DeveloperWindow() }
+        .defaultSize(width: 480, height: 440)
+    #endif
   }
 }

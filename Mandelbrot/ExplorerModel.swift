@@ -369,6 +369,7 @@ import SwiftUI
   /// Records the view it is leaving, once the current one has come to rest and
   /// moved far enough to be a different place.
   func recordHistory() {
+    rememberLocation()
     guard differsFromRecord(viewport) else { return }
     if let recorded { push(record(of: recorded)) }
     recorded = viewport
@@ -422,6 +423,58 @@ import SwiftUI
     canGoBack = !history.isEmpty
     canGoForward = !future.isEmpty
     locationError = nil
+    rememberLocation()
+  }
+  /// Set by the window: only a view someone is looking at is worth coming
+  /// back to, never a diagnostic's or the command line's.
+  var remembersLocation = false
+  static let lastLocationKey = "LastLocation"
+  private func rememberLocation() {
+    guard remembersLocation, !applyingLocation else { return }
+    UserDefaults.standard.set(location.url.absoluteString, forKey: Self.lastLocationKey)
+  }
+  /// Opens where the last session left off, as a place rather than a move.
+  func restoreLastLocation() {
+    remembersLocation = true
+    guard let text = UserDefaults.standard.string(forKey: Self.lastLocationKey),
+      let url = URL(string: text), let place = try? Location(url: url)
+    else { return }
+    apply(place, record: false)
+  }
+  private var travelTask: Task<Void, Never>?
+  /// Goes to a place the way a movie would, as one short continuous move,
+  /// so a jump shows where the place is rather than cutting to it.  Under
+  /// Reduce Motion, or when there is no route, it is the plain cut.  Any
+  /// gesture stops it where it is.
+  func travel(to place: Location) {
+    stopMotion()
+    let aspect = Double(size.width / max(1, size.height))
+    guard !reduceMotion, isActive,
+      let journey = try? Journey.planned(start: location, end: place, aspectRatio: aspect)
+    else {
+      apply(place)
+      return
+    }
+    // Long enough to follow, short enough not to be a wait: a deep descent
+    // is compressed, a near neighbour is not stretched.
+    let seconds = min(1.6, max(0.6, journey.minimumDuration * 0.3))
+    let origin = location
+    travelTask = Task { [weak self] in
+      let start = ProcessInfo.processInfo.systemUptime
+      while !Task.isCancelled, let self {
+        let t = min(1, (ProcessInfo.processInfo.systemUptime - start) / seconds)
+        if let view = try? journey.viewport(at: t, duration: journey.requestedDuration) {
+          self.viewport = view
+        }
+        if t >= 1 { break }
+        try? await Task.sleep(for: .milliseconds(16))
+      }
+      guard !Task.isCancelled, let self else { return }
+      // The view has already arrived, so apply's own record would see no
+      // move; the place left is recorded here instead.
+      self.push(origin)
+      self.apply(place, record: false)
+    }
   }
   func open(_ url: URL) {
     do {
@@ -446,6 +499,8 @@ import SwiftUI
   private var lastMotionTime: Double?
   var zoomDirection = 0
   func stopMotion() {
+    travelTask?.cancel()
+    travelTask = nil
     motion.stop()
     rotationTarget = nil
     motionActive = false
