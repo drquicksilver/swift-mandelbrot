@@ -201,9 +201,12 @@
           Button {
             model.bookmarkCurrentView()
           } label: {
-            Label("Bookmark This View", systemImage: "bookmark")
+            Label(
+              model.isBookmarkedHere ? "Bookmarked" : "Bookmark This View",
+              systemImage: model.isBookmarkedHere ? "bookmark.fill" : "bookmark")
           }
           .buttonStyle(.borderedProminent)
+          .disabled(model.isBookmarkedHere)
           .fixedSize()
           .padding(.top, 4)
         }

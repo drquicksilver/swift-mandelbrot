@@ -170,4 +170,47 @@ final class MemoryDefaults: UserDefaults, @unchecked Sendable {
     #expect(store.bookmarks.map(\.name) == ["a", "c", "b"])
     #expect(LocationStore(defaults: defaults).bookmarks.map(\.name) == ["a", "c", "b"])
   }
+
+  // MARK: Bookmark acknowledgement
+
+  @Test func aSecondBookmarkFindsTheFirstInsteadOfCopyingIt() throws {
+    let model = model()
+    model.apply(seahorse, record: false)
+    #expect(!model.isBookmarkedHere)
+    model.bookmarkCurrentView()
+    let first = try #require(model.bookmarkNotice)
+    #expect(first.isNew)
+    #expect(model.isBookmarkedHere)
+    model.bookmarkCurrentView()
+    let second = try #require(model.bookmarkNotice)
+    #expect(!second.isNew)
+    #expect(second.place.id == first.place.id)
+    #expect(model.bookmarks.bookmarks.count == 1)
+  }
+
+  @Test func undoTakesTheBookmarkAndItsNoticeAway() throws {
+    let model = model()
+    model.bookmarkCurrentView()
+    let notice = try #require(model.bookmarkNotice)
+    model.undoBookmark(notice.place)
+    #expect(model.bookmarks.bookmarks.isEmpty)
+    #expect(model.bookmarkNotice == nil)
+    #expect(!model.isBookmarkedHere)
+  }
+
+  @Test func deletingInPlacesClearsTheFilledBookmark() {
+    let model = model()
+    model.bookmarkCurrentView()
+    #expect(model.isBookmarkedHere)
+    model.bookmarks.remove(model.bookmarks.bookmarks[0])
+    #expect(!model.isBookmarkedHere)
+  }
+
+  @Test func behindASheetThereIsNoNotice() {
+    let model = model()
+    model.showPlaces = true
+    model.bookmarkCurrentView()
+    #expect(model.bookmarks.bookmarks.count == 1)
+    #expect(model.bookmarkNotice == nil)
+  }
 }

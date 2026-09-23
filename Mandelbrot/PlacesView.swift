@@ -31,6 +31,8 @@ struct PlacesView: View {
             // Mac a bordered button takes it; on iPhone a borderless one keeps
             // a tap on the row from firing it.
             Button("Bookmark", action: bookmark)
+              // Without a new name it would only find the one already there.
+              .disabled(model.isBookmarkedHere && name.isEmpty)
               #if os(macOS)
                 .buttonStyle(.bordered)
               #else

@@ -5,6 +5,7 @@ import SwiftUI
   let tiles = TileStore()
   let bookmarks: LocationStore
   private var tileObservation: AnyCancellable?
+  private var bookmarkObservation: AnyCancellable?
   /// Where the last location is remembered; tests pass their own.
   let defaults: UserDefaults
   init(bookmarks: LocationStore? = nil, defaults: UserDefaults = .standard) {
@@ -19,6 +20,11 @@ import SwiftUI
       }
     }
     tiles.onContentChange = { [weak self] in self?.requestRedraw() }
+    // Places may delete or add a bookmark behind the model's back.  The
+    // publisher delivers the list before the store holds it.
+    bookmarkObservation = self.bookmarks.$bookmarks.sink { [weak self] list in
+      MainActor.assumeIsolated { self?.refreshBookmarked(list) }
+    }
     updateDepthColouring()
   }
   /// The single route to a frame.  Tile completion, a changed setting, a screen
@@ -371,6 +377,7 @@ import SwiftUI
   /// moved far enough to be a different place.
   func recordHistory() {
     rememberLocation()
+    refreshBookmarked()
     guard differsFromRecord(viewport) else { return }
     if let recorded { push(record(of: recorded)) }
     recorded = viewport
@@ -425,6 +432,7 @@ import SwiftUI
     canGoForward = !future.isEmpty
     locationError = nil
     rememberLocation()
+    refreshBookmarked()
   }
   /// Set by the window: only a view someone is looking at is worth coming
   /// back to, never a diagnostic's or the command line's.
@@ -516,11 +524,54 @@ import SwiftUI
     let off = hypot(there.x - size.width / 2, there.y - size.height / 2)
     return off <= max(1, max(size.width, size.height) * 0.01)
   }
+  /// Bookmarks this view, unless it is bookmarked already: a second click
+  /// says so instead of making a copy.  A typed name always makes a new one.
   func bookmarkCurrentView(named name: String? = nil) {
-    var place = location
     let typed = name?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+    if typed.isEmpty, let existing = bookmarks.bookmarks.first(where: isShowing) {
+      announce(existing, isNew: false)
+      return
+    }
+    var place = location
     place.name = typed.isEmpty ? place.suggestedName : typed
     bookmarks.add(place)
+    announce(place, isNew: true)
+  }
+  /// Whether this view is one of the bookmarks.  Kept rather than computed,
+  /// since the toolbar is drawn every frame of a gesture; it is brought up
+  /// to date when a view settles and whenever the bookmarks change.
+  @Published private(set) var isBookmarkedHere = false
+  private func refreshBookmarked(_ list: [Location]? = nil) {
+    let here = (list ?? bookmarks.bookmarks).contains(where: isShowing)
+    if here != isBookmarkedHere { isBookmarkedHere = here }
+  }
+  /// The acknowledgement of the last bookmark, for the window to show.
+  /// Behind a sheet there is nobody to show it to: Places shows the new
+  /// bookmark itself.
+  @Published var bookmarkNotice: BookmarkNotice?
+  private func announce(_ place: Location, isNew: Bool) {
+    guard !isPresentingSheet else { return }
+    bookmarkNotice = BookmarkNotice(place: place, isNew: isNew)
+  }
+  /// Takes back a bookmark just made.
+  func undoBookmark(_ place: Location) {
+    bookmarks.remove(place)
+    if bookmarkNotice?.place.id == place.id { bookmarkNotice = nil }
+  }
+  /// The bookmark being named from the notice, while its field is up.
+  @Published var namingBookmark: Location?
+  /// A still of the canvas as it is on screen, from the tiles already drawn.
+  func snapshot(maximumWidth: Int = 1600) async -> CGImage? {
+    guard size.width > 0, size.height > 0, let gpu = GPUContext.shared else { return nil }
+    let scale = min(Double(displayScale), Double(maximumWidth) / Double(size.width))
+    let width = max(1, Int((Double(size.width) * scale).rounded()))
+    let height = max(1, Int((Double(size.height) * scale).rounded()))
+    guard
+      let texture = try? await TileCompositor.snapshot(
+        store: tiles, viewport: viewport, width: width, height: height,
+        now: ProcessInfo.processInfo.systemUptime + TilePresentation.fadeDuration)
+    else { return nil }
+    return try? await gpu.image(texture)
   }
   var motion = Motion()
   @Published private(set) var motionActive = false
@@ -893,5 +944,17 @@ import SwiftUI
       let elapsed = start.duration(to: .now).components
       self?.duration = Double(elapsed.seconds) + Double(elapsed.attoseconds) / 1e18
     }
+  }
+}
+
+/// One bookmark to acknowledge: the place, whether it is new or was there
+/// already, and a still of it once one has been taken.
+struct BookmarkNotice: Identifiable, Equatable {
+  let id = UUID()
+  var place: Location
+  var isNew: Bool
+  var image: CGImage?
+  static func == (a: BookmarkNotice, b: BookmarkNotice) -> Bool {
+    a.id == b.id && a.place == b.place && a.image === b.image
   }
 }

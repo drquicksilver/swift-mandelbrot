@@ -113,6 +113,9 @@
     "Add hold" : {
 
     },
+    "Already in Places" : {
+
+    },
     "Analysing colours %lld of %lld" : {
 
     },
@@ -159,6 +162,9 @@
 
     },
     "Bookmark this view, so it is waiting in Places." : {
+
+    },
+    "Bookmarked" : {
 
     },
     "Bookmarked %@" : {
@@ -476,7 +482,13 @@
     "Name" : {
 
     },
+    "Name This Bookmark" : {
+
+    },
     "Name this view" : {
+
+    },
+    "Name…" : {
 
     },
     "Near %@ · %@" : {
@@ -635,10 +647,16 @@
     "Run the benchmarks to time every renderer on this view. The results can be shared as a Markdown table." : {
 
     },
+    "Save" : {
+
+    },
     "Save to:" : {
 
     },
     "Saved to" : {
+
+    },
+    "Saved to Places" : {
 
     },
     "Scroll, or pinch on a trackpad, to zoom at the pointer." : {
@@ -813,6 +831,9 @@
 
     },
     "Twist with two fingers to rotate; it snaps upright near a right angle." : {
+
+    },
+    "Undo" : {
 
     },
     "Untitled" : {

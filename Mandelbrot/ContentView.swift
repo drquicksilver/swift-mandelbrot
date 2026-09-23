@@ -5,8 +5,11 @@ struct ContentView: View {
   @Environment(\.scenePhase) private var scenePhase
   @Environment(\.displayScale) private var displayScale
   @Environment(\.accessibilityReduceMotion) private var reduceMotion
+  @Environment(\.undoManager) private var undoManager
+  @State private var bookmarkName = ""
   #if os(macOS)
     @Environment(\.appearsActive) private var appearsActive
+    @StateObject private var flight = BookmarkFlightController()
   #endif
   /// The companion's share of a wide window, which its divider drags.
   @AppStorage("CompanionFraction") private var companionFraction = 0.28
@@ -33,6 +36,9 @@ struct ContentView: View {
             height: min(geometry.size.width * 0.42, 220))
         HStack(spacing: 0) {
           ViewerView(model: model)
+            #if os(macOS)
+              .background(FlightAnchor { flight.canvas = $0 })
+            #endif
             .onAppear { model.resize(viewerSize(geometry.size, panel), displayScale: displayScale) }
             .onChange(of: geometry.size) { _, size in
               model.resize(viewerSize(size, panel), displayScale: displayScale)
@@ -89,6 +95,52 @@ struct ContentView: View {
         Text(error).padding().background(.regularMaterial).frame(
           maxWidth: .infinity, maxHeight: .infinity)
       }
+      if let notice = model.bookmarkNotice {
+        BookmarkNoticeCapsule(
+          notice: notice,
+          undo: {
+            undoManager?.removeAllActions(withTarget: model)
+            model.undoBookmark(notice.place)
+          },
+          name: {
+            bookmarkName = notice.place.name
+            model.namingBookmark = notice.place
+            model.bookmarkNotice = nil
+          },
+          dismiss: {
+            withAnimation(reduceMotion ? nil : .easeIn(duration: 0.2)) {
+              if model.bookmarkNotice?.id == notice.id { model.bookmarkNotice = nil }
+            }
+          }
+        )
+        .id(notice.id)
+        .transition(
+          reduceMotion ? .opacity : .move(edge: .bottom).combined(with: .opacity)
+        )
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
+        .padding(.bottom, 24)
+        .padding(.horizontal, 16)
+      }
+    }
+    .animation(reduceMotion ? nil : .easeOut(duration: 0.2), value: model.bookmarkNotice?.id)
+    .onChange(of: model.bookmarkNotice?.id) { _, id in
+      guard let id, let notice = model.bookmarkNotice else { return }
+      acknowledge(notice, id: id)
+    }
+    .alert(
+      "Name This Bookmark",
+      isPresented: Binding(
+        get: { model.namingBookmark != nil }, set: { if !$0 { model.namingBookmark = nil } })
+    ) {
+      TextField("Name", text: $bookmarkName)
+      Button("Save") {
+        let name = bookmarkName.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let place = model.namingBookmark, !name.isEmpty {
+          model.bookmarks.rename(place, to: name)
+        }
+      }
+      .keyboardShortcut(.defaultAction)
+      Button("Cancel", role: .cancel) {}
     }
     #if os(iOS)
       .overlay(alignment: .topTrailing) {
@@ -145,8 +197,24 @@ struct ContentView: View {
         .disabled(!model.canGoBack)
         toolbarButton(.forward) { model.perform(.forward) }
         .disabled(!model.canGoForward)
-        toolbarButton(.places) { model.showPlaces = true }
-        toolbarButton(.bookmark) { model.bookmarkCurrentView() }
+        Button {
+          model.showPlaces = true
+        } label: {
+          PlacesToolbarLabel(flight: flight)
+        }
+        .help(ToolbarAction.places.explanation)
+        .accessibilityIdentifier("viewer" + ToolbarAction.places.title)
+        // Filled while this view is one of the bookmarks.
+        Button {
+          model.bookmarkCurrentView()
+        } label: {
+          Label(
+            ToolbarAction.bookmark.title,
+            systemImage: model.isBookmarkedHere ? "bookmark.fill" : ToolbarAction.bookmark.icon)
+        }
+        .help(ToolbarAction.bookmark.explanation)
+        .accessibilityIdentifier("viewer" + ToolbarAction.bookmark.title)
+        .accessibilityValue(model.isBookmarkedHere ? Text("Bookmarked") : Text(""))
         toolbarButton(.julia) { model.toggleJulia() }
         toolbarButton(.movie) { model.showMovie = true }
         ShareLink(item: model.location.url) {
@@ -206,6 +274,29 @@ struct ContentView: View {
       .accessibilityIdentifier("viewer" + action.title)
     }
   #endif
+
+  /// Answers a bookmark: a still of the view for the notice, ⌘Z to take a
+  /// new one back, and on the Mac the flight into Places, or under Reduce
+  /// Motion (or for a place already saved) a brief light on Places instead.
+  private func acknowledge(_ notice: BookmarkNotice, id: UUID) {
+    if notice.isNew {
+      let place = notice.place
+      undoManager?.registerUndo(withTarget: model) { $0.undoBookmark(place) }
+      undoManager?.setActionName(String(localized: "Bookmark"))
+    }
+    Task {
+      let image = await model.snapshot()
+      guard model.bookmarkNotice?.id == id else { return }
+      model.bookmarkNotice?.image = image
+      #if os(macOS)
+        if notice.isNew, !reduceMotion, let image {
+          flight.fly(image)
+        } else {
+          flight.highlight()
+        }
+      #endif
+    }
+  }
 
   private func viewerSize(_ total: CGSize, _ panel: CGSize) -> CGSize {
     guard model.showJulia && sideBySide else { return total }
