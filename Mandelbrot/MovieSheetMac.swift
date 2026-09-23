@@ -160,7 +160,7 @@
 
     private var header: some View {
       VStack(spacing: 4) {
-        Text("Create Zoom Movie").font(.title2.bold())
+        Text("Render a Zoom Movie").font(.title2.bold())
         Text("Render an animated journey between two views of the Mandelbrot set.")
           .font(.subheadline)
           .foregroundStyle(.secondary)
@@ -187,7 +187,9 @@
     private var journeyCard: some View {
       VStack(alignment: .leading, spacing: 12) {
         HStack(spacing: 14) {
-          thumbnail(fromImage, caption: start.name.isEmpty ? "Starting place" : start.name)
+          thumbnail(
+            fromImage,
+            caption: start.name.isEmpty ? String(localized: "Starting place") : start.name)
           VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 8) {
               Text("From:").frame(width: 52, alignment: .trailing)
@@ -201,7 +203,7 @@
             }
             HStack(alignment: .firstTextBaseline, spacing: 8) {
               Text("To:").frame(width: 52, alignment: .trailing)
-              Text("Current view (\(end.zoomDescription))")
+              Text("This view (\(end.zoomDescription))")
             }
             if let journey {
               Text(journey.description())
@@ -213,7 +215,7 @@
             }
           }
           .frame(maxWidth: .infinity, alignment: .leading)
-          thumbnail(toImage, caption: "Current view")
+          thumbnail(toImage, caption: String(localized: "This view"))
         }
         if journey != nil {
           DisclosureGroup("Journey Preview", isExpanded: $previewExpanded) {
@@ -285,7 +287,7 @@
             Image(systemName: segment.kind == .zoom ? "magnifyingglass" : "arrow.left.and.right")
               .frame(width: 18).foregroundStyle(.secondary)
             VStack(alignment: .leading, spacing: 1) {
-              Text(segment.kind.title).font(.callout.weight(.medium))
+              Text(route.title(of: segment)).font(.callout.weight(.medium))
               Text("At least \(seconds(segment.minimum))")
                 .font(.caption).foregroundStyle(.secondary)
             }
@@ -382,8 +384,8 @@
         }
         Divider()
         VStack(alignment: .leading, spacing: 2) {
-          Text("Route").font(.caption).foregroundStyle(.secondary)
-          Text(journey.map { "\($0.segments.count) segments" } ?? "—")
+          Text("Journey").font(.caption).foregroundStyle(.secondary)
+          Text(journey?.summary ?? "—")
         }
         VStack(alignment: .leading, spacing: 2) {
           Text("Minimum smooth duration").font(.caption).foregroundStyle(.secondary)
@@ -391,7 +393,7 @@
         }
         if let journey, journey.requestedDuration > journey.minimumDuration + 0.001 {
           VStack(alignment: .leading, spacing: 2) {
-            Text("Edited route duration").font(.caption).foregroundStyle(.secondary)
+            Text("Edited journey length").font(.caption).foregroundStyle(.secondary)
             Text(seconds(journey.requestedDuration))
           }
         }
@@ -529,7 +531,7 @@
               Button("Render Another Movie") { reset() }.buttonStyle(.borderedProminent)
             } else {
               Button("Cancel") { dismiss() }
-              Button("Render Journey") { render() }
+              Button("Render Movie") { render() }
                 .buttonStyle(.borderedProminent)
                 .disabled(journey == nil || durationIsTooShort)
             }
@@ -547,27 +549,31 @@
       let counts = movies.counts
       if counts.onKeyframe || counts.frames == 0 {
         return counts.keyframes == 0
-          ? "Preparing…" : "Rendering keyframe \(counts.keyframe) of \(counts.keyframes)"
+          ? String(localized: "Preparing…")
+          : String(localized: "Rendering zoom level \(counts.keyframe) of \(counts.keyframes)")
       }
-      return "Rendering frame \(counts.frame) of \(counts.frames)"
+      return String(localized: "Rendering frame \(counts.frame) of \(counts.frames)")
     }
     private var detail: String {
       let counts = movies.counts
       if counts.onKeyframe || counts.frames == 0 {
-        return counts.frame == 0 ? "" : "Frame \(counts.frame) of \(counts.frames)"
+        return counts.frame == 0
+          ? "" : String(localized: "Frame \(counts.frame) of \(counts.frames)")
       }
-      return counts.keyframes == 0 ? "" : "Keyframe \(counts.keyframe) of \(counts.keyframes)"
+      return counts.keyframes == 0
+        ? "" : String(localized: "Zoom level \(counts.keyframe) of \(counts.keyframes)")
     }
 
     private var explanation: some View {
       VStack(alignment: .leading, spacing: 8) {
         Text("Mandelbrot journeys").font(.headline)
         Text(
-          "Choose two views and the app makes a continuous route between them. A nested "
-            + "destination is a direct zoom; separate places zoom out, travel, then zoom in.")
+          "Choose a place to start from and the app plans a continuous journey to this view. "
+            + "If this view lies inside the place it is a single zoom; otherwise the journey "
+            + "zooms out, travels across the set, then zooms in.")
         Text(
           "The suggested duration is the fastest comfortable pace. Edit Journey can slow "
-            + "individual legs or add a hold, but cannot rush a camera move past that pace.")
+            + "each part or add a hold, but cannot rush a camera move past that pace.")
         Text("Cancelling stops the render. A finished movie stays where it was saved.")
       }
       .font(.callout)
@@ -598,10 +604,13 @@
       movies.output = nil
       do {
         guard let journey else {
-          throw PrecisionError(journeyProblem ?? "Could not plan this journey")
+          throw PrecisionError(
+            journeyProblem ?? String(localized: "This journey can’t be planned."))
         }
         guard !durationIsTooShort else {
-          throw PrecisionError("This journey needs at least \(seconds(requiredDuration))")
+          throw PrecisionError(
+            String(localized: "This journey needs at least \(seconds(requiredDuration)).")
+          )
         }
         // Nothing behind the sheet is on screen, and a render wants the GPU and
         // the memory: stop the viewer's cache competing for both.  The
@@ -612,7 +621,7 @@
           journey: journey, settings: movieSettings, colouring: model.colouring,
           to: library.destination(named: MovieNaming.fileName()))
       } catch {
-        problem = error.localizedDescription
+        problem = MovieRenderer.message(for: error)
       }
     }
 
@@ -656,7 +665,7 @@
         }
       } catch {
         journey = nil
-        journeyProblem = error.localizedDescription
+        journeyProblem = MovieRenderer.message(for: error)
       }
     }
 
@@ -700,7 +709,7 @@
               settings.duration = ceil(route.minimumDuration)
             }
           } catch {
-            journeyProblem = error.localizedDescription
+            journeyProblem = MovieRenderer.message(for: error)
           }
         })
     }
@@ -712,11 +721,11 @@
 
     private func overviewScaleDescription(_ logScale: Double) -> String {
       if logScale >= 0 { return ZoomFormat.string(logScale: logScale) }
-      return "\(ZoomFormat.string(logScale: -logScale)) wider"
+      return String(localized: "\(ZoomFormat.string(logScale: -logScale)) wider")
     }
 
     private func seconds(_ value: Double) -> String {
-      "\(Int(ceil(value))) s"
+      String(localized: "\(Int(ceil(value))) s")
     }
 
     /// A deliberately coarse local estimate, not a promise about a particular
@@ -724,7 +733,8 @@
     /// every output view exactly rather than resampling keyframes.
     private var estimatedFileSize: String {
       let bytes = Int64(MovieSettings.estimatedBytes(settings))
-      return "About " + ByteCountFormatter.string(fromByteCount: bytes, countStyle: .file)
+      let size = ByteCountFormatter.string(fromByteCount: bytes, countStyle: .file)
+      return String(localized: "About \(size)")
     }
 
     private var estimatedRenderTime: String {
@@ -735,7 +745,7 @@
       } else {
         units = Double(settings.frameCount) * 0.11
       }
-      return "about \(seconds(max(1, units * pixelFactor))) on this Mac"
+      return String(localized: "About \(seconds(max(1, units * pixelFactor))) on this Mac")
     }
   }
 

@@ -4,8 +4,19 @@ struct AcknowledgementsView: View {
   private var notice: String {
     guard let url = Bundle.main.url(forResource: "LICENSE", withExtension: "md"),
       let text = try? String(contentsOf: url, encoding: .utf8)
-    else { return "The bundled BigInt licence notice could not be loaded." }
-    return text
+    else { return String(localized: "The bundled BigInt licence notice could not be loaded.") }
+    return Self.reflowed(text)
+  }
+  /// The licence file is wrapped at 80 columns for a terminal; on a screen of
+  /// any other width those breaks land mid-line.  Paragraphs are rejoined for
+  /// display, and the file itself stays exactly as the licence was issued.
+  static func reflowed(_ text: String) -> String {
+    text.components(separatedBy: "\n\n")
+      .map { paragraph in
+        paragraph.split(separator: "\n").map { $0.trimmingCharacters(in: .whitespaces) }
+          .joined(separator: " ")
+      }
+      .joined(separator: "\n\n")
   }
   var body: some View {
     ScrollView {

@@ -52,7 +52,7 @@ import Foundation
       } catch {
         try? FileManager.default.removeItem(at: destination)
         guard request == self.request else { return }
-        self.error = error.localizedDescription
+        self.error = MovieRenderer.message(for: error)
         self.isRendering = false
       }
     }

@@ -7,27 +7,27 @@ enum ExplorerCommand: String, CaseIterable, Identifiable {
   var id: String { rawValue }
   var title: String {
     switch self {
-    case .reset: return "Reset View"
-    case .zoomIn: return "Zoom In"
-    case .zoomOut: return "Zoom Out"
-    case .left: return "Move Left"
-    case .right: return "Move Right"
-    case .up: return "Move Up"
-    case .down: return "Move Down"
-    case .increaseIterations: return "Increase Detail"
-    case .decreaseIterations: return "Decrease Detail"
-    case .rotateLeft: return "Rotate Left"
-    case .rotateRight: return "Rotate Right"
-    case .resetRotation: return "Upright"
-    case .back: return "Back"
-    case .forward: return "Forward"
-    case .places: return "Places"
-    case .bookmark: return "Bookmark This View"
-    case .julia: return "Julia Companion"
-    case .swapJulia: return "Swap Main and Companion"
-    case .movie: return "Zoom Movie…"
-    case .benchmark: return "Benchmarks"
-    case .help: return "Controls"
+    case .reset: return String(localized: "Reset View")
+    case .zoomIn: return String(localized: "Zoom In")
+    case .zoomOut: return String(localized: "Zoom Out")
+    case .left: return String(localized: "Move Left")
+    case .right: return String(localized: "Move Right")
+    case .up: return String(localized: "Move Up")
+    case .down: return String(localized: "Move Down")
+    case .increaseIterations: return String(localized: "Increase Detail")
+    case .decreaseIterations: return String(localized: "Decrease Detail")
+    case .rotateLeft: return String(localized: "Rotate Left")
+    case .rotateRight: return String(localized: "Rotate Right")
+    case .resetRotation: return String(localized: "Upright")
+    case .back: return String(localized: "Back")
+    case .forward: return String(localized: "Forward")
+    case .places: return String(localized: "Places")
+    case .bookmark: return String(localized: "Bookmark This View")
+    case .julia: return String(localized: "Julia Companion")
+    case .swapJulia: return String(localized: "Swap Main and Companion")
+    case .movie: return String(localized: "Zoom Movie…")
+    case .benchmark: return String(localized: "Benchmarks")
+    case .help: return String(localized: "Controls")
     }
   }
   var key: KeyEquivalent {

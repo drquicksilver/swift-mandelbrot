@@ -71,7 +71,7 @@ struct PlacesView: View {
         dismiss()
       } label: {
         VStack(alignment: .leading) {
-          Text(place.name.isEmpty ? "Untitled" : place.name)
+          Text(place.name.isEmpty ? String(localized: "Untitled") : place.name)
           Text("\(place.zoomDescription) · \(place.palette.title)")
             .font(.caption).foregroundStyle(.secondary)
         }

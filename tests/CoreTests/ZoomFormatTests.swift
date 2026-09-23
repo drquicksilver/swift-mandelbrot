@@ -41,3 +41,17 @@ private let english = Locale(identifier: "en_GB")
   let elsewhere = Location(real: "-0.2", imag: "-0.7", scale: "50")
   #expect(elsewhere.suggestedName.hasPrefix("-0.2 − 0.7i · "))
 }
+
+@Test func journeysAreDescribedByTheirPlaces() throws {
+  let here = Location(real: "0.2821", imag: "0.01", scale: "2e3")
+  let nested = try Journey.planned(start: Location.gallery[0], end: here)
+  #expect(nested.description() == "Zoom from The whole set into this view.")
+  #expect(nested.summary == "A single zoom")
+  let apart = try Journey.planned(start: Location.gallery[1], end: here)
+  #expect(apart.summary == "3 parts")
+  #expect(
+    apart.segments.map { apart.title(of: $0) } == [
+      "Out from Seahorse Valley", "Across to this view", "In to this view",
+    ])
+  #expect(!apart.description().contains("starting view"))
+}

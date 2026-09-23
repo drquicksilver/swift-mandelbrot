@@ -23,7 +23,7 @@ struct HelpView: View {
             Label(line.text, systemImage: line.icon)
           }
         }
-        Section {
+        Section("As you explore") {
           ForEach(HelpContent.behaviour) { line in
             Label(line.text, systemImage: line.icon)
           }

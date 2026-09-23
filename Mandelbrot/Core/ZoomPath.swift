@@ -24,7 +24,7 @@ struct ZoomPath: Sendable {
     let from = try start.viewport()
     let to = try end.viewport()
     guard to.logScale > from.logScale + 0.5 else {
-      throw PrecisionError("A zoom movie needs at least half a zoom level of travel")
+      throw PrecisionError(String(localized: "Zoom in further than the starting place."))
     }
     self.start = start
     self.end = end

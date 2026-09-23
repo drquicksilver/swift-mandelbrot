@@ -236,6 +236,13 @@ import SwiftUI
     guard showJulia, !juliaSwapped else { return nil }
     return viewport.screen(for: juliaC, in: size)
   }
+  /// The crosshair's point as a person reads it: −0.7436 + 0.1318i.
+  var juliaPoint: String {
+    let digits = FloatingPointFormatStyle<Double>.number.precision(.fractionLength(4))
+    let real = Double(juliaC.x).formatted(digits).replacingOccurrences(of: "-", with: "−")
+    let sign = juliaC.y < 0 ? "−" : "+"
+    return "\(real) \(sign) \(abs(Double(juliaC.y)).formatted(digits))i"
+  }
   /// How near the pointer has to be, in points, to take hold of the marker.
   static let markerGrabRadius = 22.0
   func isOnJuliaMarker(_ point: CGPoint) -> Bool {
@@ -385,7 +392,7 @@ import SwiftUI
   /// Moves to a location: the view, its rotation, its palette and its detail.
   func apply(_ location: Location, record: Bool = true) {
     guard let view = try? location.viewport() else {
-      locationError = "That location could not be opened."
+      locationError = ExplorerModel.unopenableLink
       return
     }
     // Jumping somewhere always records where it came from, however near it is,
@@ -420,9 +427,13 @@ import SwiftUI
     do {
       apply(try Location(url: url))
     } catch {
-      locationError = String(describing: error)
+      // The parser's reason is for the code; a person needs to know the link
+      // did nothing, and that the view they had is still there.
+      locationError = ExplorerModel.unopenableLink
     }
   }
+  static let unopenableLink = String(
+    localized: "That link isn’t a complete Mandelbrot place, so it couldn’t be opened.")
   func bookmarkCurrentView(named name: String? = nil) {
     var place = location
     let typed = name?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
@@ -730,7 +741,11 @@ import SwiftUI
     guard isActive else { return }
     requestRedraw()
     if renderer.isGPU {
-      error = GPUContext.shared == nil ? "Metal is unavailable." : nil
+      error =
+        GPUContext.shared == nil
+        ? String(
+          localized: "This device’s graphics processor isn’t available, so the set can’t be drawn.")
+        : nil
       return
     }
     tiles.cancel()
@@ -755,7 +770,8 @@ import SwiftUI
           self.imageViewport = view
           self.error = nil
         } else {
-          self.error = "The renderer is unavailable."
+          self.error = String(
+            localized: "The set couldn’t be drawn. Try again, or restart the app.")
         }
         self.progress = block == 1 ? 1 : 0.5
       }

@@ -86,7 +86,8 @@ struct Journey: Sendable {
       from.logScale != to.logScale || from.preciseCenter != to.preciseCenter
         || from.angle != to.angle
     else {
-      throw PrecisionError("A journey needs two different views")
+      throw PrecisionError(
+        String(localized: "The starting place is this view, so there is nowhere to go."))
     }
 
     if contains(from, to, aspectRatio: aspectRatio), to.logScale > from.logScale + 0.5 {
@@ -218,8 +219,45 @@ struct Journey: Sendable {
   }
 
   func description() -> String {
-    if isDirectDescent { return "Zoom from \(start.label) into \(end.label)." }
-    return "Zoom out from \(start.label), travel across the set, then descend to \(end.label)."
+    if isDirectDescent { return String(localized: "Zoom from \(label(start)) into \(label(end)).") }
+    return String(
+      localized:
+        "Zoom out from \(label(start)), travel across the set, then zoom in to \(label(end)).")
+  }
+
+  /// How big the journey is, in words: a single zoom, or so many parts.
+  var summary: String {
+    if isDirectDescent { return String(localized: "A single zoom") }
+    return segments.count == 1
+      ? String(localized: "1 part") : String(localized: "\(segments.count) parts")
+  }
+
+  /// A part of the journey named by its ends, “Seahorse Valley to the
+  /// overview”, rather than by the kind of move it makes.
+  func title(of segment: Segment) -> String {
+    switch segment.kind {
+    case .hold: return String(localized: "Hold on \(label(segment.from))")
+    case .travel: return String(localized: "Across to \(label(end))")
+    case .zoom:
+      let outward =
+        (try? segment.to.viewport().logScale < segment.from.viewport().logScale) ?? false
+      return outward
+        ? String(localized: "Out from \(label(segment.from))")
+        : String(localized: "In to \(label(segment.to))")
+    }
+  }
+
+  /// A named place by its name; the destination, which the app always takes
+  /// from the view on screen, as “this view”; anything else by what it is.
+  private func label(_ location: Location) -> String {
+    let overview = String(localized: "the overview")
+    if location.id == end.id {
+      return location.name.isEmpty ? String(localized: "this view") : location.name
+    }
+    if location.name.isEmpty {
+      return location.id == start.id ? String(localized: "the starting place") : overview
+    }
+    return location.name == "Overview" ? overview : location.name
   }
 
   private static func contains(_ outer: Viewport, _ inner: Viewport, aspectRatio: Double) -> Bool {
@@ -303,8 +341,4 @@ extension Journey {
     let t = min(1, max(0, time))
     return t * t * (3 - 2 * t)
   }
-}
-
-extension Location {
-  fileprivate var label: String { name.isEmpty ? "the starting view" : name }
 }

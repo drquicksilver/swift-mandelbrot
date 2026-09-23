@@ -38,8 +38,10 @@ struct MovieView: View {
             }
           }
           LabeledContent("To", value: "This view, \(end.zoomDescription)")
-          if let levels = try? ZoomPath(start: start, end: end).keyframeLevels.count {
-            LabeledContent("Keyframes", value: "\(levels)")
+          if (try? ZoomPath(start: start, end: end)) != nil,
+            let journey = try? Journey.planned(start: start, end: end)
+          {
+            Text(journey.description()).font(.caption).foregroundStyle(.secondary)
           } else {
             Text("Zoom in further than the starting place.").foregroundStyle(.secondary)
           }
@@ -81,7 +83,7 @@ struct MovieView: View {
             }
             Button("Cancel", role: .destructive) { movies.cancel() }
           } else {
-            Button("Render movie") { render() }
+            Button("Render Movie") { render() }
           }
           if let error = movies.error ?? problem {
             Text(error).font(.caption).foregroundStyle(.red)
@@ -92,7 +94,7 @@ struct MovieView: View {
               .frame(height: 220)
               .clipShape(RoundedRectangle(cornerRadius: 8))
             HStack {
-              ShareLink("Share movie", item: output)
+              ShareLink("Share Movie", item: output)
               #if os(macOS)
                 Button("Reveal in Finder") { library.reveal(output) }
               #endif
@@ -149,7 +151,7 @@ struct MovieView: View {
       model.movies.start(
         path: path, settings: settings, colouring: model.colouring, to: url)
     } catch {
-      problem = error.localizedDescription
+      problem = MovieRenderer.message(for: error)
     }
   }
 }
@@ -170,11 +172,11 @@ struct MovieView: View {
   #Preview("Rendering") {
     MovieView(
       model: previewModel(),
-      movies: .posed(progress: 0.42, stage: "Keyframe 6 of 13"))
+      movies: .posed(progress: 0.42, stage: "Zoom level 6 of 13"))
   }
 
   #Preview("Failed") {
-    MovieView(model: previewModel(), movies: .posed(failure: "The movie writer rejected its input"))
+    MovieView(model: previewModel(), movies: .posed(failure: MovieRenderer.writeFailure))
   }
 
   #Preview("Finished") {

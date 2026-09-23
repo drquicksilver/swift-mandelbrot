@@ -80,21 +80,25 @@ struct CompanionPanel: View {
         CompanionInput(model: model)
         Text(
           model.juliaSwapped
-            ? "Mandelbrot"
-            : String(format: "Julia c = %.4f%+.4fi", model.juliaC.x, model.juliaC.y)
+            ? "Mandelbrot set" : "Julia set for \(model.juliaPoint)" as LocalizedStringKey
         )
         .font(.caption2.monospacedDigit()).padding(6)
         .background(.regularMaterial, in: Capsule()).padding(6)
         .allowsHitTesting(false)
         HStack(spacing: 4) {
-          panelButton("Swap with the main view", icon: "arrow.left.arrow.right.square") {
+          panelButton(
+            String(localized: "Swap with the main view"), icon: "arrow.left.arrow.right.square"
+          ) {
             model.swapJulia()
           }
           panelButton(
-            model.juliaPinned ? "Let c follow the pointer again" : "Pin c where it is",
+            model.juliaPinned
+              ? CompanionPanel.unpin : String(localized: "Pin the crosshair where it is"),
             icon: model.juliaPinned ? "pin.fill" : "pin"
           ) { model.toggleJuliaPin() }
-          panelButton("Reset the companion's view", icon: "arrow.counterclockwise") {
+          panelButton(
+            String(localized: "Reset the companion’s view"), icon: "arrow.counterclockwise"
+          ) {
             model.resetPanel()
           }
         }
@@ -105,8 +109,14 @@ struct CompanionPanel: View {
       .onChange(of: geometry.size) { _, size in model.panelSize = size }
     }
     .accessibilityIdentifier("companionPanel")
-    .accessibilityLabel(model.juliaSwapped ? "Mandelbrot companion" : "Julia companion")
+    .accessibilityLabel(
+      model.juliaSwapped ? Text("Mandelbrot companion") : Text("Julia companion"))
   }
+  #if os(macOS)
+    static let unpin = String(localized: "Let the crosshair follow the pointer again")
+  #else
+    static let unpin = String(localized: "Let the crosshair follow your finger again")
+  #endif
   private func panelButton(_ title: String, icon: String, action: @escaping () -> Void)
     -> some View
   {

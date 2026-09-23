@@ -166,7 +166,7 @@ struct MovieCounts: Equatable, Sendable {
     func keyframe(_ index: Int) async throws -> MTLTexture {
       if let existing = keyframes[index] { return existing }
       let level = path.keyframeLevels[index]
-      stage = "Keyframe \(index + 1) of \(path.keyframeLevels.count)"
+      stage = String(localized: "Zoom level \(index + 1) of \(path.keyframeLevels.count)")
       counts.keyframes = path.keyframeLevels.count
       counts.keyframe = index + 1
       counts.onKeyframe = true
@@ -268,7 +268,7 @@ struct MovieCounts: Equatable, Sendable {
           writer.error.map(\.localizedDescription) ?? "A movie frame was rejected")
       }
       progress = Double(frame + 1) / Double(frames)
-      stage = "Frame \(frame + 1) of \(frames)"
+      stage = String(localized: "Frame \(frame + 1) of \(frames)")
       counts.frame = frame + 1
       counts.frames = frames
     }
@@ -371,7 +371,7 @@ struct MovieCounts: Equatable, Sendable {
       counts = MovieCounts(
         frame: frame, frames: frames, keyframe: frame + 1, keyframes: frames,
         onKeyframe: true)
-      stage = "Journey frame \(frame + 1) of \(frames)"
+      stage = String(localized: "Frame \(frame + 1) of \(frames)")
       tiles.update(
         viewport: view, size: size, pixelWidth: size.width, iterations: limit, override: nil,
         colouring: frameColouring)
@@ -433,7 +433,7 @@ struct MovieCounts: Equatable, Sendable {
     var stops: [MovieColourSchedule.Stop] = []
     for index in 0..<probes {
       try Task.checkCancellation()
-      stage = "Analysing colour (index + 1) of (probes)"
+      stage = String(localized: "Analysing colours \(index + 1) of \(probes)")
       let time = Double(index) / Double(probes - 1)
       let view = try journey.viewport(at: time, duration: settings.duration, eased: settings.eased)
       let limit = journey.end.iterations ?? IterationPolicy.estimate(logScale: view.logScale)
@@ -464,9 +464,7 @@ struct MovieCounts: Equatable, Sendable {
         try? FileManager.default.removeItem(at: url)
         self.error = nil
       } catch {
-        // `String(describing:)` prints a whole NSError -- domain, code, nested
-        // userInfo -- where the sentence people can act on is one field of it.
-        self.error = error.localizedDescription
+        self.error = Self.message(for: error)
       }
     }
   }
@@ -482,9 +480,38 @@ struct MovieCounts: Equatable, Sendable {
         try? FileManager.default.removeItem(at: url)
         self.error = nil
       } catch {
-        self.error = error.localizedDescription
+        self.error = Self.message(for: error)
       }
     }
+  }
+
+  static let writeFailure =
+    String(
+      localized: "The movie couldn’t be written. Check there is room on the disk, then try again.")
+
+  /// What a person is told when a render fails: what happened and what to do
+  /// about it, never the thrown text, which is written for the code.  A
+  /// journey's own errors are already sentences and pass through.
+  static func message(for error: Error) -> String {
+    if let error = error as? PrecisionError { return error.description }
+    let nsError = error as NSError
+    if nsError.domain == NSCocoaErrorDomain,
+      [NSFileWriteNoPermissionError, NSFileWriteVolumeReadOnlyError].contains(nsError.code)
+    {
+      return String(
+        localized:
+          "The movie couldn’t be saved in that folder. Choose another folder, then try again.")
+    }
+    let text = String(describing: error)
+    if text.contains("GPU") {
+      return String(
+        localized: "The graphics processor isn’t available, so the movie couldn’t be rendered.")
+    }
+    if text.contains("pixel buffers") {
+      return String(
+        localized: "The movie ran out of memory. Try a lower resolution, then try again.")
+    }
+    return writeFailure
   }
 }
 

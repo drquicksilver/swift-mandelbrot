@@ -63,9 +63,11 @@ extension Location {
       return widths < 2 ? (place.name, widths) : nil
     }
     if let nearest = nearby.min(by: { $0.1 < $1.1 }) {
-      return "Near \(nearest.0) · \(zoom)"
+      return String(localized: "Near \(nearest.0) · \(zoom)")
     }
-    if let view = try? viewport(), view.logScale < 1 { return "The whole set · \(zoom)" }
+    if let view = try? viewport(), view.logScale < 1 {
+      return String(localized: "The whole set · \(zoom)")
+    }
     let digits = FloatingPointFormatStyle<Double>.number.precision(.significantDigits(1...4))
     let sign = y < 0 ? "−" : "+"
     return "\(x.formatted(digits)) \(sign) \(abs(y).formatted(digits))i · \(zoom)"

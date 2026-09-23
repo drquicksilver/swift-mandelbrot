@@ -60,7 +60,7 @@ struct ContentView: View {
       }
       RotationCompass(model: model)
       if model.atPrecisionLimit {
-        Text("Maximum detail reached").font(.caption).padding(10)
+        Text("Deepest zoom reached").font(.caption).padding(10)
           .background(.regularMaterial, in: Capsule()).frame(
             maxWidth: .infinity, maxHeight: .infinity, alignment: .top
           )
@@ -232,7 +232,7 @@ struct TileHUD: View {
       Text("\(store.statistics.cacheHits) hits · \(store.statistics.evictions) evictions")
       if let error = store.error {
         Text(error).foregroundStyle(.red)
-        Button("Retry rendering") { store.retryFailedWork() }
+        Button("Try Again") { store.retryFailedWork() }
       }
     }.font(.caption.monospacedDigit()).padding().background(
       .regularMaterial, in: RoundedRectangle(cornerRadius: 12)
@@ -243,10 +243,11 @@ struct TileHUD: View {
 struct TileFailureNotice: View {
   @ObservedObject var store: TileStore
   var body: some View {
-    if let error = store.error {
+    // The store's error is for the performance HUD; this is for everyone.
+    if store.error != nil {
       VStack {
-        Text(error)
-        Button("Retry rendering") { store.retryFailedWork() }
+        Text("Part of this view couldn’t be drawn.")
+        Button("Try Again") { store.retryFailedWork() }
       }.padding().background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12))
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomLeading).padding()
     }

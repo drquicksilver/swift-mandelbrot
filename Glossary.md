@@ -30,5 +30,6 @@ Words that belong only in the developer panel and the benchmark report:
 perturbation, FloatFloat, Double, BLA, reference orbit, tile, level, kernel.
 
 Platform words: **click** and **pointer** on the Mac, **tap** and **finger** on
-iPhone and iPad. Shared copy that names an input goes through `PlatformWords`
-rather than choosing one.
+iPhone and iPad. Copy that names an input is written as a whole sentence per
+platform under `#if os(macOS)`, as `HelpContent` does, never spliced together
+from a platform word, so each sentence can be translated whole.
