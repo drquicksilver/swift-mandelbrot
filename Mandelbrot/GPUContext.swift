@@ -62,7 +62,6 @@ final class GPUContext: @unchecked Sendable {
   let samplePipeline: MTLComputePipelineState
   let perturbPipeline: MTLComputePipelineState
   let resumePipeline: MTLComputePipelineState
-  let mipPipeline: MTLComputePipelineState
   let colourPipeline: MTLComputePipelineState
   let juliaPipeline: MTLComputePipelineState
   let imagePipeline: MTLRenderPipelineState
@@ -95,8 +94,6 @@ final class GPUContext: @unchecked Sendable {
       function: library.makeFunction(name: "perturbTile")!)
     resumePipeline = try device.makeComputePipelineState(
       function: library.makeFunction(name: "resumeTile")!)
-    mipPipeline = try device.makeComputePipelineState(
-      function: library.makeFunction(name: "averageChildren")!)
     juliaPipeline = try device.makeComputePipelineState(
       function: library.makeFunction(name: "renderJulia")!)
     colourPipeline = try device.makeComputePipelineState(
@@ -267,20 +264,6 @@ final class GPUContext: @unchecked Sendable {
       UnsafeBufferPointer(
         start: buffer.contents().assumingMemoryBound(to: UInt32.self),
         count: EscapedHistogram.binCount))
-  }
-  func average(children: [MTLTexture], parent: MTLTexture) async throws -> MTLTexture {
-    precondition(children.count == 4)
-    let output = try texture(width: 258, height: 258, format: .rgba8Unorm)
-    guard let command = computeQueue.makeCommandBuffer(),
-      let encoder = command.makeComputeCommandEncoder()
-    else { throw GPUFailure("GPU queue unavailable") }
-    for (index, child) in children.enumerated() { encoder.setTexture(child, index: index) }
-    encoder.setTexture(parent, index: 4)
-    encoder.setTexture(output, index: 5)
-    dispatch(encoder, pipeline: mipPipeline, width: 258, height: 258)
-    encoder.endEncoding()
-    _ = try await submit(command)
-    return output
   }
   func paletteTexture(_ palette: Palette) throws -> MTLTexture { palettes[palette]! }
   private static func makePaletteTexture(_ palette: Palette, device: MTLDevice) throws -> MTLTexture

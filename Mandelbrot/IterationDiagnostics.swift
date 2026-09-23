@@ -17,21 +17,14 @@
       try await store.waitUntilReady()
       let old = store.records
       let sampled = store.statistics.sampledPixels
-      let recolours = store.statistics.recolours
-      // Only the records that can differ are repainted: at the lower limit that
-      // is exactly those holding a count at or above it.
-      let changeable = (Array(store.records.values) + store.fallback).filter {
-        $0.maximumEscaped >= 100
-      }.count
-      let repaints = store.statistics.recolouredRecords
+      // The compositor marks counts at or above the limit as capped as it
+      // draws, so a lower limit changes no record: it must draw exactly as a
+      // fresh render at that limit does.
+      try require(
+        (Array(store.records.values) + store.fallback).contains { $0.maximumEscaped >= 100 },
+        "The decrease check found nothing that could change")
       update(store, 100)
       try await store.waitUntilReady()
-      try require(store.statistics.recolours == recolours + 1, "Decrease did not recolour")
-      try require(changeable > 0, "The decrease check found nothing that could change")
-      try require(
-        store.statistics.recolouredRecords - repaints == changeable,
-        "A decrease repainted \(store.statistics.recolouredRecords - repaints) records, "
-          + "not the \(changeable) that can change")
       try require(store.statistics.sampledPixels == sampled, "Decreasing limit recomputed samples")
       for (key, record) in old {
         try require(store.records[key] === record, "Decrease discarded a cached record")
@@ -47,14 +40,11 @@
         TileCompositor.snapshot(
           store: fresh, viewport: view, width: 256, height: 192,
           now: ProcessInfo.processInfo.systemUptime + 1))
-      try require(a == b, "Recolouring at a lower cap differs from a fresh render")
+      try require(a == b, "A lower cap draws differently from a fresh render")
       update(store, 400)
       try await store.waitUntilReady()
       try require(
         store.statistics.sampledPixels == sampled, "Returning to cached limit recomputed samples")
-      try require(
-        store.statistics.recolours == recolours + 2,
-        "Raising past counts coloured as capped did not recolour")
       var before: [TileKey: Data] = [:]
       for (key, record) in store.records { before[key] = try await gpu.readback(record.samples) }
       let expected = store.needed.reduce(0) { total, key in
@@ -63,9 +53,6 @@
       }
       update(store, 800)
       try await store.waitUntilReady()
-      try require(
-        store.statistics.recolours == recolours + 2,
-        "A raise that reveals no count recoloured every tile")
       let raisedFresh = TileStore()
       update(raisedFresh, 800)
       try await raisedFresh.waitUntilReady()
@@ -83,7 +70,7 @@
           store: raisedFresh, viewport: view, width: 256, height: 192,
           now: ProcessInfo.processInfo.systemUptime + 1))
       try require(
-        raised == raisedExpected, "Raising without a recolour differs from a fresh render")
+        raised == raisedExpected, "A raised limit draws differently from a fresh render")
       try require(
         expected > 0 && store.statistics.sampledPixels - sampled == expected,
         "Increase recomputed already escaped pixels, or extended nothing")
@@ -146,15 +133,7 @@
       let model = ExplorerModel()
       model.viewport = try Viewport(real: "0", imag: "1", zoom: "1e1000")
       let estimate = model.iterations
-      let repaints = model.tiles.statistics.recolouredRecords
       try await settleDepth(model, size: size)
-      // The settle lowers the limit far below every count on screen, so no
-      // record can change colour and none should be repainted.  Before the
-      // floor existed this repainted the whole cache, at depth, on every settle.
-      try require(
-        model.tiles.statistics.recolouredRecords == repaints,
-        "The ceiling settle repainted "
-          + "\(model.tiles.statistics.recolouredRecords - repaints) records for nothing")
       guard let maximum = model.tiles.visibleMaximumEscaped, let ceiling = model.ceiling else {
         throw GPUFailure("A settled deep view did not observe a ceiling")
       }

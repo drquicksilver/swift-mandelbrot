@@ -933,7 +933,34 @@ phase was the lever: dividing by the density once per pixel instead of once per
 sample took a third off. Filtering costs about 1 ms a frame at full resolution
 over 2.11's unfiltered read.
 
-The per-tile colour textures are still made, repainted on detail changes and
-averaged into mipmaps, though nothing has drawn them since 2.11. Removing them
-would save that GPU work and a third of each tile's memory; it is a
-separate change.
+## 2.11 follow-up: tiles hold only their samples
+
+Each tile also carried a colour texture, painted when the tile was made,
+repainted when the detail limit changed and box-averaged into its parent,
+though nothing had drawn one since 2.11. Removing them removed a third of each
+tile, the recolour pass, the mipmap averaging and its kernel.
+
+The planner then needed one fix. It costs tiles from a 1 MiB guess that the
+first finished tile replaces, but only upwards: with its colour copy a tile
+measured over 1 MiB, so the guess always went; without it a tile measures less,
+and the stale guess made the planner overcount the visible band and starve the
+zoom-out ladder. It now takes the measurement either way.
+
+`--test-tiles` diagnostics, same machine, before and after (three runs each
+where noisy):
+
+| Measure | Before | After |
+| --- | ---: | ---: |
+| Mac shallow view: LOD / visible tiles | 17.00 / 96 (clamped by memory) | 17.60 / 306 (as asked) |
+| Mac deep ladder | offsets to 32 | offsets to 512 |
+| Phone shallow ladder | 2 of 8 offsets | 8 of 8 |
+| Phone deep: LOD / ladder | 3331 / 5 offsets | 3332 / 7 offsets |
+| Cache bytes, cache check | 149 MB | 96 MB |
+| Cold 1e100 jump, visible ready | 805–817 ms | 782–786 ms |
+| Deep 1e1000, whole plan ready | 540–544 ms | 764–774 ms |
+
+The last row is more work, not slower work: "ready" there waits for the whole
+plan, whose zoom-out coverage grew by about a third (24 → 32 and 44 → 60 tiles
+in the deep coverage runs), while the visible band itself arrived slightly
+sooner. The same memory now buys a level more detail where the budget was
+binding, and a fuller zoom-out ladder everywhere.

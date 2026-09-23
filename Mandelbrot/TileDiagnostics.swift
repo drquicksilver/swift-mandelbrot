@@ -188,61 +188,6 @@
         try require(expected == actual, "Resuming \(renderer.rawValue) changed sample values")
       }
     }
-    static func checkMipmaps(_ gpu: GPUContext) async throws {
-      var children: [MTLTexture] = []
-      var inputs: [[UInt8]] = []
-      for quadrant in 0..<4 {
-        let descriptor = MTLTextureDescriptor.texture2DDescriptor(
-          pixelFormat: .rgba8Unorm, width: 258, height: 258, mipmapped: false)
-        descriptor.storageMode = .shared
-        descriptor.usage = .shaderRead
-        let texture = gpu.device.makeTexture(descriptor: descriptor)!
-        var bytes = [UInt8](repeating: 255, count: 258 * 258 * 4)
-        for y in 0..<258 {
-          for x in 0..<258 {
-            let offset = (y * 258 + x) * 4
-            bytes[offset] = UInt8((x * 7 + quadrant * 29) % 256)
-            bytes[offset + 1] = UInt8((y * 3 + quadrant * 43) % 256)
-            bytes[offset + 2] = UInt8((x + y + quadrant * 61) % 256)
-          }
-        }
-        bytes.withUnsafeBytes {
-          texture.replace(
-            region: MTLRegionMake2D(0, 0, 258, 258), mipmapLevel: 0, withBytes: $0.baseAddress!,
-            bytesPerRow: 258 * 4)
-        }
-        children.append(texture)
-        inputs.append(bytes)
-      }
-      let result = try await gpu.average(children: children, parent: children[0])
-      let bytes = try await gpu.readback(result)
-      for y in 0..<258 {
-        for x in 0..<258 {
-          for channel in 0..<4 {
-            let offset = (y * 258 + x) * 4 + channel
-            if x == 0 || y == 0 || x == 257 || y == 257 {
-              try require(bytes[offset] == inputs[0][offset], "Mipmap changed the sampled gutter")
-            } else {
-              let cx = (x - 1) * 2
-              let cy = (y - 1) * 2
-              let q = cx / 256 + cy / 256 * 2
-              let ix = cx % 256 + 1
-              let iy = cy % 256 + 1
-              let values = [
-                inputs[q][(iy * 258 + ix) * 4 + channel],
-                inputs[q][(iy * 258 + ix + 1) * 4 + channel],
-                inputs[q][((iy + 1) * 258 + ix) * 4 + channel],
-                inputs[q][((iy + 1) * 258 + ix + 1) * 4 + channel],
-              ]
-              let expected = Double(values.reduce(0) { $0 + Int($1) }) / 4
-              try require(
-                abs(Double(bytes[offset]) - expected) <= 0.51,
-                "Parent is not the box average of its children")
-            }
-          }
-        }
-      }
-    }
     static func checkCache() async throws -> [String: Double] {
       // Keep complete prefetched sibling groups resident with eight-byte raw samples.
       // Separate constrained-cache checks below still exercise LOD reduction and eviction.
@@ -254,24 +199,22 @@
         colouring: ColourSettings(), zoomDirection: 1)
       try await store.waitUntilReady()
       try require(store.statistics.prefetched > 0, "Zoom direction did not prefetch")
-      try require(store.statistics.mipmaps > 0, "Complete children did not build parent mipmaps")
-      let mipSamples = store.records.mapValues { $0.samples }
-      let mipCount = store.statistics.mipmaps
+      let samples = store.records.mapValues { $0.samples }
       let computed = store.statistics.computed
       store.update(
         viewport: view, size: size, pixelWidth: 256, iterations: 200, override: nil,
         colouring: ColourSettings(palette: .ice))
       try await store.waitUntilReady()
       // Since 2.11 a palette is applied as the compositor draws, so changing
-      // it neither samples nor repaints anything in the cache.
-      try require(
-        store.statistics.computed == computed && store.statistics.mipmaps == mipCount,
-        "A palette change sampled or repainted the cache")
-      for (key, samples) in mipSamples {
+      // it samples nothing and leaves every record as it was.
+      try require(store.statistics.computed == computed, "A palette change sampled the cache")
+      for (key, samples) in samples {
         try require(
           store.records[key]?.samples === samples, "Palette change replaced authoritative raw data")
       }
-      for step in 1...12 {
+      // Far enough to fill the budget: samples-only tiles (since the colour
+      // copies went) fit about half as many again as twelve views needed.
+      for step in 1...24 {
         view.center.x = -0.5 + Double(step) * 2
         store.update(
           viewport: view, size: size, pixelWidth: 256, iterations: 200, override: nil,
@@ -335,7 +278,6 @@
         "deepRefinementMS": deepMS, "deepLongestBatchMS": deep.statistics.longestBatchMS,
         "deepResidentBytes": Double(deep.statistics.bytes),
         "cacheEvictions": Double(store.statistics.evictions),
-        "cacheMipmaps": Double(store.statistics.mipmaps),
         "cachePrefetched": Double(store.statistics.prefetched),
       ]
     }
@@ -534,13 +476,13 @@
         !store.hasActiveFades(now: ProcessInfo.processInfo.systemUptime + 1),
         "Settled tiles keep drawing alive")
       // Since 2.11 the compositor colours from the samples, so a palette is a
-      // display setting: the cache is not repainted, and the store has nothing
-      // to announce.  The model's own redraw is what shows the new palette.
-      let recolours = store.statistics.recolours
+      // display setting: the cache is untouched, and the store has nothing to
+      // announce.  The model's own redraw is what shows the new palette.
+      let computed = store.statistics.computed
       update(.fire)
       try await store.waitUntilReady()
       try require(store.colouring.palette == .fire, "The compositor was not given the palette")
-      try require(store.statistics.recolours == recolours, "A palette change repainted the cache")
+      try require(store.statistics.computed == computed, "A palette change sampled the cache")
       try require(notifications == initial, "A palette change scheduled tile work")
       let model = ExplorerModel()
       let requests = model.redrawRequests
@@ -852,7 +794,9 @@
           try await store.waitUntilRootCoverageReady()
           let groups = store.coverageGroups
           print(
-            "Coverage \(name): capacity \(store.coverageBudgetBytes / 1_048_576) MiB, "
+            "Coverage \(name): LOD \(String(format: "%.2f", store.lod)), "
+              + "\(store.needed.count) needed, \(store.residentBytes / 1_048_576) MiB resident, "
+              + "capacity \(store.coverageBudgetBytes / 1_048_576) MiB, "
               + groups.map {
                 "\($0.offset)→L\(store.lod.rounded(.up) - Double($0.level)):\($0.tiles)\($0.selected ? "" : "✗")"
               }
@@ -1084,7 +1028,6 @@
         try await checkRotatedComposition(gpu)
         try await checkStreamedReferences(gpu)
         try await checkResumption(gpu)
-        try await checkMipmaps(gpu)
         let cacheMetrics = try await checkCache()
         try await checkCoveragePressure()
         try await checkRootCoverageBounded()
@@ -1139,11 +1082,11 @@
           colouring: ColourSettings(palette: .fire))
         try await store.waitUntilReady()
         try require(store.statistics.computed == computed, "Changing palette recomputed samples")
-        let recoloured = try await TileCompositor.snapshot(
+        let repainted = try await TileCompositor.snapshot(
           store: store, viewport: view, width: 512, height: 320,
           now: ProcessInfo.processInfo.systemUptime + 1)
-        let colourData = try await gpu.readback(recoloured)
-        try require(colourData != beforePalette, "Palette recolouring did not change output")
+        let colourData = try await gpu.readback(repainted)
+        try require(colourData != beforePalette, "A palette change did not change the image")
         // Snapshot immediately after zooming, before the worker can refine.
         view.zoom(by: 1.7, at: CGPoint(x: 256, y: 160), in: size, pixelWidth: 512)
         store.update(

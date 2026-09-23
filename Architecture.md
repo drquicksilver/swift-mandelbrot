@@ -11,10 +11,8 @@ flowchart LR
     Input[Native gestures and commands] --> Viewport
     Viewport --> Demand[Visible tiles and ancestors]
     Demand --> Worker[Single asynchronous refinement worker]
-    Worker --> Samples[Private GPU smooth-sample textures]
-    Samples --> Colour[GPU palette lookup]
-    Colour --> Cache[Complete coloured tiles and parent mipmaps]
-    Viewport --> Compose[Per-frame Metal compositor]
+    Worker --> Cache[Sample tiles: counts and smooth corrections]
+    Viewport --> Compose[Per-frame Metal compositor, colouring as it draws]
     Cache --> Compose
     Compose --> MTKView
 ```
@@ -72,34 +70,34 @@ A terminal failure stays stopped until explicit retry or a render-generation res
 A visible error notice provides recovery even when the developer HUD is hidden.
 
 Each visible cell finds cached ancestors and blends the two nearest levels
-according to fractional LOD. New detail fades in over 125 ms. All filtering and
-level blending operates on colours, never interpolated escape counts. The debug
-overlay draws cell borders and base-level labels in the fragment shader.
-Iteration changes retain reusable records. A changed cap recolours only the
-records that can differ — those holding an escaped count at or above the lower of
-the old and new caps, since that is the only range in which capped-ness changes —
-and rebuilds colour mipmaps only above them. Increases lazily replace insufficient
+according to fractional LOD. New detail fades in over 125 ms. Since 2.11 a record
+holds only its samples, and the compositor colours them as it draws: within a
+level it colours the four samples around each point and blends the colours, then
+blends levels, so filtering never interpolates escape counts. The palette, the
+depth mapping and the cap's marking of capped counts are all draw-time uniforms,
+so none of them touches the cache. The debug overlay draws cell borders and
+base-level labels in the fragment shader.
+Iteration changes retain reusable records. Increases lazily replace insufficient
 tiles, copying escaped samples byte-for-byte and recomputing only capped pixels.
 A two-word GPU summary records capped-pixel count and maximum escaped iteration;
 fully escaped tiles satisfy any later cap. Raw samples never lose their original
 computed limit. Orbit state remains worker-local, so capped pixels currently
 restart rather than retaining multi-megabyte state for every cached tile.
 
-When all four children exist, a compute kernel averages their coloured pixels
-2×2 into the parent's interior. Its gutter remains directly sampled. Raw parent data stays authoritative. Palette changes recolour raw
-samples into replacement textures, swap the palette transaction together, and
-rebuild derived mipmaps upward. Seven immutable lookup textures are shared. This costs GPU colouring work, but no fractal
-iterations or CPU pixel conversion; changing a palette is not literally free.
+A parent draws from its own samples, at its own resolution; before 2.11 its
+colours were box averages of its children's, a mipmap that a draw-time palette
+cannot have. Seven immutable palette lookup textures are shared.
 
 ## Cache policy
 
 Budgets are 150 MiB on iOS and 500 MiB on Mac. Accounting uses Metal's allocated
-texture sizes, including colour copies and gutters, rather than assuming a tile
-is only its 256 KiB raw payload, and counts records that only a running fade still
+texture sizes, including gutters, rather than assuming a tile is only its raw
+payload, and counts records that only a running fade still
 refers to: a fade releases the record it replaced as soon as it completes, so such
 a record is either on screen or gone. Two thirds of the budget, less scratch headroom,
-are available for resident tiles; the rest covers recolouring, orbit state and
-transient replacements. This is a cache budget, not a cap on total app memory.
+are available for resident tiles; the rest covers orbit state, in-flight frames
+and headroom. (It was sized when recolouring also replaced textures in place, and
+could shrink once the phones' memory is measured.) This is a cache budget, not a cap on total app memory.
 
 Visible tiles and their two nearest ancestor levels are protected. Distant ancestors
 remain reusable LRU entries. A separate coverage pyramid reserves up to 30 MiB
@@ -109,7 +107,7 @@ work within the selected set remains coarse-first. An over-budget coverage key i
 deferred from all scheduling sets, which guarantees that the main-actor worker
 makes progress; deferred keys return as soon as a tile fits again, which is
 retried where memory eases — eviction and fallback retirement — as well as
-wherever work is driven. Coverage records are LRU-protected, can be recoloured, use their
+wherever work is driven. Coverage records are LRU-protected, use their
 own level-appropriate iteration limit and are never extended for a later detail
 limit. They are selected through a small bounds-ordered index rather than the
 ordinary 62-level ancestor walk. An
@@ -127,8 +125,8 @@ eviction churn.
 
 `make test` checks fixed Double-reference goldens, smooth samples, CLI errors,
 viewport maths and inertia. Headless Metal integration checks resumed computation
-against the full kernel byte-for-byte, actual shader blend weights, all parent
-mipmap pixels against CPU box averages, raw-texture reuse, palette invalidation,
+against the full kernel byte-for-byte, actual shader blend weights, raw-texture
+reuse, a palette change leaving the cache untouched,
 parent coverage, coverage-pyramid root fallback, long zoom-out sentinel frames,
 constrained phone-shaped coverage pressure and non-extension, prefetch,
 cancellation, LRU budgets and deep anchor rebasing.

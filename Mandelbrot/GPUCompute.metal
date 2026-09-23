@@ -310,28 +310,6 @@ kernel void resumeTile(texture2d<uint,access::read_write> out [[texture(0)]],
     out.write(escaped ? escapeSample(n,1-log2(log2(sqrt(magnitude)))) : sampleStatus(n==p.maxIterations ? sampleCapped : sampleUnfinished),point);
 }
 
-// Child ordering is top-left, top-right, bottom-left, bottom-right. Each parent
-// interior pixel is the exact box average of four coloured child pixels.
-// Keep the directly sampled gutter: neighbours may not be cached yet.
-kernel void averageChildren(texture2d<float,access::read> a [[texture(0)]],
-                            texture2d<float,access::read> b [[texture(1)]],
-                            texture2d<float,access::read> c [[texture(2)]],
-                            texture2d<float,access::read> d [[texture(3)]],
-                            texture2d<float,access::read> parent [[texture(4)]],
-                            texture2d<float,access::write> out [[texture(5)]],
-                            uint2 gid [[thread_position_in_grid]]) {
-    if(gid.x>=258 || gid.y>=258) return;
-    if(gid.x==0 || gid.y==0 || gid.x==257 || gid.y==257) { out.write(parent.read(gid),gid);return; }
-    uint2 full=(gid-1)*2,local=full%256+1;
-    uint quadrant=(full.x/256)+(full.y/256)*2;
-    float4 sum=0;
-    for(uint y=0;y<2;++y) for(uint x=0;x<2;++x) {
-        uint2 point=local+uint2(x,y);
-        switch(quadrant) { case 0:sum+=a.read(point);break;case 1:sum+=b.read(point);break;case 2:sum+=c.read(point);break;default:sum+=d.read(point); }
-    }
-    out.write(sum*0.25f,gid);
-}
-
 // Small GPU summary; no per-pixel readback in the viewer.
 kernel void summariseSamples(texture2d<uint,access::read> samples [[texture(0)]],
  device atomic_uint *summary [[buffer(0)]], uint2 pos [[thread_position_in_grid]]) {

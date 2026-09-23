@@ -13,20 +13,19 @@ struct TileStatistics: Equatable, Codable {
   var tiles = 0, bytes = 0, computed = 0, cancelled = 0, batches = 0, cacheHits = 0, evictions = 0
   var demandUpdates = 0
   var updateMS = 0.0, presentationFPS = 0.0
-  var mipmaps = 0, prefetched = 0, pending = 0, budgetBytes = 0, recolours = 0
-  /// Records actually repainted, across all recolours: a whole-cache repaint
-  /// and a repaint of nothing both count as one recolour, and differ here.
-  var recolouredRecords = 0
+  var prefetched = 0, pending = 0, budgetBytes = 0
   /// Root coverage offered for deferral, which must never happen; see
   /// `TileStore.deferCoverage`.
   var rootDeferralsRefused = 0
   var longestBatchMS = 0.0, frameMS = 0.0, frameP95MS = 0.0, frameMaxMS = 0.0
 }
+/// A tile: its samples, which are all a record holds.  The compositor colours
+/// them as it draws (2.11), so a palette, a depth mapping or a new limit never
+/// touches the cache.
 @MainActor final class TileRecord {
   let key: TileKey
   let bounds: TileBounds
   let samples: MTLTexture
-  var colour: MTLTexture
   let readyAt: Double
   let iterations: Int
   var cappedPixels = TileGrid.textureSize * TileGrid.textureSize
@@ -34,21 +33,18 @@ struct TileStatistics: Equatable, Codable {
   var maximumEscaped = 0
   var histogram = Array(repeating: UInt32(0), count: EscapedHistogram.binCount)
   var lastUsed: UInt64 = 0
-  var isMip = false
   /// Coverage tiles are deliberately retained across ordinary LRU pressure.
   var isCoverage = false
   init(
-    key: TileKey, bounds: TileBounds, samples: MTLTexture, colour: MTLTexture, readyAt: Double,
-    iterations: Int
+    key: TileKey, bounds: TileBounds, samples: MTLTexture, readyAt: Double, iterations: Int
   ) {
     self.key = key
     self.bounds = bounds
     self.samples = samples
-    self.colour = colour
     self.readyAt = readyAt
     self.iterations = iterations
   }
-  var bytes: Int { samples.allocatedSize + colour.allocatedSize }
+  var bytes: Int { samples.allocatedSize }
 }
 
 /// The single worker owns refinement and yields between bounded iteration batches.
@@ -113,8 +109,10 @@ struct TileStatistics: Equatable, Codable {
   private var referenceBytes = 0
   private var needsReferenceReset = false
   private var boundsCache: [TileKey: TileBounds] = [:]
-  // Reserve a third for transactional recolouring, one orbit-state buffer,
-  // mip replacements and the two in-flight display frames.
+  // Reserve a third for one orbit-state buffer, the two in-flight display
+  // frames and headroom.  It was sized when recolouring and colour mipmaps
+  // also replaced textures in place; with those gone it could shrink, once
+  // the phones' memory has been measured (2.15).
   /// Diagnostics only: measures the visible view with and without a pyramid.
   var coverageEnabled = true
   /// Diagnostics only: stands in for deep reference storage squeezing memory.
@@ -152,10 +150,6 @@ struct TileStatistics: Equatable, Codable {
   }
   private var tick: UInt64 = 0
   private var counters = TileStatistics()
-  private var needsRecolour = false
-  /// The lowest `maximumEscaped` a record must hold for a pending recolour to
-  /// change it; zero repaints every record, as a palette change must.
-  private var recolourFloor = 0
   private var suspended = false
   private var lastFramePublish = 0.0
   private var frameTimes: [Double] = []
@@ -411,29 +405,10 @@ struct TileStatistics: Equatable, Codable {
         record.lastUsed = tick
       }
     }
-    // Colours depend on counts, and on the limit only to mark counts at or above
-    // it as capped.  Moving the limit between L1 and L2 therefore changes a
-    // pixel only if its count lies between them, so a record can only change
-    // colour if it holds a count at or above the lower of the two.  This is
-    // symmetric: the observed ceiling lowers the limit on every settle at depth,
-    // where nothing holds counts that high and nothing can change.
-    let floor = min(previousLimit, iterations)
-    let limitChangesColour =
-      iterations != previousLimit
-      && (records.values.contains { $0.maximumEscaped >= floor }
-        || fallback.contains { $0.maximumEscaped >= floor })
+    // Colour is applied from the samples as the compositor draws, so the
+    // palette, the depth mapping and the limit's capped marking are display
+    // uniforms: none of them touches a record or cancels tile production.
     self.colouring = colouring
-    // Colour is now applied from sample records in the compositor. Changing a
-    // depth-only mapping is a display uniform, never a cache-wide re-shade or
-    // a reason to cancel tile production.
-    if limitChangesColour {
-      // A limit change repaints only records that can differ. A pending
-      // recolour keeps the wider floor.
-      recolourFloor = needsRecolour ? min(recolourFloor, floor) : floor
-      needsRecolour = true
-      generation &+= 1
-      worker?.cancel()
-    }
     evict(reserving: 0)
     startWorker()
   }
@@ -906,62 +881,10 @@ struct TileStatistics: Equatable, Codable {
       return now - record.readyAt < TilePresentation.fadeDuration
     }
   }
-  private func recolour(_ gpu: GPUContext, generation: UInt64) async throws {
-    let settings = colouring
-    let limit = iterations
-    // Only the records whose colour can actually differ; see the floor's own
-    // comment in `update`.  Each one costs a fresh 258x258 texture and a
-    // dispatch that is awaited, so this is the difference between repainting
-    // the cache and repainting nothing.
-    let floor = recolourFloor
-    let all = (Array(records.values) + fallback).filter { $0.maximumEscaped >= floor }
-    var replacements: [(TileRecord, MTLTexture)] = []
-    for record in all {
-      try Task.checkCancellation()
-      let colour = try gpu.texture(width: 258, height: 258, format: .rgba8Unorm)
-      _ = try await gpu.colour(record.samples, into: colour, settings: settings, iterations: limit)
-      replacements.append((record, colour))
-    }
-    try Task.checkCancellation()
-    guard self.generation == generation else { throw CancellationError() }
-    for (record, colour) in replacements {
-      record.colour = colour
-      record.isMip = false
-    }
-    needsRecolour = false
-    recolourFloor = 0
-    counters.recolours += 1
-    counters.recolouredRecords += replacements.count
-    onContentChange?()
-    // Rebuild bottom-up from the new palette, never reuse old colour mipmaps.
-    // Only above records that were repainted: the rest keep matching mipmaps.
-    for key in Set(replacements.map(\.0.key.parent)).sorted(by: { $0.level > $1.level }) {
-      try await averageParent(of: key.children[0], gpu: gpu, generation: generation, cascade: false)
-    }
-  }
-  private func averageParent(
-    of child: TileKey, gpu: GPUContext, generation: UInt64, cascade: Bool = true
-  ) async throws {
-    var key = child.parent
-    while key.level >= minimumLevel, let parent = records[key] {
-      let children = key.children.compactMap { records[$0] }
-      guard children.count == 4, children.allSatisfy({ !needsSampling($0.key) }) else { break }
-      try Task.checkCancellation()
-      let colour = try await gpu.average(children: children.map(\.colour), parent: parent.colour)
-      try Task.checkCancellation()
-      guard self.generation == generation else { throw CancellationError() }
-      parent.colour = colour
-      parent.isMip = true
-      onContentChange?()
-      counters.mipmaps += 1
-      if !cascade { break }
-      key = key.parent
-    }
-  }
   private func startWorker() {
     if !suspended { restoreDeferredCoverage() }
     guard !suspended, !retryBlocked, !terminalFailure, worker == nil, let gpu = GPUContext.shared,
-      needsRecolour || nextKey() != nil
+      nextKey() != nil
     else { return }
     let generation = self.generation
     worker = Task { [weak self] in
@@ -982,7 +905,6 @@ struct TileStatistics: Equatable, Codable {
           self.needsReferenceReset = false
           try Task.checkCancellation()
         }
-        if self.needsRecolour { try await self.recolour(gpu, generation: generation) }
         while !Task.isCancelled, self.generation == generation {
           self.restoreDeferredCoverage()
           guard let key = self.nextKey() else { break }
@@ -1015,7 +937,6 @@ struct TileStatistics: Equatable, Codable {
           let bounds = self.bounds(key)
           let samples = try gpu.texture(width: resolution, height: resolution, format: .rg32Uint)
           if let previous { try await gpu.copySamples(previous.samples, into: samples) }
-          let colour = try gpu.texture(width: resolution, height: resolution, format: .rgba8Unorm)
           let renderer = PrecisionPolicy.renderer(
             logScale: Double(key.level), pixelWidth: 256, center: bounds.center,
             override: self.override)
@@ -1082,12 +1003,8 @@ struct TileStatistics: Equatable, Codable {
             self.counters.cancelled += 1
             continue
           }
-          _ = try await gpu.colour(
-            samples, into: colour, settings: self.colouring, iterations: limit)
-          try Task.checkCancellation()
-          guard self.generation == generation else { throw CancellationError() }
           let record = TileRecord(
-            key: key, bounds: bounds, samples: samples, colour: colour,
+            key: key, bounds: bounds, samples: samples,
             readyAt: ProcessInfo.processInfo.systemUptime, iterations: limit)
           let summary = try await gpu.sampleSummary(samples)
           let histogram = try await gpu.sampleHistogram(samples)
@@ -1111,11 +1028,13 @@ struct TileStatistics: Equatable, Codable {
           self.evict(reserving: 0)
           self.failureAttempts.removeValue(forKey: key)
           self.error = nil
-          let measuredCost = max(samples.allocatedSize + colour.allocatedSize, self.tileCost)
+          let measuredCost = samples.allocatedSize
           if measuredCost != self.tileCost {
             self.tileCost = measuredCost
             // The first plan guessed the tile size.  Replan with the real size,
-            // or an over-full plan stays deferred for as long as the view rests.
+            // or an over-full plan stays deferred for as long as the view rests
+            // -- and an over-cautious one, from a guess above the real size,
+            // starves the zoom-out coverage for as long.
             self.replan()
           }
           self.counters.computed += 1
@@ -1123,7 +1042,6 @@ struct TileStatistics: Equatable, Codable {
             self.counters.prefetched += 1
             self.prefetch.remove(key)
           }
-          try await self.averageParent(of: key, gpu: gpu, generation: generation)
           self.publish()
           self.onContentChange?()
         }
