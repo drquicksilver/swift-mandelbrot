@@ -1,250 +1,763 @@
 {
-  "sourceLanguage": "en",
-  "strings": {
-    "%.0f°": {},
-    "%@ iterations · maximum 1,000,000": {},
-    "%@ wider": {},
-    "%@ · %lld iterations": {},
-    "%@ · %lld²": {},
-    "%lld frames": {},
-    "%lld frames · %lld seconds · %@": {},
-    "%lld hits · %lld evictions": {},
-    "%lld parts": {},
-    "%lld s": {},
-    "%lld tiles · %lld MiB · %lld pending": {},
-    "%lld%%": {},
-    "1 part": {},
-    "24 fps": {},
-    "30 fps": {},
-    "480 × 270 · 12 fps": {},
-    "60 fps": {},
-    "A notice appears when you reach the deepest zoom the app can draw.": {},
-    "A single zoom": {},
-    "About": {},
-    "About %@": {},
-    "About %@ left": {},
-    "About %@ on this Mac": {},
-    "About zoom movies": {},
-    "Acknowledgements": {},
-    "Across to %@": {},
-    "Add hold": {},
-    "Analysing colours %lld of %lld": {},
-    "Arbitrary-precision integers by Attaswift contributors, used for deep-zoom coordinates and reference orbits.": {},
-    "As you explore": {},
-    "As you zoom": {},
-    "At least %@": {},
-    "Automatic": {},
-    "Automatic detail": {},
-    "Automatic: %@": {},
-    "Back": {},
-    "Benchmarks": {},
-    "BigInt 5.7.0": {},
-    "BigInt source": {},
-    "Bookmark": {},
-    "Bookmark This View": {},
-    "Bookmark this view, so it is waiting in Places.": {},
-    "Bookmarks": {},
-    "Buttons": {},
-    "Cancel": {},
-    "Cancelling stops the render. A finished movie stays where it was saved.": {},
-    "Centre": {},
-    "Choose…": {},
-    "Close": {},
-    "Colour shift": {},
-    "Colour spacing": {},
-    "Colours": {},
-    "Colours match the zoom, so a view looks the same every time you return to it.": {},
-    "Companion width": {},
-    "Controls": {},
-    "CPU draw %.2f ms · demand %.2f ms · recent presentation %.0f fps": {},
-    "Crosshair follows the pointer": {},
-    "Crosshair follows your finger": {},
-    "Current view · %lld iterations": {},
-    "Debug": {},
-    "Decrease Detail": {},
-    "Deep views require perturbation; other overrides resume when you zoom out.": {},
-    "Deep zoom theory and practice": {},
-    "Deep-zoom algorithms": {},
-    "Deepest zoom reached": {},
-    "Detail": {},
-    "Detail is how long each point is followed before it is counted as inside the set. Automatic detail rises as you zoom; raise it if parts of the view stay dark or blotchy.": {},
-    "Developer": {},
-    "Developer Panel": {},
-    "Developer Tools": {},
-    "Done": {},
-    "Double": {},
-    "Double-click to zoom in one step; hold Option to zoom out.": {},
-    "Double-tap to zoom in one step.": {},
-    "Drag the crosshair to move the companion's point, or click it to pin it.": {},
-    "Drag the crosshair to move the companion's point, or tap it to pin it.": {},
-    "Drag to move around.": {},
-    "Duration": {},
-    "Duration:": {},
-    "Ease in and out": {},
-    "Edit Journey": {},
-    "Edited journey length": {},
-    "Estimated file size": {},
-    "Estimated render time": {},
-    "Explore": {},
-    "Famous places": {},
-    "Finer detail appears as you explore.": {},
-    "Folder": {},
-    "Forward": {},
-    "Frame %lld of %lld": {},
-    "Frame rate": {},
-    "Frame rate:": {},
-    "Frames": {},
-    "From": {},
-    "From:": {},
-    "Go back to the whole set.": {},
-    "Go forward again after going back.": {},
-    "GPU frame %.2f ms · max batch %.2f ms": {},
-    "GPU kernel only": {},
-    "Halve": {},
-    "Hold on %@": {},
-    "Hold Shift and drag to frame a region to zoom into.": {},
-    "In to %@": {},
-    "Increase Detail": {},
-    "Iterations": {},
-    "Journey": {},
-    "Journey Preview": {},
-    "Julia companion": {},
-    "Julia Companion": {},
-    "Julia set": {},
-    "Julia set for %@": {},
-    "Keep": {},
-    "Keyboard": {},
-    "Legacy CPU renderers use at most 65,535 iterations.": {},
-    "Let the crosshair follow the pointer again": {},
-    "Let the crosshair follow your finger again": {},
-    "Mandelbrot": {},
-    "Mandelbrot companion": {},
-    "Mandelbrot journeys": {},
-    "Mandelbrot set": {},
-    "Match": {},
-    "Measurements": {},
-    "Minimum smooth duration": {},
-    "Move Down": {},
-    "Move down": {},
-    "Move Left": {},
-    "Move left": {},
-    "Move Right": {},
-    "Move right": {},
-    "Move Up": {},
-    "Move up": {},
-    "Movie": {},
-    "Movie saved to %@": {},
-    "Name this view": {},
-    "Near %@ · %@": {},
-    "No Mandelbrot Window": {},
-    "No Results Yet": {},
-    "Open a Mandelbrot window to inspect it.": {},
-    "Open the famous places and your bookmarks.": {},
-    "Out from %@": {},
-    "Override": {},
-    "Overview": {},
-    "Palette": {},
-    "Palette cycles": {},
-    "Palette cycles:": {},
-    "Palette, colour spacing, detail, and how the companion behaves.": {},
-    "Part of this view couldn’t be drawn.": {},
-    "Perturbation, critical-point rebasing and bilinear approximation follow the mathematical descriptions collected by Claude Heiland-Allen. The implementation was written for this app.": {},
-    "Pin the crosshair where it is": {},
-    "Pinch to zoom around your fingers.": {},
-    "Places": {},
-    "Play, pause and scrub this low-resolution version of the exact journey.": {},
-    "Preparing preview movie…": {},
-    "Preparing…": {},
-    "Preview unavailable": {},
-    "Pull back for more context; the right end is the closest overview that keeps both places in view.": {},
-    "Render a movie of the journey from a place to this view.": {},
-    "Render a Zoom Movie": {},
-    "Render an animated journey between two views of the Mandelbrot set.": {},
-    "Render Another Movie": {},
-    "Render complete": {},
-    "Render Movie": {},
-    "Rendering": {},
-    "Rendering frame %lld of %lld": {},
-    "Rendering zoom level %lld of %lld": {},
-    "Reset": {},
-    "Reset suggested journey": {},
-    "Reset the companion’s view": {},
-    "Reset View": {},
-    "Reset view": {},
-    "Resolution": {},
-    "Resolution:": {},
-    "Return to the last place you looked at.": {},
-    "Reveal in Finder": {},
-    "Rotate Left": {},
-    "Rotate Right": {},
-    "Rotate upright": {},
-    "Run benchmarks": {},
-    "Run the benchmarks to time every renderer on this view. The results can be shared as a Markdown table.": {},
-    "Save to:": {},
-    "Saved to": {},
-    "Scroll, or pinch on a trackpad, to zoom at the pointer.": {},
-    "Settings": {},
-    "Settings…": {},
-    "Share": {},
-    "Share a link to this exact view, with its rotation, palette and detail.": {},
-    "Share Link": {},
-    "Share Movie": {},
-    "Share results": {},
-    "Share…": {},
-    "Show performance HUD": {},
-    "Show the Julia companion beside the view, with a crosshair marking its point.": {},
-    "Source Code on GitHub": {},
-    "Starting place": {},
-    "Swap Main and Companion": {},
-    "Swap with the main view": {},
-    "Swipe up or down to zoom in or out.": {},
-    "Tap with two fingers to zoom out one step.": {},
-    "That link isn’t a complete Mandelbrot place, so it couldn’t be opened.": {},
-    "The bundled BigInt licence notice could not be loaded.": {},
-    "The crosshair on the Mandelbrot view marks the point the companion is drawn for. Drag it to move it, or click it to pin and release it. The companion has its own drag, pinch and twist.": {},
-    "The crosshair on the Mandelbrot view marks the point the companion is drawn for. Drag it to move it, or tap it to pin and release it. The companion has its own drag, pinch and twist.": {},
-    "The gestures, the buttons and the keyboard shortcuts.": {},
-    "The graphics processor isn’t available, so the movie couldn’t be rendered.": {},
-    "The movie couldn’t be saved in that folder. Choose another folder, then try again.": {},
-    "The movie couldn’t be written. Check there is room on the disk, then try again.": {},
-    "The movie ran out of memory. Try a lower resolution, then try again.": {},
-    "The movie will be saved as a QuickTime .mov file.": {},
-    "the overview": {},
-    "The set couldn’t be drawn. Try again, or restart the app.": {},
-    "the starting place": {},
-    "The starting place is this view, so there is nowhere to go.": {},
-    "The timeline cannot make a camera move faster than its safe pace.": {},
-    "The whole set · %@": {},
-    "These colours are kept as they are. Choose Match to let them follow the zoom again.": {},
-    "This device’s graphics processor isn’t available, so the set can’t be drawn.": {},
-    "This journey can’t be planned.": {},
-    "This journey needs at least %@ for a smooth camera move.": {},
-    "This journey needs at least %@.": {},
-    "this view": {},
-    "This view": {},
-    "This view (%@)": {},
-    "Tile borders and levels": {},
-    "To": {},
-    "To:": {},
-    "Try Again": {},
-    "Tune Colours to This View": {},
-    "Turn the view back to upright after rotating it.": {},
-    "Twist with two fingers to rotate the view.": {},
-    "Twist with two fingers to rotate; it snaps upright near a right angle.": {},
-    "Untitled": {},
-    "Upright": {},
-    "Use %@": {},
-    "Version %@": {},
-    "Zoom": {},
-    "Zoom from %@ into %@.": {},
-    "Zoom In": {},
-    "Zoom in further than the starting place.": {},
-    "Zoom level %lld of %lld": {},
-    "Zoom Movie": {},
-    "Zoom Movie…": {},
-    "Zoom Out": {},
-    "Zoom out from %@, travel across the set, then zoom in to %@.": {},
-    "© 2026 Jules Bean": {}
+  "sourceLanguage" : "en",
+  "strings" : {
+    "" : {
+
+    },
+    "· %@" : {
+
+    },
+    "%.0f°" : {
+
+    },
+    "%@ · %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@ · %2$@"
+          }
+        }
+      }
+    },
+    "%@ · %lld iterations" : {
+
+    },
+    "%@ · %lld²" : {
+
+    },
+    "%@ iterations · maximum 1,000,000" : {
+
+    },
+    "%@ wider" : {
+
+    },
+    "%lld frames" : {
+
+    },
+    "%lld frames · %lld seconds · %@" : {
+
+    },
+    "%lld hits · %lld evictions" : {
+
+    },
+    "%lld parts" : {
+
+    },
+    "%lld s" : {
+
+    },
+    "%lld tiles · %lld MiB · %lld pending" : {
+
+    },
+    "%lld%%" : {
+
+    },
+    "© 2026 Jules Bean" : {
+
+    },
+    "1 part" : {
+
+    },
+    "24" : {
+
+    },
+    "24 fps" : {
+
+    },
+    "30" : {
+
+    },
+    "30 fps" : {
+
+    },
+    "60" : {
+
+    },
+    "60 fps" : {
+
+    },
+    "480 × 270 · 12 fps" : {
+
+    },
+    "A notice appears when you reach the deepest zoom the app can draw." : {
+
+    },
+    "A single zoom" : {
+
+    },
+    "About" : {
+
+    },
+    "About %@" : {
+
+    },
+    "About %@ left" : {
+
+    },
+    "About %@ on this Mac" : {
+
+    },
+    "About zoom movies" : {
+
+    },
+    "Acknowledgements" : {
+
+    },
+    "Across to %@" : {
+
+    },
+    "Add hold" : {
+
+    },
+    "Analysing colours %lld of %lld" : {
+
+    },
+    "Arbitrary-precision integers by Attaswift contributors, used for deep-zoom coordinates and reference orbits." : {
+
+    },
+    "As you explore" : {
+
+    },
+    "As you zoom" : {
+
+    },
+    "At least %@" : {
+
+    },
+    "Automatic" : {
+
+    },
+    "Automatic detail" : {
+
+    },
+    "Automatic: %@" : {
+
+    },
+    "Back" : {
+
+    },
+    "Benchmarks" : {
+
+    },
+    "BigInt 5.7.0" : {
+
+    },
+    "BigInt source" : {
+
+    },
+    "Bookmark" : {
+
+    },
+    "Bookmark This View" : {
+
+    },
+    "Bookmark this view, so it is waiting in Places." : {
+
+    },
+    "Bookmarks" : {
+
+    },
+    "Buttons" : {
+
+    },
+    "Cancel" : {
+
+    },
+    "Cancelling stops the render. A finished movie stays where it was saved." : {
+
+    },
+    "Centre" : {
+
+    },
+    "Choose…" : {
+
+    },
+    "Close" : {
+
+    },
+    "Colour shift" : {
+
+    },
+    "Colour spacing" : {
+
+    },
+    "Colours" : {
+
+    },
+    "Colours match the zoom, so a view looks the same every time you return to it." : {
+
+    },
+    "Companion width" : {
+
+    },
+    "Controls" : {
+
+    },
+    "CPU draw %.2f ms · demand %.2f ms · recent presentation %.0f fps" : {
+
+    },
+    "Crosshair follows the pointer" : {
+
+    },
+    "Crosshair follows your finger" : {
+
+    },
+    "Current view · %lld iterations" : {
+
+    },
+    "Debug" : {
+
+    },
+    "Decrease Detail" : {
+
+    },
+    "Deep views require perturbation; other overrides resume when you zoom out." : {
+
+    },
+    "Deep zoom theory and practice" : {
+
+    },
+    "Deep-zoom algorithms" : {
+
+    },
+    "Deepest zoom reached" : {
+
+    },
+    "Detail" : {
+
+    },
+    "Detail is how long each point is followed before it is counted as inside the set. Automatic detail rises as you zoom; raise it if parts of the view stay dark or blotchy." : {
+
+    },
+    "Developer" : {
+
+    },
+    "Developer Panel" : {
+
+    },
+    "Developer Tools" : {
+
+    },
+    "Done" : {
+
+    },
+    "Double" : {
+
+    },
+    "Double-click to zoom in one step; hold Option to zoom out." : {
+
+    },
+    "Double-tap to zoom in one step." : {
+
+    },
+    "Drag the crosshair to move the companion's point, or click it to pin it." : {
+
+    },
+    "Drag the crosshair to move the companion's point, or tap it to pin it." : {
+
+    },
+    "Drag to move around." : {
+
+    },
+    "Duration" : {
+
+    },
+    "Duration:" : {
+
+    },
+    "Ease in and out" : {
+
+    },
+    "Edit Journey" : {
+
+    },
+    "Edited journey length" : {
+
+    },
+    "Estimated file size" : {
+
+    },
+    "Estimated render time" : {
+
+    },
+    "Explore" : {
+
+    },
+    "Famous places" : {
+
+    },
+    "Finer detail appears as you explore." : {
+
+    },
+    "Folder" : {
+
+    },
+    "Forward" : {
+
+    },
+    "Frame %lld of %lld" : {
+
+    },
+    "Frame rate" : {
+
+    },
+    "Frame rate:" : {
+
+    },
+    "Frames" : {
+
+    },
+    "From" : {
+
+    },
+    "From:" : {
+
+    },
+    "Go back to the whole set." : {
+
+    },
+    "Go forward again after going back." : {
+
+    },
+    "GPU frame %.2f ms · max batch %.2f ms" : {
+
+    },
+    "GPU kernel only" : {
+
+    },
+    "Halve" : {
+
+    },
+    "Hold on %@" : {
+
+    },
+    "Hold Shift and drag to frame a region to zoom into." : {
+
+    },
+    "In to %@" : {
+
+    },
+    "Increase Detail" : {
+
+    },
+    "Iterations" : {
+
+    },
+    "Journey" : {
+
+    },
+    "Journey Preview" : {
+
+    },
+    "Julia companion" : {
+
+    },
+    "Julia Companion" : {
+
+    },
+    "Julia set" : {
+
+    },
+    "Julia set for %@" : {
+
+    },
+    "Keep" : {
+
+    },
+    "Keyboard" : {
+
+    },
+    "Legacy CPU renderers use at most 65,535 iterations." : {
+
+    },
+    "Let the crosshair follow the pointer again" : {
+
+    },
+    "Let the crosshair follow your finger again" : {
+
+    },
+    "Mandelbrot" : {
+
+    },
+    "Mandelbrot companion" : {
+
+    },
+    "Mandelbrot journeys" : {
+
+    },
+    "Mandelbrot set" : {
+
+    },
+    "Match" : {
+
+    },
+    "Measurements" : {
+
+    },
+    "Minimum smooth duration" : {
+
+    },
+    "Move down" : {
+
+    },
+    "Move Down" : {
+
+    },
+    "Move left" : {
+
+    },
+    "Move Left" : {
+
+    },
+    "Move right" : {
+
+    },
+    "Move Right" : {
+
+    },
+    "Move up" : {
+
+    },
+    "Move Up" : {
+
+    },
+    "Movie" : {
+
+    },
+    "Movie saved to %@" : {
+
+    },
+    "Name this view" : {
+
+    },
+    "Near %@ · %@" : {
+
+    },
+    "No Mandelbrot Window" : {
+
+    },
+    "No Results Yet" : {
+
+    },
+    "Open a Mandelbrot window to inspect it." : {
+
+    },
+    "Open the famous places and your bookmarks." : {
+
+    },
+    "Out from %@" : {
+
+    },
+    "Override" : {
+
+    },
+    "Overview" : {
+
+    },
+    "Palette" : {
+
+    },
+    "Palette cycles" : {
+
+    },
+    "Palette cycles:" : {
+
+    },
+    "Palette, colour spacing, detail, and how the companion behaves." : {
+
+    },
+    "Part of this view couldn’t be drawn." : {
+
+    },
+    "Perturbation, critical-point rebasing and bilinear approximation follow the mathematical descriptions collected by Claude Heiland-Allen. The implementation was written for this app." : {
+
+    },
+    "Pin the crosshair where it is" : {
+
+    },
+    "Pinch to zoom around your fingers." : {
+
+    },
+    "Places" : {
+
+    },
+    "Play, pause and scrub this low-resolution version of the exact journey." : {
+
+    },
+    "Preparing preview movie…" : {
+
+    },
+    "Preparing…" : {
+
+    },
+    "Preview unavailable" : {
+
+    },
+    "Pull back for more context; the right end is the closest overview that keeps both places in view." : {
+
+    },
+    "Render a movie of the journey from a place to this view." : {
+
+    },
+    "Render a Zoom Movie" : {
+
+    },
+    "Render an animated journey between two views of the Mandelbrot set." : {
+
+    },
+    "Render Another Movie" : {
+
+    },
+    "Render complete" : {
+
+    },
+    "Render Movie" : {
+
+    },
+    "Rendering" : {
+
+    },
+    "Rendering frame %lld of %lld" : {
+
+    },
+    "Rendering zoom level %lld of %lld" : {
+
+    },
+    "Reset" : {
+
+    },
+    "Reset suggested journey" : {
+
+    },
+    "Reset the companion’s view" : {
+
+    },
+    "Reset view" : {
+
+    },
+    "Reset View" : {
+
+    },
+    "Resolution" : {
+
+    },
+    "Resolution:" : {
+
+    },
+    "Return to the last place you looked at." : {
+
+    },
+    "Reveal in Finder" : {
+
+    },
+    "Rotate Left" : {
+
+    },
+    "Rotate Right" : {
+
+    },
+    "Rotate upright" : {
+
+    },
+    "Run benchmarks" : {
+
+    },
+    "Run the benchmarks to time every renderer on this view. The results can be shared as a Markdown table." : {
+
+    },
+    "Save to:" : {
+
+    },
+    "Saved to" : {
+
+    },
+    "Scroll, or pinch on a trackpad, to zoom at the pointer." : {
+
+    },
+    "Settings" : {
+
+    },
+    "Settings…" : {
+
+    },
+    "Share" : {
+
+    },
+    "Share a link to this exact view, with its rotation, palette and detail." : {
+
+    },
+    "Share Link" : {
+
+    },
+    "Share Movie" : {
+
+    },
+    "Share results" : {
+
+    },
+    "Share…" : {
+
+    },
+    "Show performance HUD" : {
+
+    },
+    "Show the Julia companion beside the view, with a crosshair marking its point." : {
+
+    },
+    "Source Code on GitHub" : {
+
+    },
+    "Starting place" : {
+
+    },
+    "Swap Main and Companion" : {
+
+    },
+    "Swap with the main view" : {
+
+    },
+    "Swipe up or down to zoom in or out." : {
+
+    },
+    "Tap with two fingers to zoom out one step." : {
+
+    },
+    "That link isn’t a complete Mandelbrot place, so it couldn’t be opened." : {
+
+    },
+    "The bundled BigInt licence notice could not be loaded." : {
+
+    },
+    "The crosshair on the Mandelbrot view marks the point the companion is drawn for. Drag it to move it, or click it to pin and release it. The companion has its own drag, pinch and twist." : {
+
+    },
+    "The crosshair on the Mandelbrot view marks the point the companion is drawn for. Drag it to move it, or tap it to pin and release it. The companion has its own drag, pinch and twist." : {
+
+    },
+    "The gestures, the buttons and the keyboard shortcuts." : {
+
+    },
+    "The graphics processor isn’t available, so the movie couldn’t be rendered." : {
+
+    },
+    "The movie couldn’t be saved in that folder. Choose another folder, then try again." : {
+
+    },
+    "The movie couldn’t be written. Check there is room on the disk, then try again." : {
+
+    },
+    "The movie ran out of memory. Try a lower resolution, then try again." : {
+
+    },
+    "The movie will be saved as a QuickTime .mov file." : {
+
+    },
+    "the overview" : {
+
+    },
+    "The set couldn’t be drawn. Try again, or restart the app." : {
+
+    },
+    "the starting place" : {
+
+    },
+    "The starting place is this view, so there is nowhere to go." : {
+
+    },
+    "The timeline cannot make a camera move faster than its safe pace." : {
+
+    },
+    "The whole set · %@" : {
+
+    },
+    "These colours are kept as they are. Choose Match to let them follow the zoom again." : {
+
+    },
+    "This device’s graphics processor isn’t available, so the set can’t be drawn." : {
+
+    },
+    "This journey can’t be planned." : {
+
+    },
+    "This journey needs at least %@ for a smooth camera move." : {
+
+    },
+    "This journey needs at least %@." : {
+
+    },
+    "this view" : {
+
+    },
+    "This view" : {
+
+    },
+    "This view (%@)" : {
+
+    },
+    "Tile borders and levels" : {
+
+    },
+    "To" : {
+
+    },
+    "To:" : {
+
+    },
+    "Try Again" : {
+
+    },
+    "Tune Colours to This View" : {
+
+    },
+    "Turn the view back to upright after rotating it." : {
+
+    },
+    "Twist with two fingers to rotate the view." : {
+
+    },
+    "Twist with two fingers to rotate; it snaps upright near a right angle." : {
+
+    },
+    "Untitled" : {
+
+    },
+    "Upright" : {
+
+    },
+    "Use %@" : {
+
+    },
+    "Version %@" : {
+
+    },
+    "Zoom" : {
+
+    },
+    "Zoom from %@ into %@." : {
+
+    },
+    "Zoom In" : {
+
+    },
+    "Zoom in further than the starting place." : {
+
+    },
+    "Zoom level %lld of %lld" : {
+
+    },
+    "Zoom Movie" : {
+
+    },
+    "Zoom Movie…" : {
+
+    },
+    "Zoom Out" : {
+
+    },
+    "Zoom out from %@, travel across the set, then zoom in to %@." : {
+
+    }
   },
-  "version": "1.0"
+  "version" : "1.0"
 }

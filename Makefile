@@ -1,7 +1,7 @@
 BUILD_DIR ?= /tmp/mandelbrot-development
 APP = $(BUILD_DIR)/Build/Products/Release/Mandelbrot.app/Contents/MacOS/Mandelbrot
 
-.PHONY: build test unit cli golden smooth tiles product ios ios-device format format-check bla strings
+.PHONY: build test unit cli golden smooth tiles product ios ios-device format format-check bla strings strings-check
 build:
 	xcodebuild -quiet -project Mandelbrot.xcodeproj -scheme Mandelbrot -configuration Release -destination 'platform=macOS' -derivedDataPath $(BUILD_DIR) CODE_SIGNING_ALLOWED=NO ENABLE_CODE_COVERAGE=NO build
 unit:
@@ -28,8 +28,12 @@ ios:
 	python3 tests/test_app_bundle.py $(BUILD_DIR)-ios/Build/Products/Release-iphonesimulator/Mandelbrot.app/Info.plist
 
 # xcodebuild extracts strings but, unlike the IDE, never writes them back.
+# The tool writes the catalogue exactly as Xcode would, so the two agree.
+STRINGS = $(BUILD_DIR)/Build/Intermediates.noindex/Mandelbrot.build/Release $(BUILD_DIR)-ios/Build/Intermediates.noindex/Mandelbrot.build/Release-iphonesimulator
 strings: build ios
-	python3 tools/update_strings.py $(BUILD_DIR)/Build/Intermediates.noindex/Mandelbrot.build/Release $(BUILD_DIR)-ios/Build/Intermediates.noindex/Mandelbrot.build/Release-iphonesimulator
+	swift tools/update_strings.swift $(STRINGS)
+strings-check: build ios
+	swift tools/update_strings.swift --check $(STRINGS)
 
 format:
 	rg --files -g '*.swift' -g '!Mandelbrot/Core/Vendor/**' -0 | xargs -0 xcrun swift-format format --configuration .swift-format --in-place
