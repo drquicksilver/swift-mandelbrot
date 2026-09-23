@@ -178,3 +178,38 @@ separate task.
    cannot be hinted without already being explained.
 9. **The app icon.** A readable mark in one of the app's own palettes, with
    dark and tinted variants.
+
+## Status, 23 September 2026
+
+Stages 1–6 are done, one commit per stage (`405f03b`…`d8596f6`); the design
+list above is untouched. Where the work departed from the list:
+
+- **⌘? is the system's.** macOS gives Command-? to the Help menu's search, and
+  a menu drops a `?` key equivalent, so Controls sits in the Help menu unbound
+  and `?` is a canvas key, as the arrows now are (item 22).
+- **Menu commands are disabled behind a sheet** as well as when they cannot
+  act (item 4): the menu bar stays live over a sheet, and ⌘J reached the view
+  behind the movie sheet.
+- **Some items landed a stage early** because the code was open: Settings…
+  (20) with stage 1, so Settings could be reached for testing; option-double-
+  click (25) with the double-click fix (10); the better bookmark name (11) with
+  the naming field (7).
+- **Double-click (10)** was confirmed as a risk rather than reproduced: two
+  quick clicks 600 pt apart do not zoom, and the handler now demands both
+  presses be clicks within 5 pt, which AppKit's `clickCount` does not.
+- **The swallowed click (7)** reproduced: a default-styled button in a Mac list
+  row lost its first click to the row. A bordered one does not.
+- **Strings (14):** `xcodebuild` never writes a catalogue back, so
+  `make strings` does, from the Release builds' extracted strings.
+- **Last location (32)** is stored in user defaults, not scene storage, so it
+  survives a Mac quit; only a window writes it.
+- **Deferred as design, noticed on the way:** Escape still does not close the
+  sheets; the Julia caption keeps four decimals however deep the view; a link
+  with no colour parameter still opens pinned; the preview video still eats
+  scroll events in the Mac movie sheet.
+
+Test failures that predate 2.12 (identical on `a463931`): `make tiles`
+(“Palette completion did not wake presentation”), `make product` (pixel
+mismatch) and `make deep`'s minibrot check (`AssertionError: 189`). The core
+test that also failed there, the auto-contrast fit, was stale after 2.11 and
+is corrected in `ce720d2`.

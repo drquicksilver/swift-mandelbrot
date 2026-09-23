@@ -50,7 +50,8 @@ struct AutomaticColourFit: Equatable, Sendable {
     let octaveSpan = log2(high) - log2(low)
     let density = Float(max(0.02, octaveSpan / 6)) / min(16, max(0.125, densityMultiplier))
     // Keep the low robust percentile at a stable, pleasant palette phase.
-    return Self(density: density, offset: Float(0.12 - log2(low) / Double(density)) + offsetAdjustment)
+    return Self(
+      density: density, offset: Float(0.12 - log2(low) / Double(density)) + offsetAdjustment)
   }
 }
 
