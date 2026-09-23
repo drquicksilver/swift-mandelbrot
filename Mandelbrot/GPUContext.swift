@@ -204,9 +204,19 @@ final class GPUContext: @unchecked Sendable {
     encoder.endEncoding()
     return try await submit(command)
   }
+  /// Escape statistics for a finished tile.
+  struct SampleStatistics {
+    var capped: Int
+    var maximumEscaped: Int
+    var histogram: [UInt32]
+  }
+  /// Resumes a tile for `count` iterations. The final batch also summarises
+  /// the tile in the same command buffer, saving two round trips per tile;
+  /// its time then includes those passes.
   func resume(
-    into samples: MTLTexture, states: MTLBuffer, parameters: GPUParameters, start: Int, count: Int
-  ) async throws -> Double {
+    into samples: MTLTexture, states: MTLBuffer, parameters: GPUParameters, start: Int, count: Int,
+    summarise: Bool = false
+  ) async throws -> (seconds: Double, statistics: SampleStatistics?) {
     struct Work {
       var image: GPUParameters
       var start, count, padding0, padding1: UInt32
@@ -221,7 +231,9 @@ final class GPUContext: @unchecked Sendable {
     encoder.setBytes(&work, length: MemoryLayout<Work>.stride, index: 0)
     dispatch(encoder, pipeline: resumePipeline, width: samples.width, height: samples.height)
     encoder.endEncoding()
-    return try await submit(command)
+    let buffers = summarise ? try encodeStatistics(samples, into: command) : nil
+    let seconds = try await submit(command)
+    return (seconds, buffers.map(readStatistics))
   }
   func copySamples(_ source: MTLTexture, into target: MTLTexture) async throws {
     guard let command = computeQueue.makeCommandBuffer(),
@@ -234,36 +246,43 @@ final class GPUContext: @unchecked Sendable {
     encoder.endEncoding()
     _ = try await submit(command)
   }
-  func sampleSummary(_ samples: MTLTexture) async throws -> (capped: Int, maximumEscaped: Int) {
-    guard let buffer = device.makeBuffer(length: 8, options: .storageModeShared),
-      let command = computeQueue.makeCommandBuffer(),
-      let encoder = command.makeComputeCommandEncoder()
-    else { throw GPUFailure("Sample summary unavailable") }
-    buffer.contents().storeBytes(of: UInt64(0), as: UInt64.self)
-    encoder.setTexture(samples, index: 0)
-    encoder.setBuffer(buffer, offset: 0, index: 0)
-    dispatch(encoder, pipeline: summaryPipeline, width: samples.width, height: samples.height)
-    encoder.endEncoding()
+  func sampleStatistics(_ samples: MTLTexture) async throws -> SampleStatistics {
+    guard let command = computeQueue.makeCommandBuffer() else {
+      throw GPUFailure("Sample statistics unavailable")
+    }
+    let buffers = try encodeStatistics(samples, into: command)
     _ = try await submit(command)
-    let words = buffer.contents().assumingMemoryBound(to: UInt32.self)
-    return (Int(words[0]), Int(words[1]))
+    return readStatistics(buffers)
   }
-  func sampleHistogram(_ samples: MTLTexture) async throws -> [UInt32] {
+  // A separate encoder, so both passes see everything earlier encoders wrote.
+  private func encodeStatistics(_ samples: MTLTexture, into command: MTLCommandBuffer) throws
+    -> (summary: MTLBuffer, histogram: MTLBuffer)
+  {
     let length = EscapedHistogram.binCount * MemoryLayout<UInt32>.stride
-    guard let buffer = device.makeBuffer(length: length, options: .storageModeShared),
-      let command = computeQueue.makeCommandBuffer(),
+    guard let summary = device.makeBuffer(length: 8, options: .storageModeShared),
+      let histogram = device.makeBuffer(length: length, options: .storageModeShared),
       let encoder = command.makeComputeCommandEncoder()
-    else { throw GPUFailure("Sample histogram unavailable") }
-    memset(buffer.contents(), 0, length)
+    else { throw GPUFailure("Sample statistics unavailable") }
+    summary.contents().storeBytes(of: UInt64(0), as: UInt64.self)
+    memset(histogram.contents(), 0, length)
     encoder.setTexture(samples, index: 0)
-    encoder.setBuffer(buffer, offset: 0, index: 0)
+    encoder.setBuffer(summary, offset: 0, index: 0)
+    dispatch(encoder, pipeline: summaryPipeline, width: samples.width, height: samples.height)
+    encoder.setBuffer(histogram, offset: 0, index: 0)
     dispatch(encoder, pipeline: histogramPipeline, width: samples.width, height: samples.height)
     encoder.endEncoding()
-    _ = try await submit(command)
-    return Array(
-      UnsafeBufferPointer(
-        start: buffer.contents().assumingMemoryBound(to: UInt32.self),
-        count: EscapedHistogram.binCount))
+    return (summary, histogram)
+  }
+  private func readStatistics(_ buffers: (summary: MTLBuffer, histogram: MTLBuffer))
+    -> SampleStatistics
+  {
+    let words = buffers.summary.contents().assumingMemoryBound(to: UInt32.self)
+    return SampleStatistics(
+      capped: Int(words[0]), maximumEscaped: Int(words[1]),
+      histogram: Array(
+        UnsafeBufferPointer(
+          start: buffers.histogram.contents().assumingMemoryBound(to: UInt32.self),
+          count: EscapedHistogram.binCount)))
   }
   func paletteTexture(_ palette: Palette) throws -> MTLTexture { palettes[palette]! }
   private static func makePaletteTexture(_ palette: Palette, device: MTLDevice) throws -> MTLTexture

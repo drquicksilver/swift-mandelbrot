@@ -946,6 +946,7 @@ struct TileStatistics: Equatable, Codable {
             logScale: Double(key.level), pixelWidth: 256, center: bounds.center,
             override: self.override)
           var cancelled = false
+          var statistics: GPUContext.SampleStatistics?
           if renderer == .perturbation {
             let bits = max(192, key.level + 128)
             let step = bounds.wideSpan * (1 / Double(TileGrid.samples))
@@ -1000,13 +1001,20 @@ struct TileStatistics: Equatable, Codable {
                 break
               }
               let count = min(batch, limit - start)
-              let time = try await gpu.resume(
-                into: samples, states: states, parameters: params, start: start, count: count)
+              let last = start + count == limit
+              let (time, summary) = try await gpu.resume(
+                into: samples, states: states, parameters: params, start: start, count: count,
+                summarise: last)
               start += count
+              statistics = summary
               self.counters.batches += 1
               self.counters.longestBatchMS = max(self.counters.longestBatchMS, time * 1000)
-              self.worstIterationSeconds[renderer] = max(
-                self.worstIterationSeconds[renderer] ?? 0, time / Double(count))
+              // The last batch's time includes the statistics passes, which
+              // would overstate a short batch's cost per iteration.
+              if !last {
+                self.worstIterationSeconds[renderer] = max(
+                  self.worstIterationSeconds[renderer] ?? 0, time / Double(count))
+              }
               // Target 1 ms of measured GPU work. An iteration only gets
               // cheaper as pixels escape, and a batch at most doubles, so no
               // batch runs much past the target.
@@ -1021,13 +1029,17 @@ struct TileStatistics: Equatable, Codable {
           let record = TileRecord(
             key: key, bounds: bounds, samples: samples,
             readyAt: ProcessInfo.processInfo.systemUptime, iterations: limit)
-          let summary = try await gpu.sampleSummary(samples)
-          let histogram = try await gpu.sampleHistogram(samples)
+          let summary: GPUContext.SampleStatistics
+          if let statistics {
+            summary = statistics
+          } else {
+            summary = try await gpu.sampleStatistics(samples)
+          }
           try Task.checkCancellation()
           guard self.generation == generation else { throw CancellationError() }
           record.cappedPixels = summary.capped
           record.maximumEscaped = summary.maximumEscaped
-          record.histogram = histogram
+          record.histogram = summary.histogram
           record.isCoverage = isCoverage
           self.counters.sampledPixels += previous?.cappedPixels ?? (resolution * resolution)
           if isCoverage {

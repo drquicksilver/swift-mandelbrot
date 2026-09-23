@@ -1088,8 +1088,55 @@ The longest batch rose from about 1 ms to at most 1.85 ms. That is the price:
 the compositor waits behind a batch, and at 120 Hz a frame is 8.3 ms. It has
 not been measured on a phone.
 
-The GPU is still idle most of the time in cheap views. Every tile costs at
-least three round trips (its batches, then separate summary and histogram
-passes), plus a sample copy when it is being extended. Folding the summary and
-histogram into the last batch's command buffer, or keeping two tiles in flight,
-are the next steps.
+### Statistics in the last batch
+
+Each finished tile then took two more round trips: a pass counting capped
+pixels and the highest escaped count, and a histogram pass. Both now run in a
+second compute encoder in the tile's last batch's command buffer; perturbation
+tiles, which batch separately, get one combined pass instead of two. The last
+batch's time then includes those passes, so it no longer feeds the per-iteration
+cost estimate. It had skewed that estimate even before this change: a short
+remainder batch costs more per iteration, so later tiles started smaller than
+they needed to. Both effects are in the last column below.
+
+Three builds, each with the same measurement patch (ready time, summed kernel
+time, batches, longest batch), interleaved, median of three cold
+`--render --pipeline tiles` runs at 3456×2234 on the M1 Pro. "Before" is
+`ebabdf3`, "cap" is the change above and "fold" adds this one. The last three
+views are mostly exterior with interior at the edges, chosen to catch a start
+batch sized from cheap early tiles overrunning on a heavy one.
+
+| View, cap | Before | Cap + start | + fold | Total speedup |
+| --- | ---: | ---: | ---: | ---: |
+| Whole set, 1,000 | 515 ms | 338 ms | **221 ms** | 2.3× |
+| Seahorse Valley (−0.745 + 0.11i, 100×), 2,000 | 1,059 ms | 688 ms | **494 ms** | 2.1× |
+| Float neck (−0.75 + 0.1i, 30×), 20,000 | 3,296 ms | 884 ms | **691 ms** | 4.8× |
+| Period-3 bulb (−0.1226 + 0.7449i, 10×), 20,000 | 2,877 ms | 1,565 ms | **1,439 ms** | 2.0× |
+| FloatFloat (1e7 reference location), 5,000 | 1,167 ms | 782 ms | **662 ms** | 1.8× |
+| Cardioid edge (0.28 + 0.53i, 3×), 20,000 | 1,514 ms | 468 ms | **375 ms** | 4.0× |
+| Period-3 minibrot (−1.77, 20×), 20,000 | 2,200 ms | 577 ms | **430 ms** | 5.1× |
+| Period-4 bulb (−0.16 + 1.035i, 30×), 20,000 | 3,215 ms | 776 ms | **572 ms** | 5.6× |
+
+| View | GPU busy: before → cap → fold | Longest batch: before → cap → fold |
+| --- | ---: | ---: |
+| Whole set | 6% → 7% → 23% | 0.43 → 0.43 → 0.83 ms |
+| Seahorse Valley | 10% → 14% → 24% | 0.92 → 1.08 → 1.73 ms |
+| Float neck | 11% → 30% → 39% | 0.43 → 1.46 → 1.42 ms |
+| Period-3 bulb | 38% → 65% → 72% | 0.99 → 1.40 → 2.04 ms |
+| FloatFloat | 34% → 48% → 59% | 0.99 → 1.28 → 1.80 ms |
+| Cardioid edge | 15% → 37% → 48% | 0.47 → 1.39 → 1.23 ms |
+| Period-3 minibrot | 8% → 21% → 34% | 0.36 → 1.23 → 1.42 ms |
+| Period-4 bulb | 7% → 16% → 27% | 0.90 → 1.81 → 1.36 ms |
+
+Every image is byte-identical between the cap and fold builds. Most ranges
+were within 4% of the median; the exceptions are the whole set with the fold
+(165–247 ms), the period-4 bulb at cap (773–943 ms) and the cardioid edge at
+cap (434–477 ms). The
+fold's longest batch includes the statistics passes. None of the edge views
+overran; the worst batch anywhere was 2.04 ms. That does not prove a heavy
+tile can never follow cheap ones with an oversized start: seeding the cost
+estimate from a calibration batch on an all-interior tile would bound that.
+
+Two tiles in flight is the remaining lever for the waiting between batches;
+the per-tile bookkeeping on the main actor (planning the next tile, eviction,
+rebuilding the coverage index) bounds what it can gain.
