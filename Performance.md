@@ -1137,6 +1137,71 @@ overran; the worst batch anywhere was 2.04 ms. That does not prove a heavy
 tile can never follow cheap ones with an oversized start: seeding the cost
 estimate from a calibration batch on an all-interior tile would bound that.
 
-Two tiles in flight is the remaining lever for the waiting between batches;
-the per-tile bookkeeping on the main actor (planning the next tile, eviction,
-rebuilding the coverage index) bounds what it can gain.
+### Two tiles in flight
+
+The worker now runs two slots, each claiming, refining and storing tiles, so
+one tile's round trips and main-actor bookkeeping overlap the other's GPU work.
+Both slots run on the main actor, so claiming a tile between awaits is atomic;
+a tile in flight counts towards `residentBytes` until it is stored, so eviction
+leaves room for both. Only the first slot takes perturbation tiles, which share
+the worker's single set of reference and scratch resources. Each worker run
+refines its first tile alone, so a worker that cannot allocate at all fails and
+spends its retry budget exactly as before; the tile diagnostics caught the
+change in failure behaviour when both slots started at once.
+
+### The whole story
+
+Four builds with the same measurement patch, interleaved, median of three cold
+`--render --pipeline tiles` runs at 3456×2234 on the M1 Pro: `ebabdf3`
+(before), `3d66689` (cap + start), `546d5c5` (fold) and two in flight. Every
+image is byte-identical across the four builds. Raw runs:
+[cold-renders.json](evidence/tile-batching/cold-renders.json).
+
+At the limits the app chooses automatically (`IterationPolicy.estimate`),
+which is what a viewer sees on arrival:
+
+| View | Limit | Before | Cap + start | + Fold | + Two in flight | Total |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| Whole set | 200 | 401 ms | 277 ms | 160 ms | **90 ms** | 4.5× |
+| Seahorse Valley (−0.745 + 0.11i, 100×) | 800 | 781 ms | 587 ms | 283 ms | **177 ms** | 4.4× |
+| Float neck (−0.75 + 0.1i, 30×) | 600 | 552 ms | 412 ms | 192 ms | **117 ms** | 4.7× |
+| Period-3 bulb (−0.1226 + 0.7449i, 10×) | 600 | 381 ms | 280 ms | 143 ms | **99 ms** | 3.9× |
+| FloatFloat (1e7 reference location) | 2,200 | 792 ms | 547 ms | 452 ms | **364 ms** | 2.2× |
+| Cardioid edge (0.28 + 0.53i, 3×) | 400 | 224 ms | 187 ms | 85 ms | **59 ms** | 3.8× |
+| Period-3 minibrot (−1.77, 20×) | 600 | 400 ms | 298 ms | 141 ms | **84 ms** | 4.7× |
+| Period-4 bulb (−0.16 + 1.035i, 30×) | 600 | 580 ms | 427 ms | 202 ms | **116 ms** | 5.0× |
+
+At raised limits:
+
+| View | Limit | Before | Cap + start | + Fold | + Two in flight | Total |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| Whole set | 1,000 | 538 ms | 354 ms | 164 ms | **98 ms** | 5.5× |
+| Seahorse Valley | 2,000 | 1,105 ms | 707 ms | 514 ms | **306 ms** | 3.6× |
+| Float neck | 20,000 | 3,445 ms | 925 ms | 719 ms | **475 ms** | 7.3× |
+| Period-3 bulb | 20,000 | 2,981 ms | 1,559 ms | 1,455 ms | **1,315 ms** | 2.3× |
+| FloatFloat | 5,000 | 1,191 ms | 800 ms | 672 ms | **553 ms** | 2.2× |
+| Cardioid edge | 20,000 | 1,574 ms | 466 ms | 375 ms | **277 ms** | 5.7× |
+| Period-3 minibrot | 20,000 | 2,282 ms | 601 ms | 440 ms | **298 ms** | 7.7× |
+| Period-4 bulb | 20,000 | 3,391 ms | 824 ms | 576 ms | **354 ms** | 9.6× |
+
+All but five of the 64 series spread by at most 10% of their median. Four
+spread by 10–13%, and one by 43%: the whole set at 1,000 with two in flight
+(95, 98, 136 ms). The fold numbers here are lower than in the previous section's run of the
+same build (221 against 164 ms for the whole set at 1,000); these are the ones
+to compare, since all four builds ran side by side. Each step helps
+everywhere. The views that stay slow are those the GPU is genuinely busy with:
+the period-3 bulb at 20,000 and FloatFloat, where most pixels iterate to the
+limit; periodicity checking (2.14) is the lever there, not scheduling.
+
+**The cost is batch length.** With two command buffers sharing the GPU, each
+takes longer: summed kernel time rose (1,029 → 1,789 ms for the period-3 bulb
+at 20,000, 385 → 665 ms for FloatFloat) and the longest batch rose from at most 1.9 ms with the fold to at
+most 4.0 ms (FloatFloat and the period-3 bulb; 0.55–2.7 ms elsewhere at the
+automatic limits). The compositor trace in `--test-tiles`, five runs per build,
+shows no change in compositor GPU time while refining — p95 0.24, 0.24, 0.36
+and 0.24 ms, worst frame 1.16, 2.23, 0.42 and 0.34 ms for the four builds
+([compositor-frames.json](evidence/tile-batching/compositor-frames.json)) —
+but that trace's refinement is light (longest batch 0.69 ms), and GPU duration
+does not show how long a frame waited to start. Whether 4 ms batches delay
+frames at 120 Hz, especially on the iPhone 11 Pro, is unmeasured. If they do,
+halving the batch target while two are in flight is the first thing to try.

@@ -155,6 +155,10 @@ struct TileStatistics: Equatable, Codable {
   private var worstIterationSeconds: [RendererID: Double] = [:]
   /// Iterations per batch; the 1 ms target, not this, normally binds.
   private static let maximumBatch = 65536
+  private static let tilesInFlight = 2
+  /// Tiles a worker slot is refining, and the bytes they will hold once stored.
+  private var claimed: Set<TileKey> = []
+  private var inFlightBytes = 0
   private var suspended = false
   private var lastFramePublish = 0.0
   private var frameTimes: [Double] = []
@@ -176,7 +180,7 @@ struct TileStatistics: Equatable, Codable {
   var allVisibleReady: Bool { !visible.isEmpty && visible.allSatisfy { !needsSampling($0) } }
   var residentBytes: Int {
     records.values.reduce(0) { $0 + $1.bytes } + fallback.reduce(0) { $0 + $1.bytes }
-      + fadingBytes
+      + fadingBytes + inFlightBytes
   }
   var coverageBytes: Int {
     records.values.filter(\.isCoverage).reduce(0) { $0 + $1.bytes }
@@ -679,9 +683,17 @@ struct TileStatistics: Equatable, Codable {
     if record.isCoverage { return false }
     return record.iterations < iterations && record.cappedPixels > 0
   }
-  private func nextKey() -> TileKey? {
+  /// `perturbation` false leaves out tiles that need the worker's single set
+  /// of perturbation resources.
+  private func nextKey(perturbation: Bool = true) -> TileKey? {
     func pending(_ keys: Set<TileKey>) -> Set<TileKey> {
-      keys.filter { needsSampling($0) && !failed.contains($0) }
+      keys.filter {
+        needsSampling($0) && !failed.contains($0) && !claimed.contains($0)
+          && (perturbation
+            || PrecisionPolicy.renderer(
+              logScale: Double($0.level), pixelWidth: 256, center: bounds($0).center,
+              override: override) != .perturbation)
+      }
     }
     let root = pending(coverage.filter { $0.level == minimumLevel })
     let preview = pending(needed)
@@ -900,7 +912,6 @@ struct TileStatistics: Equatable, Codable {
         self.onContentChange?()
         self.startWorker()
       }
-      var workingKey: TileKey?
       do {
         if self.needsReferenceReset {
           // The previous worker has stopped before clearing its shared resources.
@@ -910,170 +921,219 @@ struct TileStatistics: Equatable, Codable {
           self.needsReferenceReset = false
           try Task.checkCancellation()
         }
-        while !Task.isCancelled, self.generation == generation {
-          self.restoreDeferredCoverage()
-          guard let key = self.nextKey() else { break }
-          workingKey = key
-          try self.beforeTileAllocation?(key)
-          let isCoverage = self.coverage.contains(key)
-          let limit =
-            isCoverage
-            ? min(self.iterations, IterationPolicy.estimate(logScale: Double(key.level)))
-            : self.iterations
-          let previous = self.records[key]
-          let resolution = TileGrid.textureSize
-          self.evict(reserving: self.tileCost)
-          // Every skip removes the key from its scheduling source, so the
-          // main-actor worker cannot select the same over-budget key forever.
-          if !self.needed.contains(key) {
-            if self.coverage.contains(key) {
-              // The root is never deferred: the LOD loop reserves its footprint,
-              // and lower-priority coverage yields to it.
-              if !self.makeCoverageRoom(for: key) && key.level != self.minimumLevel {
-                self.deferCoverage(key)
-                continue
-              }
-            } else if self.residentBytes + self.tileCost > self.residentLimit {
-              // Prefetch never churns other prefetch entries endlessly.
-              self.prefetch.remove(key)
+        // The first tile runs alone, so a worker that cannot allocate at all
+        // fails and uses its retry budget exactly as a single slot did.
+        try await self.refineTiles(
+          gpu: gpu, generation: generation, perturbation: true, maximumTiles: 1)
+        // Then two tiles in flight: one tile's round trips and bookkeeping
+        // overlap the other's GPU work.  Perturbation tiles share this worker's
+        // reference and scratch resources, so only the first slot takes them.
+        try await withThrowingTaskGroup(of: Void.self) { group in
+          for slot in 0..<Self.tilesInFlight {
+            group.addTask { @MainActor in
+              try await self.refineTiles(gpu: gpu, generation: generation, perturbation: slot == 0)
+            }
+          }
+          try await group.waitForAll()
+        }
+      } catch is CancellationError { self.counters.cancelled += 1 } catch let failure as TileFailure
+      {
+        self.handleFailure(failure.underlying, key: failure.key)
+      } catch {
+        self.handleFailure(error, key: nil)
+      }
+    }
+  }
+  private struct TileFailure: Error {
+    let key: TileKey
+    let underlying: Error
+  }
+  /// One slot's loop: claims the next tile, refines it and stores it, until no
+  /// unclaimed tile remains or it has stored `maximumTiles`.  Errors carry the
+  /// tile they happened on.
+  private func refineTiles(
+    gpu: GPUContext, generation: UInt64, perturbation: Bool, maximumTiles: Int? = nil
+  ) async throws {
+    var stored = 0
+    while !Task.isCancelled, self.generation == generation {
+      self.restoreDeferredCoverage()
+      guard let key = self.nextKey(perturbation: perturbation) else { break }
+      // Claimed so the other slot skips it, and counted as resident until it
+      // is stored, so eviction leaves room for both tiles in flight.
+      self.claimed.insert(key)
+      var reserved = 0
+      defer {
+        self.claimed.remove(key)
+        self.inFlightBytes -= reserved
+      }
+      do {
+        try self.beforeTileAllocation?(key)
+        let isCoverage = self.coverage.contains(key)
+        let limit =
+          isCoverage
+          ? min(self.iterations, IterationPolicy.estimate(logScale: Double(key.level)))
+          : self.iterations
+        let previous = self.records[key]
+        let resolution = TileGrid.textureSize
+        self.evict(reserving: self.tileCost)
+        // Every skip removes the key from its scheduling source, so the
+        // main-actor worker cannot select the same over-budget key forever.
+        if !self.needed.contains(key) {
+          if self.coverage.contains(key) {
+            // The root is never deferred: the LOD loop reserves its footprint,
+            // and lower-priority coverage yields to it.
+            if !self.makeCoverageRoom(for: key) && key.level != self.minimumLevel {
+              self.deferCoverage(key)
               continue
             }
-          }
-          let bounds = self.bounds(key)
-          let samples = try gpu.texture(width: resolution, height: resolution, format: .rg32Uint)
-          if let previous { try await gpu.copySamples(previous.samples, into: samples) }
-          let renderer = PrecisionPolicy.renderer(
-            logScale: Double(key.level), pixelWidth: 256, center: bounds.center,
-            override: self.override)
-          var cancelled = false
-          var statistics: GPUContext.SampleStatistics?
-          if renderer == .perturbation {
-            let bits = max(192, key.level + 128)
-            let step = bounds.wideSpan * (1 / Double(TileGrid.samples))
-            let topLeft = bounds.preciseOrigin.offset(x: step * -0.5, y: step * 0.5, bits: bits)
-            var region = PerturbationRegion(
-              topLeft: topLeft, step: step, width: resolution, height: resolution, bits: bits)
-            // Reference selection is independent of the grid's indexing anchor.
-            region.preferredReference = self.viewport.preciseCenter
-            let metrics = try await gpu.perturb(
-              into: samples, region: region, iterations: limit, useBLA: self.useBLA,
-              hierarchicalBLA: self.hierarchicalBLA,
-              resources: self.perturbationResources, preserveEscaped: previous != nil,
-              fixedBLARadius: self.fixedBLARadius)
-            self.referenceBytes = metrics.referenceBytes
-            self.counters.batches += metrics.batches
-            self.counters.referenceOrbits += metrics.references
-            self.counters.referenceCacheHits += metrics.referenceCacheHits
-            self.counters.referenceMS += metrics.referenceSeconds * 1000
-            self.counters.perturbationSkipped += metrics.skippedIterations
-            self.counters.longestBatchMS = max(self.counters.longestBatchMS, metrics.longestBatchMS)
-            self.trimCoverageToReservation()
-            self.evict(reserving: 0)
-          } else {
-            let step = bounds.span / Double(TileGrid.samples)
-            guard
-              let states = gpu.device.makeBuffer(
-                length: resolution * resolution * 16, options: .storageModePrivate)
-            else { throw GPUFailure("Orbit allocation failed") }
-            var params = GPUParameters(
-              viewport: Viewport(center: bounds.center, scale: 3 / bounds.span), width: resolution,
-              height: resolution, iterations: limit, renderer: renderer)
-            params.realMin = GPUParameters.split(bounds.left - step / 2)
-            params.imagMax = GPUParameters.split(bounds.top + step / 2)
-            params.stepX = GPUParameters.split(step)
-            params.stepY = params.stepX
-            params.smooth = 1
-            params.padding = previous != nil ? 1 : 0
-            var start = 0
-            // Each batch is a round trip, and short ones leave the GPU idle.
-            // Start at what the costliest iteration seen so far fits in the
-            // target, so later tiles skip the ramp up from 64.
-            var batch =
-              self.worstIterationSeconds[renderer].map {
-                max(8, min(Self.maximumBatch, Int(0.001 / $0)))
-              } ?? 64
-            while start < limit {
-              if Task.isCancelled
-                || (!self.needed.contains(key) && !self.coverage.contains(key)
-                  && !self.prefetch.contains(key))
-              {
-                cancelled = true
-                break
-              }
-              let count = min(batch, limit - start)
-              let last = start + count == limit
-              let (time, summary) = try await gpu.resume(
-                into: samples, states: states, parameters: params, start: start, count: count,
-                summarise: last)
-              start += count
-              statistics = summary
-              self.counters.batches += 1
-              self.counters.longestBatchMS = max(self.counters.longestBatchMS, time * 1000)
-              // The last batch's time includes the statistics passes, which
-              // would overstate a short batch's cost per iteration.
-              if !last {
-                self.worstIterationSeconds[renderer] = max(
-                  self.worstIterationSeconds[renderer] ?? 0, time / Double(count))
-              }
-              // Target 1 ms of measured GPU work. An iteration only gets
-              // cheaper as pixels escape, and a batch at most doubles, so no
-              // batch runs much past the target.
-              batch = max(
-                8, min(Self.maximumBatch, Int(Double(count) * min(2, 0.001 / max(time, 0.00001)))))
-            }
-          }
-          if cancelled {
-            self.counters.cancelled += 1
+          } else if self.residentBytes + self.tileCost > self.residentLimit {
+            // Prefetch never churns other prefetch entries endlessly.
+            self.prefetch.remove(key)
             continue
           }
-          let record = TileRecord(
-            key: key, bounds: bounds, samples: samples,
-            readyAt: ProcessInfo.processInfo.systemUptime, iterations: limit)
-          let summary: GPUContext.SampleStatistics
-          if let statistics {
-            summary = statistics
-          } else {
-            summary = try await gpu.sampleStatistics(samples)
-          }
-          try Task.checkCancellation()
-          guard self.generation == generation else { throw CancellationError() }
-          record.cappedPixels = summary.capped
-          record.maximumEscaped = summary.maximumEscaped
-          record.histogram = summary.histogram
-          record.isCoverage = isCoverage
-          self.counters.sampledPixels += previous?.cappedPixels ?? (resolution * resolution)
-          if isCoverage {
-            self.counters.coverageSampledPixels +=
-              previous?.cappedPixels ?? (resolution * resolution)
-          }
-          self.counters.reusedPixels +=
-            previous.map { resolution * resolution - $0.cappedPixels } ?? 0
-          record.lastUsed = self.tick
-          self.records[key] = record
-          self.rebuildCoverageIndex()
+        }
+        let bounds = self.bounds(key)
+        reserved = self.tileCost
+        self.inFlightBytes += reserved
+        let samples = try gpu.texture(width: resolution, height: resolution, format: .rg32Uint)
+        if let previous { try await gpu.copySamples(previous.samples, into: samples) }
+        let renderer = PrecisionPolicy.renderer(
+          logScale: Double(key.level), pixelWidth: 256, center: bounds.center,
+          override: self.override)
+        var cancelled = false
+        var statistics: GPUContext.SampleStatistics?
+        if renderer == .perturbation {
+          let bits = max(192, key.level + 128)
+          let step = bounds.wideSpan * (1 / Double(TileGrid.samples))
+          let topLeft = bounds.preciseOrigin.offset(x: step * -0.5, y: step * 0.5, bits: bits)
+          var region = PerturbationRegion(
+            topLeft: topLeft, step: step, width: resolution, height: resolution, bits: bits)
+          // Reference selection is independent of the grid's indexing anchor.
+          region.preferredReference = self.viewport.preciseCenter
+          let metrics = try await gpu.perturb(
+            into: samples, region: region, iterations: limit, useBLA: self.useBLA,
+            hierarchicalBLA: self.hierarchicalBLA,
+            resources: self.perturbationResources, preserveEscaped: previous != nil,
+            fixedBLARadius: self.fixedBLARadius)
+          self.referenceBytes = metrics.referenceBytes
+          self.counters.batches += metrics.batches
+          self.counters.referenceOrbits += metrics.references
+          self.counters.referenceCacheHits += metrics.referenceCacheHits
+          self.counters.referenceMS += metrics.referenceSeconds * 1000
+          self.counters.perturbationSkipped += metrics.skippedIterations
+          self.counters.longestBatchMS = max(self.counters.longestBatchMS, metrics.longestBatchMS)
           self.trimCoverageToReservation()
           self.evict(reserving: 0)
-          self.failureAttempts.removeValue(forKey: key)
-          self.error = nil
-          let measuredCost = samples.allocatedSize
-          if measuredCost != self.tileCost {
-            self.tileCost = measuredCost
-            // The first plan guessed the tile size.  Replan with the real size,
-            // or an over-full plan stays deferred for as long as the view rests
-            // -- and an over-cautious one, from a guess above the real size,
-            // starves the zoom-out coverage for as long.
-            self.replan()
+        } else {
+          let step = bounds.span / Double(TileGrid.samples)
+          guard
+            let states = gpu.device.makeBuffer(
+              length: resolution * resolution * 16, options: .storageModePrivate)
+          else { throw GPUFailure("Orbit allocation failed") }
+          var params = GPUParameters(
+            viewport: Viewport(center: bounds.center, scale: 3 / bounds.span), width: resolution,
+            height: resolution, iterations: limit, renderer: renderer)
+          params.realMin = GPUParameters.split(bounds.left - step / 2)
+          params.imagMax = GPUParameters.split(bounds.top + step / 2)
+          params.stepX = GPUParameters.split(step)
+          params.stepY = params.stepX
+          params.smooth = 1
+          params.padding = previous != nil ? 1 : 0
+          var start = 0
+          // Each batch is a round trip, and short ones leave the GPU idle.
+          // Start at what the costliest iteration seen so far fits in the
+          // target, so later tiles skip the ramp up from 64.
+          var batch =
+            self.worstIterationSeconds[renderer].map {
+              max(8, min(Self.maximumBatch, Int(0.001 / $0)))
+            } ?? 64
+          while start < limit {
+            if Task.isCancelled
+              || (!self.needed.contains(key) && !self.coverage.contains(key)
+                && !self.prefetch.contains(key))
+            {
+              cancelled = true
+              break
+            }
+            let count = min(batch, limit - start)
+            let last = start + count == limit
+            let (time, summary) = try await gpu.resume(
+              into: samples, states: states, parameters: params, start: start, count: count,
+              summarise: last)
+            start += count
+            statistics = summary
+            self.counters.batches += 1
+            self.counters.longestBatchMS = max(self.counters.longestBatchMS, time * 1000)
+            // The last batch's time includes the statistics passes, which
+            // would overstate a short batch's cost per iteration.
+            if !last {
+              self.worstIterationSeconds[renderer] = max(
+                self.worstIterationSeconds[renderer] ?? 0, time / Double(count))
+            }
+            // Target 1 ms of measured GPU work. An iteration only gets
+            // cheaper as pixels escape, and a batch at most doubles, so no
+            // batch runs much past the target.
+            batch = max(
+              8, min(Self.maximumBatch, Int(Double(count) * min(2, 0.001 / max(time, 0.00001)))))
           }
-          self.counters.computed += 1
-          if !self.needed.contains(key) && !self.coverage.contains(key) {
-            self.counters.prefetched += 1
-            self.prefetch.remove(key)
-          }
-          self.publish()
-          self.onContentChange?()
         }
-      } catch is CancellationError { self.counters.cancelled += 1 } catch {
-        self.handleFailure(error, key: workingKey)
+        if cancelled {
+          self.counters.cancelled += 1
+          continue
+        }
+        let record = TileRecord(
+          key: key, bounds: bounds, samples: samples,
+          readyAt: ProcessInfo.processInfo.systemUptime, iterations: limit)
+        let summary: GPUContext.SampleStatistics
+        if let statistics {
+          summary = statistics
+        } else {
+          summary = try await gpu.sampleStatistics(samples)
+        }
+        try Task.checkCancellation()
+        guard self.generation == generation else { throw CancellationError() }
+        record.cappedPixels = summary.capped
+        record.maximumEscaped = summary.maximumEscaped
+        record.histogram = summary.histogram
+        record.isCoverage = isCoverage
+        self.counters.sampledPixels += previous?.cappedPixels ?? (resolution * resolution)
+        if isCoverage {
+          self.counters.coverageSampledPixels +=
+            previous?.cappedPixels ?? (resolution * resolution)
+        }
+        self.counters.reusedPixels +=
+          previous.map { resolution * resolution - $0.cappedPixels } ?? 0
+        record.lastUsed = self.tick
+        self.inFlightBytes -= reserved
+        reserved = 0
+        self.records[key] = record
+        self.rebuildCoverageIndex()
+        self.trimCoverageToReservation()
+        self.evict(reserving: 0)
+        self.failureAttempts.removeValue(forKey: key)
+        self.error = nil
+        let measuredCost = samples.allocatedSize
+        if measuredCost != self.tileCost {
+          self.tileCost = measuredCost
+          // The first plan guessed the tile size.  Replan with the real size,
+          // or an over-full plan stays deferred for as long as the view rests
+          // -- and an over-cautious one, from a guess above the real size,
+          // starves the zoom-out coverage for as long.
+          self.replan()
+        }
+        self.counters.computed += 1
+        if !self.needed.contains(key) && !self.coverage.contains(key) {
+          self.counters.prefetched += 1
+          self.prefetch.remove(key)
+        }
+        self.publish()
+        self.onContentChange?()
+        stored += 1
+        if let maximumTiles, stored >= maximumTiles { return }
+      } catch let cancellation as CancellationError {
+        throw cancellation
+      } catch {
+        throw TileFailure(key: key, underlying: error)
       }
     }
   }
