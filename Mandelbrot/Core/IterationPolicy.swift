@@ -2,7 +2,7 @@ import Foundation
 
 /// Automatic iteration depth.  A depth-based first estimate, lowered from the
 /// escaped counts actually in view.  Raising from data needs interior detection
-/// (periodicity checking, 2.10): without it a capped pixel may be inside the set
+/// (periodicity checking, plan 2.14): without it a capped pixel may be inside the set
 /// or merely unresolved.
 enum IterationPolicy {
   static let maximum = 1_000_000

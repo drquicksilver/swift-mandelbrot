@@ -5,10 +5,13 @@ using namespace metal;
 // Contraction is disabled per function in FloatFloat.h; a file-scope pragma
 // here would also cover the plain Float paths below, which want contraction.
 
+// realMin and imagMax are the centre of pixel (0, 0); see GPUParameters in
+// GPUContext.swift, which this layout mirrors.  extendCapped: resumeTile
+// restarts only the capped pixels of samples copied from a lower limit.
 struct GPUParameters {
     float2 realMin, imagMax, stepX, stepY;
     uint width, height, maxIterations, precision;
-    uint rowStart, rowCount, smooth, padding;
+    uint smooth, extendCapped;
 };
 
 // Strictly interior points never escape. Leave a margin for Float rounding at
@@ -25,8 +28,8 @@ inline bool insideMainSet(float cr, float ci) {
 // Integer escape count and fractional smooth correction stay separate (8 bytes).
 kernel void renderSamples(texture2d<uint, access::write> out [[texture(0)]],
                           constant GPUParameters &p [[buffer(0)]], uint2 gid [[thread_position_in_grid]]) {
-    uint2 point = uint2(gid.x, gid.y + p.rowStart);
-    if (point.x >= p.width || point.y >= p.height || gid.y >= p.rowCount) return;
+    uint2 point = gid;
+    if (point.x >= p.width || point.y >= p.height) return;
     uint n = 0;
     float magnitude = 0;
     float bailout = p.smooth != 0 ? 65536.0f : 4.0f;
@@ -294,7 +297,7 @@ kernel void resumeTile(texture2d<uint,access::read_write> out [[texture(0)]],
     constant GPUParameters &p=work.image;
     if(point.x>=p.width || point.y>=p.height) return;
     uint index=point.y*p.width+point.x;
-    if(work.start==0 && (p.padding&1u) && out.read(point).x != sampleCapped) return;
+    if(work.start==0 && p.extendCapped && out.read(point).x != sampleCapped) return;
     if(work.start>0 && out.read(point).x != sampleUnfinished) return;
     float4 state=work.start==0 ? float4(0) : states[index];
     uint n=work.start,end=min(p.maxIterations,work.start+work.count);

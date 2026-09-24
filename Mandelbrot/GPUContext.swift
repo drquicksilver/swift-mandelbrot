@@ -16,10 +16,10 @@ struct GPUFailure: Error, CustomStringConvertible, LocalizedError {
 struct GPUParameters {
   var realMin, imagMax, stepX, stepY: SIMD2<Float>
   var width, height, maxIterations, precision: UInt32
-  var rowStart: UInt32 = 0
-  var rowCount: UInt32
   var smooth: UInt32 = 0
-  var padding: UInt32 = 0
+  /// Nonzero when `resumeTile` extends samples copied from a lower limit: it
+  /// then restarts only their capped pixels.
+  var extendCapped: UInt32 = 0
   init(viewport: Viewport, width: Int, height: Int, iterations: Int, renderer: RendererID) {
     let span = viewport.span
     let step = span / Double(width)
@@ -31,7 +31,6 @@ struct GPUParameters {
     self.height = UInt32(height)
     maxIterations = UInt32(iterations)
     precision = renderer == .metal ? 0 : 1
-    rowCount = UInt32(height)
   }
   static func split(_ value: Double) -> SIMD2<Float> {
     let hi = Float(value)
@@ -162,7 +161,7 @@ final class GPUContext: @unchecked Sendable {
     encoder.setTexture(samples, index: 0)
     encoder.setBytes(&params, length: MemoryLayout<GPUParameters>.stride, index: 0)
     dispatch(
-      encoder, pipeline: samplePipeline, width: Int(params.width), height: Int(params.rowCount))
+      encoder, pipeline: samplePipeline, width: Int(params.width), height: Int(params.height))
     encoder.endEncoding()
     return try await submit(command)
   }

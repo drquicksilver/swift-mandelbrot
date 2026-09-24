@@ -34,10 +34,13 @@ bool less(XF a,XF b) {
   return a.e==b.e ? a.m.x<b.m.x : a.e<b.e;
 }
 float value(XF a) { return ldexp(a.m.x,a.e); }
+// options, as PerturbationOptions in PerturbationRenderer.swift sets them:
+// 1 BLA on, 2 rebasing off, 4 hierarchical BLA, 8 extend capped pixels only,
+// 16 the reference is complete (escaped, or as long as the limit).
 struct PerturbParameters {
  XC origin; XF stepX,stepY;
  uint width,height,iterations,referenceCount;
- uint start,count,pass,pad;
+ uint start,count,pass,options;
  uint blaBase,pad1,pad2,pad3;
 };
 struct BLA { XC a,b; XF radius; uint length,pad0,pad1,pad2; };
@@ -52,7 +55,7 @@ kernel void perturbTile(texture2d<uint,access::read_write> output [[texture(0)]]
  uint index=pos.y*p.width+pos.x;
  PerturbState s;
  if(p.start==0) {
-   if(p.pass==0 && (p.pad&8u) && output.read(pos).x!=sampleCapped) { states[index].done=1;return; }
+   if(p.pass==0 && (p.options&8u) && output.read(pos).x!=sampleCapped) { states[index].done=1;return; }
    if(p.pass>0 && output.read(pos).x!=sampleGlitched) { states[index].done=1;return; }
    s={ {xf(0),xf(0)},0,0,0,0};
  } else { s=states[index];if(s.done)return; }
@@ -66,13 +69,13 @@ kernel void perturbTile(texture2d<uint,access::read_write> output [[texture(0)]]
    }
    // A streamed prefix is not an exhausted reference. Pause this pixel until
    // its next reference value arrives; other pixels may keep finishing.
-   if(s.ref+1>=p.referenceCount && !(p.pad&16u) &&
-      ((p.pad&2u) || !less(magnitude,abs2(s.delta)))) {
+   if(s.ref+1>=p.referenceCount && !(p.options&16u) &&
+      ((p.options&2u) || !less(magnitude,abs2(s.delta)))) {
      atomic_fetch_max_explicit(flags+8,s.ref+1,memory_order_relaxed);break;
    }
    // Rebase before cancellation can trigger an expensive new reference.
    bool candidate=less(magnitude,times(abs2(orbit[s.ref]),1e-8f));
-   if(s.ref+1>=p.referenceCount || (!(p.pad&2u) && less(magnitude,abs2(s.delta)))) {
+   if(s.ref+1>=p.referenceCount || (!(p.options&2u) && less(magnitude,abs2(s.delta)))) {
      s.delta=total;s.ref=0;rebases++;
      if(candidate) atomic_fetch_add_explicit(flags+5,1,memory_order_relaxed);
    } else if(candidate) {
@@ -81,10 +84,10 @@ kernel void perturbTile(texture2d<uint,access::read_write> output [[texture(0)]]
      atomic_fetch_min_explicit(flags,index,memory_order_relaxed);
      atomic_fetch_add_explicit(flags+1,1,memory_order_relaxed);break;
    }
-   if((p.pad&1u) && s.ref>=1 && (s.ref-1)%32==0) {
+   if((p.options&1u) && s.ref>=1 && (s.ref-1)%32==0) {
      uint index=p.blaBase+(s.ref-1)/32;
      BLA b=blas[index];
-     if(p.pad&4u) {
+     if(p.options&4u) {
        while(index>1 && (index&1u)==0) {
          BLA parent=blas[index/2];
          if(parent.length<2 || s.n+parent.length>p.iterations || !less(abs2(s.delta),mul(parent.radius,parent.radius))) break;

@@ -258,7 +258,7 @@
         }
         viewport = try Viewport(real: realText, imag: imagText, zoom: scaleText)
         // Tiles stay axis-aligned in the plane, so only the compositor rotates.
-        // The lab renderers sample axis-aligned rows and take no angle (2.14).
+        // The full-frame paths sample axis-aligned rows and take no angle.
         if rotationDegrees != 0 {
           guard pipeline == "tiles" else {
             throw CLIError("--rotation requires --pipeline tiles")

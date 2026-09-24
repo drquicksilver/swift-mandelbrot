@@ -7,7 +7,6 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		849188042F23975A005E293A /* Performance.md in Resources */ = {isa = PBXBuildFile; fileRef = 849188032F23975A005E293A /* Performance.md */; };
 		84AV02D02F1ECE51005E293A /* AVKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 84AV01D02F1ECE51005E293A /* AVKit.framework */; };
 /* End PBXBuildFile section */
 
@@ -32,7 +31,6 @@
 		849187D32F1ECE51005E293A /* Mandelbrot.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Mandelbrot.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		849187E02F1ECE53005E293A /* MandelbrotTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = MandelbrotTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		849187EA2F1ECE53005E293A /* MandelbrotUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = MandelbrotUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
-		849188032F23975A005E293A /* Performance.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = Performance.md; sourceTree = "<group>"; };
 		84AV01D02F1ECE51005E293A /* AVKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = AVKit.framework; path = System/Library/Frameworks/AVKit.framework; sourceTree = SDKROOT; };
 /* End PBXFileReference section */
 
@@ -83,7 +81,6 @@
 		849187CA2F1ECE51005E293A = {
 			isa = PBXGroup;
 			children = (
-				849188032F23975A005E293A /* Performance.md */,
 				849187D52F1ECE51005E293A /* Mandelbrot */,
 				849187E32F1ECE53005E293A /* MandelbrotTests */,
 				849187ED2F1ECE53005E293A /* MandelbrotUITests */,
@@ -230,7 +227,6 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				849188042F23975A005E293A /* Performance.md in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

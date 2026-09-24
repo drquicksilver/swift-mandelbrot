@@ -49,11 +49,25 @@ struct PerturbationRegion: Sendable {
     self.bits = bits
   }
 }
+/// The `options` bits of `perturbTile`'s parameters.
+private struct PerturbationOptions: OptionSet {
+  let rawValue: UInt32
+  static let bla = Self(rawValue: 1)
+  static let rebasingOff = Self(rawValue: 2)
+  static let hierarchicalBLA = Self(rawValue: 4)
+  /// Extending samples copied from a lower limit: only capped pixels restart.
+  static let extendCapped = Self(rawValue: 8)
+  /// The reference orbit has escaped or reached the limit, so running off its
+  /// end means rebasing rather than waiting for it to be extended.
+  static let referenceComplete = Self(rawValue: 16)
+}
+/// Mirrors `PerturbParameters` in Perturbation.metal.
 private struct PerturbationParameters {
   var origin: ExtendedComplex
   var stepX, stepY: ExtendedFloat
   var width, height, iterations, referenceCount: UInt32
-  var start, count, pass, padding: UInt32
+  var start, count, pass: UInt32
+  var options: PerturbationOptions
   var blaBase: UInt32
   var padding1: UInt32 = 0, padding2: UInt32 = 0, padding3: UInt32 = 0
 }
@@ -159,15 +173,21 @@ extension GPUContext {
         width: UInt32(region.width), height: UInt32(region.height), iterations: UInt32(iterations),
         referenceCount: UInt32(referenceCount),
         start: 0, count: 8, pass: UInt32(pass),
-        padding: (useBLA ? 1 : 0) | (useRebasing ? 0 : 2) | (hierarchicalBLA ? 4 : 0)
-          | (preserveEscaped ? 8 : 0),
+        options: [
+          useBLA ? .bla : [], useRebasing ? [] : .rebasingOff,
+          hierarchicalBLA ? .hierarchicalBLA : [], preserveEscaped ? .extendCapped : [],
+        ],
         blaBase: UInt32(table.leafOffset))
       let maximumBatch = min(128, max(1, Int(UInt32.max) / (32 * region.width * region.height)))
       var batch = min(8, maximumBatch)
       while true {
         try Task.checkCancellation()
         for index in 2...8 { words[index] = 0 }
-        p.padding = (p.padding & ~16) | ((ref.escaped || ref.iterations >= iterations) ? 16 : 0)
+        if ref.escaped || ref.iterations >= iterations {
+          p.options.insert(.referenceComplete)
+        } else {
+          p.options.remove(.referenceComplete)
+        }
         p.count = UInt32(batch)
         guard let command = computeQueue.makeCommandBuffer(),
           let encoder = command.makeComputeCommandEncoder()

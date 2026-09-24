@@ -109,14 +109,16 @@ struct TileStatistics: Equatable, Codable {
   private var referenceBytes = 0
   private var needsReferenceReset = false
   private var boundsCache: [TileKey: TileBounds] = [:]
-  // Reserve a third for one orbit-state buffer, the two in-flight display
-  // frames and headroom.  It was sized when recolouring and colour mipmaps
-  // also replaced textures in place; with those gone it could shrink, once
-  // the phones' memory has been measured (2.15).
   /// Diagnostics only: measures the visible view with and without a pyramid.
   var coverageEnabled = true
   /// Diagnostics only: stands in for deep reference storage squeezing memory.
   var diagnosticResidentLimit: Int?
+  /// The bytes tiles may hold: the budget less deep reference and BLA
+  /// storage, of which a third is kept back for one orbit-state buffer, the
+  /// two in-flight display frames and headroom.  The third was sized when
+  /// recolouring and colour mipmaps also replaced textures in place; with
+  /// those gone it could shrink, once the phones' memory has been measured
+  /// (plan 2.15).
   private var residentLimit: Int {
     if let diagnosticResidentLimit { return diagnosticResidentLimit }
     let orbit = (iterations + 1) * MemoryLayout<ExtendedComplex>.stride
@@ -268,9 +270,7 @@ struct TileStatistics: Equatable, Codable {
   var tileResidentLimit: Int { residentLimit }
   var deferredCoverageCount: Int { deferredCoverage.count }
   var nearCoverageCount: Int { nearCoverage.count }
-  var sparseCoverageCount: Int { sparseCoverage.count }
   var plannedRootCount: Int { rootPlan.count }
-  var rootRecordCount: Int { records.keys.filter { $0.level == minimumLevel }.count }
 
   init(
     budgetBytes: Int? = nil, retryDelay: Duration = .milliseconds(250),
@@ -1038,7 +1038,7 @@ struct TileStatistics: Equatable, Codable {
           params.stepX = GPUParameters.split(step)
           params.stepY = params.stepX
           params.smooth = 1
-          params.padding = previous != nil ? 1 : 0
+          params.extendCapped = previous != nil ? 1 : 0
           var start = 0
           // Each batch is a round trip, and short ones leave the GPU idle.
           // Start at what the costliest iteration seen so far fits in the

@@ -13,7 +13,6 @@ enum RendererID: String, CaseIterable, Identifiable, Sendable {
   case perturbation
   var id: String { rawValue }
   var isGPU: Bool { self == .metal || self == .metalDouble || self == .perturbation }
-  var usesFloat: Bool { [.floatMath, .simd4Float, .metal].contains(self) }
   var title: String {
     switch self {
     case .perturbation: return "GPU Perturbation"
