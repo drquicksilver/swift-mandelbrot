@@ -33,7 +33,7 @@ first.
    function: plain grouped digits below about 10¹⁰, a clean exponent above.
    Move it to the model and route every user-facing scale through it. The same
    quantity is currently printed six ways across `PlacesView`, `MovieView`,
-   `MovieSheetMac`, `AppearanceView`, `BenchmarkView` and `ExplorerModel`,
+   `MovieSheetMac`, `SettingsView`, `BenchmarkView` and `ExplorerModel`,
    including `2.0000000000000004e9×`. Show a raw decimal only where precision
    matters, in a copyable coordinate field. Test it in `tests/core`.
 2. **`ValueSlider` and `ValueStepper`.** Three sliders built three ways, and

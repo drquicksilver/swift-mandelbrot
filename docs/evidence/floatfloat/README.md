@@ -1,5 +1,9 @@
 # FloatFloat deep-zoom investigation
 
+Recorded in January 2026, when the renderers sampled the edges of the view
+rather than pixel centres; a rerun today will not match these images bit for
+bit. Paths below are the repository's current ones.
+
 ## Diagnosis and fix
 
 Both Xcode configurations had `MTL_FAST_MATH = YES`. The actual compiler invocation
@@ -74,10 +78,10 @@ with the original or corrected `default.metallib` respectively.
 The capture helper accepts an explicit build and phase:
 
 ```sh
-python3 tests/capture_floatfloat.py /path/to/original/Mandelbrot before evidence/floatfloat
-python3 tests/capture_floatfloat.py /path/to/fixed/Mandelbrot after evidence/floatfloat
-python3 tests/analyze_floatfloat.py evidence/floatfloat > evidence/floatfloat/accuracy.json
-MANDELBROT_TEST_METAL=1 python3 tests/test_headless.py /path/to/fixed/Mandelbrot
+python3 benchmarks/capture_floatfloat.py /path/to/original/Mandelbrot before docs/evidence/floatfloat
+python3 benchmarks/capture_floatfloat.py /path/to/fixed/Mandelbrot after docs/evidence/floatfloat
+python3 benchmarks/analyze_floatfloat.py docs/evidence/floatfloat > docs/evidence/floatfloat/accuracy.json
+MANDELBROT_TEST_METAL=1 python3 tests/cli/test_headless.py /path/to/fixed/Mandelbrot
 ```
 
 The original shader source is archived as `original-shader.metal` (from commit
@@ -98,12 +102,12 @@ the working tree, copy the app and replace only its shader library:
 cp -R /tmp/mandelbrot-build/Build/Products/Release/Mandelbrot.app /tmp/mandelbrot-original.app
 xcrun --sdk macosx metal -c -target air64-apple-macos15.7 \
   -fmetal-math-mode=fast -fmetal-math-fp32-functions=fast \
-  evidence/floatfloat/original-shader.metal -o /tmp/mandelbrot-original.air
+  docs/evidence/floatfloat/original-shader.metal -o /tmp/mandelbrot-original.air
 xcrun --sdk macosx metal -target air64-apple-macos15.7 \
   /tmp/mandelbrot-original.air \
   -o /tmp/mandelbrot-original.app/Contents/Resources/default.metallib
-python3 tests/capture_floatfloat.py \
-  /tmp/mandelbrot-original.app/Contents/MacOS/Mandelbrot before evidence/floatfloat
+python3 benchmarks/capture_floatfloat.py \
+  /tmp/mandelbrot-original.app/Contents/MacOS/Mandelbrot before docs/evidence/floatfloat
 ```
 
 ## Accuracy results

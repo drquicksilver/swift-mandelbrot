@@ -4,10 +4,10 @@ Pro Image Mode is a small offline rendering pipeline that sits **beside** the
 existing Mandelbrot explorer. It is not just a larger set of options, and it is
 not an extension of the interactive renderer.
 
-| Mode | Purpose |
-|---|---|
-| Interactive | Fast navigation and exploration |
-| Pro Image | Slow, deliberate, multi-pass, data-rich final rendering |
+| Mode        | Purpose                                                 |
+| ----------- | ------------------------------------------------------- |
+| Interactive | Fast navigation and exploration                         |
+| Pro Image   | Slow, deliberate, multi-pass, data-rich final rendering |
 
 This is an experiment. It is deliberately disjoint from `plan.md`, and assumes
 that roadmap is mostly finished before this starts. See §7 for what it inherits.
@@ -28,17 +28,17 @@ The interactive renderer is full of heuristics that are *right* for holding a
 120 Hz frame deadline and *wrong* for a presentation image. We keep them in the
 interactive renderer and do not inherit them:
 
-| Interactive heuristic | Why Pro Image Mode does not use it |
-|---|---|
+| Interactive heuristic                                                  | Why Pro Image Mode does not use it                                                                                                                                                                                                                                                                                                             |
+| ---------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Capped pixels painted `float3(0.005, 0.008, 0.014)` in `colourSamples` | An unresolved pixel is disguised as background — and not even as the interior colour, so the image quietly lies about its own completeness. Pro follows an explicit convergence/fallback policy (§2.3), gives surviving unresolved samples a principled treatment, and always reports them. This is the motivating example for the whole mode. |
-| BLA approximation | An approximation whose error budget was fitted to an interactive image. See §1.8. |
-| Bounded glitch retry (16 reference attempts, then a marked failure) | A presentation image must contain zero known glitched pixels. Pro uses a correctness fallback ladder (§2.3) ending in direct high-precision evaluation; a sample that still cannot be rendered correctly is reported, and fails the render under a strict policy. |
-| `IterationPolicy.estimate` | Explicitly "a first guess". Pro uses an explicit convergence policy (§2.3) and never silently paints an exhausted sample as resolved. |
-| The 1,000,000 GPU iteration cap | May genuinely bind near a high-period minibrot. Pro raises or removes it. |
-| ~1 ms adaptive iteration batches | Built to protect a frame deadline Pro does not have. Use long batches and fewer submissions. |
-| LOD blending, 125 ms fades, coverage pyramid | Irrelevant offline. |
-| 8-bit colour mipmaps, box-averaged parents | Replaced by proper resolve filtering (§1.4). |
-| LRU eviction | Pro renders a tile once and writes it out; nothing is evicted mid-image. |
+| BLA approximation                                                      | An approximation whose error budget was fitted to an interactive image. See §1.8.                                                                                                                                                                                                                                                              |
+| Bounded glitch retry (16 reference attempts, then a marked failure)    | A presentation image must contain zero known glitched pixels. Pro uses a correctness fallback ladder (§2.3) ending in direct high-precision evaluation; a sample that still cannot be rendered correctly is reported, and fails the render under a strict policy.                                                                              |
+| `IterationPolicy.estimate`                                             | Explicitly "a first guess". Pro uses an explicit convergence policy (§2.3) and never silently paints an exhausted sample as resolved.                                                                                                                                                                                                          |
+| The 1,000,000 GPU iteration cap                                        | May genuinely bind near a high-period minibrot. Pro raises or removes it.                                                                                                                                                                                                                                                                      |
+| ~1 ms adaptive iteration batches                                       | Built to protect a frame deadline Pro does not have. Use long batches and fewer submissions.                                                                                                                                                                                                                                                   |
+| LOD blending, 125 ms fades, coverage pyramid                           | Irrelevant offline.                                                                                                                                                                                                                                                                                                                            |
+| 8-bit colour mipmaps, box-averaged parents                             | Replaced by proper resolve filtering (§1.4).                                                                                                                                                                                                                                                                                                   |
+| LRU eviction                                                           | Pro renders a tile once and writes it out; nothing is evicted mid-image.                                                                                                                                                                                                                                                                       |
 
 **What we do share**, from `Mandelbrot/Core`: `Viewport` and the deep coordinate
 types (`DeepPoint`, `WideReal`), `TileGrid`'s bounds and coordinate arithmetic,
@@ -279,14 +279,14 @@ Most buffers come from a single iteration loop that tracks z and dz/dc together.
 
 ### 2.1 Core buffers (from the main loop)
 
-| Buffer | Derivation | Uses |
-|---|---|---|
-| Smooth escape value | continuous iteration count | smooth colouring, histogram remap, blend weights |
-| Interior / exterior / undetermined mask | escape and period detection | separate interior and exterior shading, effect masking |
-| Exterior distance estimate | `DE ≈ \|z\|·log\|z\| / \|dz/dc\|` (pixel units) | edge glow, halos, AO-like darkening, "black glass" |
-| Normal direction | `u = z / (dz/dc)`, normalised | lighting, specular, rim light, bas-relief |
-| arg z, \|z\| at escape | final orbit value | angular colour fields, iridescence |
-| arg(dz/dc), \|dz/dc\| | derivative | structure-following colour, highlight shaping |
+| Buffer                                  | Derivation                                      | Uses                                                   |
+| --------------------------------------- | ----------------------------------------------- | ------------------------------------------------------ |
+| Smooth escape value                     | continuous iteration count                      | smooth colouring, histogram remap, blend weights       |
+| Interior / exterior / undetermined mask | escape and period detection                     | separate interior and exterior shading, effect masking |
+| Exterior distance estimate              | `DE ≈ \|z\|·log\|z\| / \|dz/dc\|` (pixel units) | edge glow, halos, AO-like darkening, "black glass"     |
+| Normal direction                        | `u = z / (dz/dc)`, normalised                   | lighting, specular, rim light, bas-relief              |
+| arg z, \|z\| at escape                  | final orbit value                               | angular colour fields, iridescence                     |
+| arg(dz/dc), \|dz/dc\|                   | derivative                                      | structure-following colour, highlight shaping          |
 
 The analytic normal from `u` is preferred over finite-differencing the DE
 buffer, which aliases badly on sub-pixel filaments.
@@ -350,12 +350,12 @@ per effect:
 
 ### 2.4 Later buffers
 
-| Buffer | Milestone | Uses |
-|---|---|---|
-| Attracting cycle period / convergence data | 6A | interior colouring, faster interior bailout |
-| Interior distance estimate | 6B | real interior geometry for shading |
-| Orbit trap statistics (min distance, trap ID) | 7 | material masks, emissive accents |
-| Sample variance | 8 | adaptive supersampling, quality view |
+| Buffer                                        | Milestone | Uses                                        |
+| --------------------------------------------- | --------- | ------------------------------------------- |
+| Attracting cycle period / convergence data    | 6A        | interior colouring, faster interior bailout |
+| Interior distance estimate                    | 6B        | real interior geometry for shading          |
+| Orbit trap statistics (min distance, trap ID) | 7         | material masks, emissive accents            |
+| Sample variance                               | 8         | adaptive supersampling, quality view        |
 
 ---
 
@@ -606,14 +606,14 @@ Debug: variance and sample-count view.
 
 Kept deliberately small for v1:
 
-| Panel | Contents |
-|---|---|
-| **Look** | preset gallery, hero controls, save / compare |
-| **Light** | direction gizmo, lighting terms, relief, edge glow |
-| **Colour** | palette, histogram remap, sources (advanced), interior |
-| **Effects** | bloom, tone mapping, vignette, optics (advanced) |
-| **Export** | size, supersampling, iterations, precision info, correctness policy, render, progress, cancel, elapsed time and throughput; each render writes a manifest |
-| **Debug** | toggle; buffer and pass views, undetermined mask, cross-mode diff |
+| Panel       | Contents                                                                                                                                                  |
+| ----------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Look**    | preset gallery, hero controls, save / compare                                                                                                             |
+| **Light**   | direction gizmo, lighting terms, relief, edge glow                                                                                                        |
+| **Colour**  | palette, histogram remap, sources (advanced), interior                                                                                                    |
+| **Effects** | bloom, tone mapping, vignette, optics (advanced)                                                                                                          |
+| **Export**  | size, supersampling, iterations, precision info, correctness policy, render, progress, cancel, elapsed time and throughput; each render writes a manifest |
+| **Debug**   | toggle; buffer and pass views, undetermined mask, cross-mode diff                                                                                         |
 
 Composition aids (aspect ratio, crop, desktop icon / menu bar safe-area overlay,
 framing guides) sit as an overlay toggle on the preview.
@@ -632,19 +632,19 @@ renderer's worker. Pro owns its own worker and its own generation/cancellation.
 
 ## 5. What each milestone unlocks
 
-| Milestone | New data / capability | New style unlocked |
-|---|---|---|
-| Spike | DE and normals, Float only | proof the look is worth building |
-| 0 | tiled float pipeline, 16-bit export, recipes and manifests | clean 4K stills |
-| 1 | derivative buffers (incl. through BLA), histogram remap | better classic colouring |
-| 2 | DE effects, analytic normals, lighting | edge glow, bas-relief, metallic |
-| 3 | bloom, tone mapping | white-hot highlights, real glow |
-| 4 | pass graph, presets | practical artistic workflow |
-| 5 | angular / derivative colour | iridescent, geometry-following colour |
-| 6A | period / convergence data | structured interiors |
-| 6B | interior DE / normals | geometric interior shading |
-| 7 | orbit traps | mineral / material variation |
-| 8 | variance, optics | photographic finish |
+| Milestone | New data / capability                                      | New style unlocked                    |
+| --------- | ---------------------------------------------------------- | ------------------------------------- |
+| Spike     | DE and normals, Float only                                 | proof the look is worth building      |
+| 0         | tiled float pipeline, 16-bit export, recipes and manifests | clean 4K stills                       |
+| 1         | derivative buffers (incl. through BLA), histogram remap    | better classic colouring              |
+| 2         | DE effects, analytic normals, lighting                     | edge glow, bas-relief, metallic       |
+| 3         | bloom, tone mapping                                        | white-hot highlights, real glow       |
+| 4         | pass graph, presets                                        | practical artistic workflow           |
+| 5         | angular / derivative colour                                | iridescent, geometry-following colour |
+| 6A        | period / convergence data                                  | structured interiors                  |
+| 6B        | interior DE / normals                                      | geometric interior shading            |
+| 7         | orbit traps                                                | mineral / material variation          |
+| 8         | variance, optics                                           | photographic finish                   |
 
 ---
 

@@ -12,7 +12,8 @@ There's a suggested order at the end.
   experimental; then use a branch.
 - `make test` runs everything locally: unit tests, golden-image tests and CLI
   tests. There is no CI.
-- Any renderer or performance change updates `Performance.md` with numbers.
+- Any renderer or performance change records its numbers: a dated entry in
+  `Performance-history.md`, and `Performance.md` when the current state moves.
 
 ---
 
@@ -140,8 +141,8 @@ only;
 (d) mip-averaging upward, prefetching and memory budgets.
 Add debug overlays (tile borders and levels) to the Developer panel.
 
-**2.2 Perturbation-theory deep zoom.** ✅ Completed; see the 2.2 sections in
-`Implementation.md`, `Architecture.md` and `Performance.md`.
+**2.2 Perturbation-theory deep zoom.** ✅ Completed; see "Precision" in
+`Architecture.md` and the 2.2 entries in `Performance-history.md`.
 - *Library:* borrow, with a permissive licence. GMP and MPFR are LGPL, which is
   awkward for statically linked iOS App Store builds. Candidates:
   Boost.Multiprecision `cpp_bin_float` (header-only, Boost licence, via Swift's
@@ -158,8 +159,8 @@ Add debug overlays (tile borders and levels) to the Developer panel.
 - Golden tests at 1e50, 1e200 and 1e1000.
 
 **2.3 Automatic iteration depth.** ✅ Completed, except the parts that need
-periodicity checking, which move to 2.14. See the 2.3 sections in
-`Performance.md` and `Implementation.md`.
+periodicity checking, which move to 2.14. See "Iteration depth" in
+`Architecture.md` and the 2.3 entries in `Performance-history.md`.
 - *Starting guess from depth:* `maxIter ≈ 200 + 80·log2(scale)`, rounded to 200.
   Calibrated against the golden locations, no depth-only slope fits both: c = i
   at 1e1000 escapes within about 2,700 iterations (the estimate gives 266,000),
@@ -327,7 +328,7 @@ exponential zoom and share it. ⌘M, or the toolbar button.
   depth estimate per level (or the destination's fixed limit). Only the two
   keyframes a frame needs stay resident. Bounding a keyframe's depth by what the
   previous one observed, as the viewer's ceiling does, was tried, measured and
-  removed: see Performance.md 2.8. The store takes the platform's own budget
+  removed: see the 2.8 entry in Performance-history.md. The store takes the platform's own budget
   (two thirds of the viewer's on iOS, where both are alive at once), iOS is not
   offered 4K, and starting a render suspends the viewer's cache.
 - *Path.* `ZoomPath` places the centre so the offset from the destination shrinks
@@ -571,9 +572,10 @@ cold deep views are too slow on the phones.
 - *Zoom movie keyframes (from 2.8's measurements).* A descent re-derives a
   reference orbit per keyframe because the centre drifts between levels; and
   keyframes render strictly in order, so nothing overlaps the encode. A 101-
-  keyframe descent to 1e30 took 1,236 s at 640×360 (Performance.md, 2.8).
+  keyframe descent to 1e30 took 1,236 s at 640×360 (Performance-history.md, 2.8).
 
-**2.17 Tidy up before shipping.** Employers will read this repository.
+**2.17 Tidy up before shipping.** ✅ Completed. Employers will read this
+repository.
 - One pixel-mapping convention everywhere: the full-frame CLI and GPU paths
   still sample at endpoints, while tiles use pixel centres. Re-record the
   affected goldens deliberately.
@@ -589,6 +591,21 @@ cold deep views are too slow on the phones.
   each file: every document should still describe what the code does, say why
   it exists rather than restate its contents, and there should be an obvious
   place to start reading.
+- *Done.* Every renderer samples pixel centres, and the legacy, deep and
+  minibrot goldens were re-recorded from their own references (the seahorse
+  Float tolerance rose from 6% to 6.5%, and `coord-precompute` may flip one
+  boundary pixel in 10,000). The viewer draws only on the GPU; the lab
+  renderers run through `Lab/LabRenderer.swift`. `Performance.md` holds the
+  current results, `Performance-history.md` the dated log, and
+  `Implementation.md` is gone: its design facts are in `Architecture.md`, its
+  status in the README. Dead code went (the Xcode template tests, unused
+  members, parameters no kernel read), and fields called `padding` that
+  carried flags were named. The source is grouped by feature under
+  `Mandelbrot/`, the tests under one `tests/` tree, measurement scripts under
+  `benchmarks/`, and the documents, reviews and evidence under `docs/`. Every
+  file opens with a comment saying what it is for, and the README says where
+  to start. The movie sheet work in progress when this item ran was moved with
+  its files and left uncommitted, for 2.12.
 
 **2.18 Ready for the App Store and for employers.**
 - *App Store:* iPhone and iPad layouts, app icon variants, launch screen,

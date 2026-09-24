@@ -76,7 +76,7 @@ format-check:
 	rg --files -g '*.swift' -g '!Mandelbrot/Core/Vendor/**' -0 | xargs -0 xcrun swift-format lint --configuration .swift-format --strict
 
 # Aligns the documents' tables for monospace reading and checks their links.
-DOCS = README.md docs/*.md tests/fixtures/README.md benchmarks/README.md benchmarks/reference-library/README.md
+DOCS = README.md docs/*.md docs/evidence/README.md docs/reviews/README.md tests/fixtures/README.md benchmarks/README.md benchmarks/reference-library/README.md
 docs:
 	python3 tools/check_docs.py --fix $(DOCS)
 docs-check:

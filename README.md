@@ -1,106 +1,117 @@
 # Mandelbrot
 
-A native SwiftUI and Metal explorer for iPhone, iPad and Mac, with a headless
-rendering/performance lab. See [vision](vision.md), [plan](plan.md), and the
-[implementation record](Implementation.md).
+A Mandelbrot set explorer for iPhone, iPad and Mac, in SwiftUI and Metal.
+Panning and zooming run at the display's refresh rate at any depth; zoom goes
+past 10^1000, with precision stepping from Float to double-float to
+perturbation theory on its own; and the set can be bookmarked, shared as a
+link, explored beside its Julia sets, and flown through in a rendered movie.
 
-Requires Xcode 26.2 or newer with the Metal toolchain. Targets iOS 18+ and macOS
-15.7+. The MIT-licensed BigInt sources are vendored for offline builds; see
-[provenance](Mandelbrot/Core/Vendor/BigInt/PROVENANCE.md).
+![A deep view rendered through the tile compositor](docs/evidence/gpu-pipeline/tiles-deep.png)
 
-```sh
-make build       # Release macOS app in /tmp/mandelbrot-development
-make test        # Swift unit + CLI + CPU/GPU golden-image tests; GPU required
-make ios         # iPhone/iPad simulator build + generated plist check
-make ios-device  # unsigned physical-iOS build + generated plist check
-make format-check # enforce the committed Swift formatting convention
-```
+## Where to start reading
 
-Run `/tmp/mandelbrot-development/Build/Products/Release/Mandelbrot.app/Contents/MacOS/Mandelbrot`
-with no arguments for the viewer, or `--help` for headless rendering/benchmarks.
-[Performance.md](Performance.md) documents timings, precision, and CLI examples.
+1. This README: what the project is, how to build and test it, and where
+   things are.
+2. [docs/Architecture.md](docs/Architecture.md): how it works and why --
+   the tile cache, the precision ladder, colour, memory and testing.
+3. The source, a folder at a time. [Where things are](#where-things-are)
+   says what each folder holds; the comment at the head of every file says
+   what that file is for.
+4. [docs/Performance.md](docs/Performance.md): what it costs now and how that
+   is measured, with the [history](docs/Performance-history.md) of every
+   experiment behind it.
+5. [docs/vision.md](docs/vision.md) and [docs/plan.md](docs/plan.md): what
+   the app is for, and the roadmap, item by item.
 
-`Mandelbrot/Core` contains the independently tested numerical and navigation
-models. SwiftUI views coordinate through `ExplorerModel`; `RendererRegistry`
-provides the CPU/GPU laboratory implementations. Legacy escape-count fixtures
-remain fixed so renderer changes can be checked against an independent reference.
+## Building and running
 
-Developer tools: in Settings → About, tap the version seven times. On Mac, hold
-Option to reveal Debug, or launch with `-DeveloperMenuEnabled YES` to keep that
-menu available. The main view uses automatic precision; the developer panel has
-renderer overrides, benchmark sharing, a HUD, and tile overlays. Benchmark scope
-can be GPU compute only or end-to-end (GPU computation/colouring; CPU legacy
-rendering). Reports include the device and exact viewport.
-
-The viewer now uses a GPU quadtree cache with parent fallback, colour-level
-blending, refinement fades, upward mip averaging, prefetching and LRU budgets.
-See [Architecture.md](Architecture.md) for the data flow and precision limits.
-Precision now steps automatically from Float to FloatFloat to GPU perturbation.
-The camera retains high-precision coordinates and supports zooms through 2^13000
-(about 1e3913). Settings → Detail defaults to a depth-based iteration estimate.
-Use the detail multiplier, or turn automatic off to enter a manual limit, up to
-1,000,000 GPU iterations. The keyboard increase/decrease commands use the same
-controls. Pixel-driven adaptation remains future work. Settings → About →
-Acknowledgements contains the BigInt MIT notice and algorithm credits.
-
-Export the same tiled compositor without opening a window:
+Requires Xcode 26.2 or newer with the Metal toolchain; the app targets
+iOS 18 and macOS 15.7. Open `Mandelbrot.xcodeproj` and run, or use the
+Makefile, which builds into `/tmp` and never into the source tree:
 
 ```sh
-/tmp/mandelbrot-development/Build/Products/Release/Mandelbrot.app/Contents/MacOS/Mandelbrot \
-  --render --pipeline tiles --renderer metal-double --size 1024x768 \
-  --center-real -0.743643987037151 --center-imag 0.13182597420533 \
-  --scale 10000000 --iterations 2000 --palette blue-gold --output deep.png
+make build         # Release macOS app in /tmp/mandelbrot-development
+make test          # Core unit tests, then the CLI, golden and integration tests (needs a GPU)
+make apptests      # the app's unit and UI tests, on the Mac and an iPad simulator
+make ios           # iPhone/iPad simulator build, and a check of the built app
+make ios-device    # unsigned device build, and the same check
+make format-check  # the committed swift-format convention
+make strings       # bring the string catalogue up to date, as Xcode would
+make docs-check    # aligned tables and working links in the documents
 ```
 
-![Deep tiled rendering](docs/evidence/gpu-pipeline/tiles-deep.png)
-
-The user has reported smooth navigation on a phone and Mac. The review fixes add
-bounded retries, a small deep working set, iteration-change continuity and idle
-sleeping. Physical frame pacing and the revised full-screen touch layout still
-need device verification. The [implementation record](Implementation.md) tracks
-completed work and the remaining validation. Independent CPU product-image
-references run as part of `make test`; regenerate deliberately with
-`python3 tests/cli/test_product_golden.py --record`.
-
-Deep export and a controlled BLA benchmark (no window):
+The built app is
+`/tmp/mandelbrot-development/Build/Products/Release/Mandelbrot.app`. With no
+arguments its executable opens the explorer; with arguments it runs headless,
+through the same renderers, and exits. `--help` lists every option:
 
 ```sh
 APP=/tmp/mandelbrot-development/Build/Products/Release/Mandelbrot.app/Contents/MacOS/Mandelbrot
-"$APP" --render --pipeline tiles --renderer perturbation --size 512x384 \
+# A PNG through the viewer's own tile compositor
+"$APP" --render --pipeline tiles --renderer perturbation --size 1024x768 \
   --center-real 0 --center-imag 1 --scale 1e1000 --iterations 5000 \
-  --density 8 --output deep-1000.png
-"$APP" --benchmark --pipeline gpu --variants perturbation --sizes 256x192 \
-  --center-real 0 --center-imag 1 --scale 1e1000 --iterations 5000 \
-  --runs 3 --warmup 1 --bla on --format json
+  --density 8 --output deep.png
+# Time the GPU renderers on one view
+"$APP" --benchmark --pipeline gpu --variants metal,metal-double --sizes 1024x1024
+# A zoom movie to any mandelbrot:// link
+"$APP" --movie --to 'mandelbrot://view?re=-0.7436&im=0.1318&zoom=4e3' --output zoom.mov
 ```
 
-Use `--bla off` for no approximation, `--bla fixed` for 32-step blocks, or
-`--bla on` (the default) for the hierarchy. Kernel timing excludes CPU reference
-preparation; end-to-end timing includes it. JSON preserves decimal coordinate and
-scale strings, and omits the numeric scale when it exceeds Double range.
+**Developer tools** are hidden: tap the version in Settings → About seven
+times, or on the Mac hold Option for the Debug menu (launch with
+`-DeveloperMenuEnabled YES` to keep it). They hold a renderer override, a
+performance HUD, tile borders and the in-app benchmark.
 
-![GPU perturbation at 1e1000](docs/evidence/perturbation/2.2/gpu-1e1000.png)
+## Testing
 
-The 1e50, 1e200 and 1e1000 sample and PNG goldens come from independent Python
-Decimal direct iteration. Reproduce them deliberately with
-`python3 tests/oracles/deep_oracle.py` followed by
-`python3 tests/oracles/deep_colour.py`. The renderer comparison and evidence
-capture script is `python3 benchmarks/measure_bla.py "$APP"`.
+There is no CI; `make test` and `make apptests` are run before every commit.
+The golden images are never produced by the code they judge: the reference
+counts come from the CPU Double renderer, the tiled images from an
+independent Python model of the compositor, and the deep fixtures from
+Python `Decimal` direct iteration at 1e50, 1e200 and 1e1000 and at a
+period-312 minibrot at 1e100. Regenerating one is deliberate: see
+[tests/fixtures/README.md](tests/fixtures/README.md), and
+[Architecture.md](docs/Architecture.md#testing) for what each layer covers.
 
-The review adds a non-flat period-312 minibrot golden at 1e100 with orbits above
-20,000 iterations, including an independent tiled PNG. Final measurements and
-[rendered evidence](docs/evidence/perturbation/review/final-gpu.png) are in
-[Performance.md](Performance.md). `--sample-records PATH` exports exact UInt32
-counts with separate Float32 corrections for high iteration limits; legacy
-UInt16 counts and combined `--samples` exports remain limited to 65,535.
-Reproduce the benchmark-only Boost comparison with
-`python3 benchmarks/reference-library/reproduce.py`.
+## Where things are
 
-Iteration limits now preserve cached samples: decreasing the limit recolours;
-increasing it refines only capped pixels. References grow on demand, so the
-automatic limit no longer forces full reference preparation before the first tile.
-`"$APP" --benchmark-reference` measures a cold automatic-depth 1e1000 view.
-`python3 benchmarks/measure_deep_followup.py "$APP"` records that measurement and
-the BLA radius experiment. The production radius remains `compound`;
-`--bla-radius fixed` is experimental and currently fails the tiled minibrot
-image budget despite passing isolated-jump accuracy tests.
+| Folder                 | What it holds                                                                              |
+| ---------------------- | ------------------------------------------------------------------------------------------ |
+| `Mandelbrot/App`       | The entry point, the window, and `ExplorerModel`, the state every view shares              |
+| `Mandelbrot/Viewer`    | The Metal views and the native pointer, touch and keyboard input                           |
+| `Mandelbrot/Rendering` | The GPU context, the tile cache and its worker, the compositor, perturbation, Julia        |
+| `Mandelbrot/Shaders`   | The Metal kernels and the double-float arithmetic they share                               |
+| `Mandelbrot/Places`    | Bookmarks, the Places sheets and thumbnails                                                |
+| `Mandelbrot/Movies`    | The movie renderer, its sheets and the journey preview                                     |
+| `Mandelbrot/Settings`  | Settings, acknowledgements, and the controls both share with the movie sheets              |
+| `Mandelbrot/Help`      | The Controls sheet and its words                                                           |
+| `Mandelbrot/Developer` | The hidden developer panel and in-app benchmark                                            |
+| `Mandelbrot/CLI`       | The headless command line, and in `Diagnostics` the `--test-tiles` integration suite       |
+| `Mandelbrot/Lab`       | The early CPU and Metal renderers, kept for benchmarks and tests                           |
+| `Mandelbrot/Core`      | The platform-independent mathematics, also a Swift package; `Vendor` holds BigInt          |
+| `Mandelbrot/Resources` | Assets and the string catalogue                                                            |
+| `Config`               | The Info.plist keys Xcode cannot generate                                                  |
+| `tests`                | `core`, `app` and `ui` in Swift; `cli` end to end; `oracles` and the `fixtures` they write |
+| `benchmarks`           | The scripts behind each recorded measurement ([README](benchmarks/README.md))              |
+| `tools`                | The string-catalogue updater and the document checker                                      |
+| `docs`                 | Architecture, performance, the glossary, the vision and plan, reviews and evidence         |
+
+## Status
+
+The explorer, the tile cache, deep zoom, automatic detail and colour,
+rotation, places, the Julia companion and zoom movies are built (plan
+sections 1 and 2.1–2.11); the pass over every sheet (2.12) is in progress.
+Before the App Store (2.18) come still export, periodicity checking and,
+above all, hands-on validation on the target phones -- iPhone 11 Pro and
+iPhone 16 Pro -- where frame pacing, heat and memory have not yet been
+measured (2.15). [docs/plan.md](docs/plan.md) has each item's state.
+
+## Credits
+
+The vendored [BigInt](https://github.com/attaswift/BigInt) (MIT; see its
+[provenance](Mandelbrot/Core/Vendor/BigInt/PROVENANCE.md)) carries deep
+coordinates and reference orbits. The deep-zoom algorithms -- perturbation,
+rebasing and bilinear approximation -- follow Claude Heiland-Allen's
+[deep zoom theory and practice](https://mathr.co.uk/blog/2021-05-14_deep_zoom_theory_and_practice.html),
+reimplemented from the equations. Settings → About → Acknowledgements shows
+both in the app.

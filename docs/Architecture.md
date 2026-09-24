@@ -1,269 +1,260 @@
-# Renderer architecture through 2.1
+# Architecture
 
-The viewer draws from a quadtree cache while motion or refinement changes the image,
-and pauses when settled. Refinement runs
-independently, so moving the camera does not wait for a full-resolution render.
-The CPU implementations remain available as numerical references and developer
-overrides. `Mandelbrot/Core` also builds as a Swift package for unit tests.
+How the explorer is built, and why it is built that way. Each section names
+the files that implement it; the comment at the head of each file says what
+that file is for, and the code carries the detail. The numbers behind the
+decisions are in [Performance.md](Performance.md) and its
+[history](Performance-history.md); where the folders are is in the
+[README](../README.md#where-things-are).
+
+The one idea everything else serves: **the screen never waits for the
+Mandelbrot set.** Every frame is drawn from samples already computed, at
+whatever resolution they exist, while a worker refines the view in the
+background and new detail fades in. That is what keeps pan and zoom at the
+display's refresh rate at any depth.
 
 ```mermaid
 flowchart LR
-    Input[Native gestures and commands] --> Viewport
-    Viewport --> Demand[Visible tiles and ancestors]
-    Demand --> Worker[Single asynchronous refinement worker]
-    Worker --> Cache[Sample tiles: counts and smooth corrections]
-    Viewport --> Compose[Per-frame Metal compositor, colouring as it draws]
-    Cache --> Compose
-    Compose --> MTKView
+    Input[Gestures, keys, links] --> Model[ExplorerModel<br/>camera, motion, settings]
+    Model --> Canvas[GPUCanvas<br/>one frame on demand]
+    Canvas --> Demand[TileStore.update<br/>which tiles this view needs]
+    Demand --> Worker[Refinement worker<br/>bounded GPU batches]
+    Worker --> Cache[(Sample tiles)]
+    Cache --> Compose[TileCompositor<br/>colours as it draws]
+    Canvas --> Compose
+    Compose --> Screen[Drawable]
 ```
 
-## Samples, precision and keys
+## Layers
 
-`TileGrid` uses 256×256 interior samples and a one-sample gutter on every edge.
-A level-L tile spans `3 / 2^L` of the complex plane. Keys contain a level, signed
-anchor-relative indices and an anchor epoch; negative parent indices use floor
-division. Rebase when indices exceed 2³⁰, retaining detailed old-generation coverage
-using its original precise bounds. Deep coordinates use MIT BigInt fixed point;
-spans and local geometry retain a separate binary exponent.
+- **Core** (`Mandelbrot/Core`) is the mathematics with no UI and no Metal: the
+  camera, tile geometry, arbitrary precision, reference orbits and BLA, the
+  iteration and colour policies, places, movie paths and the CPU lab
+  renderers. It is also a Swift package, so `swift test` exercises it without
+  building the app.
+- **Rendering** and **Shaders** do the GPU work: the tile store and its
+  worker, the compositor, perturbation, the Julia companion, and the Metal
+  kernels they drive. `GPUContext` owns the device, queues and pipelines.
+- **App**, **Viewer** and the feature folders (**Places**, **Movies**,
+  **Settings**, **Help**, **Developer**) are SwiftUI and native input.
+  `ExplorerModel` is the one object a window's views share; it holds the
+  camera and settings and knows nothing about tiles beyond asking the store
+  for statistics.
+- **CLI** and **Lab** are for measuring. The command line renders, benchmarks
+  and runs the integration suite headless, through the same renderers the
+  viewer uses; the lab renderers are the early CPU and Metal experiments,
+  kept as benchmark subjects and test variants, never drawn by the viewer.
 
-`Viewport` owns coordinate conversion and logarithmic zoom. Automatic precision
-uses Float while pixel spacing has adequate Float-ULP headroom, then FloatFloat,
-then perturbation. All Metal arithmetic paths retain strict arithmetic. Tile origins
-and increments are split on the CPU, avoiding per-pixel FloatFloat division.
-Raw RG32Uint records hold an exact UInt32 escape iteration and the bits of a
-Float32 smooth correction, using bailout radius 256. Counts 0xffffffff,
-0xfffffffe and 0xfffffffd denote capped, unfinished and glitched respectively.
-Capped means unresolved, not proven interior. FloatFloat division reduces palette
-phase before combining its fractional parts, retaining colour detail at one
-million iterations. Raw records cost eight bytes per sample; tile budgeting uses
-the textures’ actual allocated sizes.
+## A frame
 
-## Work and presentation
+Drawing is event driven. Tile completion, a changed setting, a resize and
+waking from the background all call `ExplorerModel.requestRedraw`, and
+`GPUCanvas` answers with one frame. Only while something moves -- inertia, a
+spring, a fade -- does the view run on its display timer, so a still view
+costs nothing. Each frame:
 
-`TileStore` runs one worker, including across cancellation: a replacement worker
-starts only after the old command completes. Required work is restricted to the
-visible level and its two nearest ancestors, coarse before fine within that band,
-then centre before edges. Cold jumps therefore get useful nearby detail without
-computing every level from the root. Invisible work is discarded between commands. An orbit
-state buffer makes iteration batches resumable; measured GPU duration adapts the
-batch toward 1 ms: 8–512 ordinary iterations, or 1–128 perturbation/BLA
-operations over one 258² tile. All kernels
-use rounded-up uniform threadgroups and reject out-of-range threads before memory
-access; non-uniform threadgroup support is not required. This bounds
-submitted arithmetic, not OS scheduling latency or a guaranteed frame deadline.
+1. advances the model's motion by the time since the last frame
+   (`Core/Navigation/Motion.swift` integrates decay analytically, so a fling
+   travels the same distance at 60 Hz, 120 Hz or with a dropped frame);
+2. tells the tile store the current view, which updates its demand -- an
+   unchanged view returns before allocating anything;
+3. encodes the compositor: for each cell of the visible level, the best
+   records available at the coarse, base and fine levels and their fade,
+   drawn as one quad whose fragment shader colours the samples.
 
-`GPUCanvas` requests the display's maximum refresh rate and permits at most two
-presentation commands in flight. It transforms cached tiles with the current
-camera; texture readback exists only for tests and exports. Perturbation reads
-a small shared status buffer to select a glitched pixel for re-referencing. Scene deactivation and
-canvas removal stop refinement and motion. CPU overrides use the legacy image
-presentation path; their separate input clocks run only during CPU inertia.
-Tile completion, palette changes and navigation wake a paused view; motion and
-unfinished fades sustain its timer. Unchanged demand returns before allocating
-sets or updating LRU state. The hardware HUD distinguishes drawable presentation
-cadence from GPU execution time; simulator presentation timestamps are unavailable.
-An explicit iOS plist enables ProMotion timing hints and is checked in the built
-app by `make ios` and `make ios-device`.
+At most two frames are in flight. The canvas is `Viewer/GPUCanvas.swift`,
+the compositor `Rendering/TileCompositor.swift`, its shaders
+`tileVertex`/`tileFragment` in `Shaders/GPUCompute.metal`.
 
-Tile/operation failures receive at most three attempts with delayed retries.
-A terminal failure stays stopped until explicit retry or a render-generation reset.
-A visible error notice provides recovery even when the developer HUD is hidden.
+## Tiles
 
-Each visible cell finds cached ancestors and blends the two nearest levels
-according to fractional LOD. New detail fades in over 125 ms. Since 2.11 a record
-holds only its samples, and the compositor colours them as it draws: within a
-level it colours the four samples around each point and blends the colours, then
-blends levels, so filtering never interpolates escape counts. The palette, the
-depth mapping and the cap's marking of capped counts are all draw-time uniforms,
-so none of them touches the cache. The debug overlay draws cell borders and
-base-level labels in the fragment shader.
-Iteration changes retain reusable records. Increases lazily replace insufficient
-tiles, copying escaped samples byte-for-byte and recomputing only capped pixels.
-A two-word GPU summary records capped-pixel count and maximum escaped iteration;
-fully escaped tiles satisfy any later cap. Raw samples never lose their original
-computed limit. Orbit state remains worker-local, so capped pixels currently
-restart rather than retaining multi-megabyte state for every cached tile.
+The plane is cut into a quadtree (`Core/Tiles/TileGrid.swift`). A tile holds
+256×256 samples plus a one-sample gutter on every edge, so bilinear filtering
+is continuous across tile boundaries; a level-L tile spans `3 / 2^L`. Keys
+are indices relative to an anchor, so they stay small at any depth, and the
+grid is rebased when they grow past 2³⁰. A rotated view is covered by its
+bounding box: tiles stay axis-aligned in the plane and only the compositor
+turns them, so rotating never invalidates anything.
 
-A parent draws from its own samples, at its own resolution; before 2.11 its
-colours were box averages of its children's, a mipmap that a draw-time palette
-cannot have. Seven immutable palette lookup textures are shared.
+**Demand** (`Rendering/TileStore.swift`). The store computes the visible
+level from the zoom and the drawable's width, then requires that level and
+its two nearest ancestors, coarse before fine and centre before edges -- so a
+cold jump shows useful detail quickly without computing every level from the
+root. Beside it, a **coverage pyramid** keeps a root tile and a ladder of
+zoom-out levels in a reservation of its own (a tenth of the budget, at least
+30 MiB, at most 64 tiles), so zooming out never shows a hole, and
+**prefetch** requests one level deeper in the direction of a zoom. Work that
+stops being needed is dropped between batches.
 
-## Cache policy
+**Presentation.** Each cell blends its two nearest levels by the fractional
+level of detail, and a newly arrived tile fades in over 125 ms (instantly
+under Reduce Motion). A missing tile falls back to its nearest cached
+ancestor, and an ancestor is always drawn from its own samples at its own
+resolution.
 
-Budgets are 150 MiB on iOS and 500 MiB on Mac. Accounting uses Metal's allocated
-texture sizes, including gutters, rather than assuming a tile is only its raw
-payload, and counts records that only a running fade still
-refers to: a fade releases the record it replaced as soon as it completes, so such
-a record is either on screen or gone. Two thirds of the budget, less scratch headroom,
-are available for resident tiles; the rest covers orbit state, in-flight frames
-and headroom. (It was sized when recolouring also replaced textures in place, and
-could shrink once the phones' memory is measured.) This is a cache budget, not a cap on total app memory.
+**Refinement.** One worker refines up to two tiles at a time, in batches of
+iterations it can resume from saved orbit state. Each batch aims at about
+1 ms of GPU time, measured, so a batch can grow to thousands of iterations on
+a cheap view and stay small on a costly one; the GPU is shared with the
+display, and no batch holds it for long. The last batch of a tile also
+computes its statistics in the same command buffer, which saves round trips.
+A tile or operation that fails is retried at most three times, with a delay;
+after that the view offers "Try Again".
 
-Visible tiles and their two nearest ancestor levels are protected. Distant ancestors
-remain reusable LRU entries. A separate coverage pyramid reserves up to 30 MiB
-and 40 tiles from bytes left after the visible band, always including the root's four-cell anchor footprint, projecting the next eight zoom-out steps plus a sparse tail and a
-direct root tile. It selects root, near and sparse groups in that order, while
-work within the selected set remains coarse-first. An over-budget coverage key is
-deferred from all scheduling sets, which guarantees that the main-actor worker
-makes progress; deferred keys return as soon as a tile fits again, which is
-retried where memory eases — eviction and fallback retirement — as well as
-wherever work is driven. Coverage records are LRU-protected, use their
-own level-appropriate iteration limit and are never extended for a later detail
-limit. They are selected through a small bounds-ordered index rather than the
-ordinary 62-level ancestor walk. An
-old-anchor coverage record remains a fallback until the new root is ready. This
-review decision replaces the original plan's
-requirement to protect the entire chain: the old policy reduced phone detail by
-thousands of times at deep zoom. A 1e10 regression now preserves the requested LOD
-under the 150 MiB budget, using 12 tiles and 9.375 MiB. Other records use LRU eviction.
-If protected demand would exceed the budget, sampling LOD decreases while the
-camera stays fixed. Zoom-in prefetch requests one child level after visible work;
-zoom-out coverage is independently budgeted and stops at its 40-tile cap without
-eviction churn.
+## Samples and colour
 
-## Validation
+A sample is eight bytes (`Core/Precision/SampleRecord.swift`,
+`Shaders/SampleRecord.h`): the exact escape iteration as a UInt32 and the
+smooth-colouring correction as a Float32, with a bailout radius of 256. Three
+reserved counts mark a pixel as capped (unresolved at this limit, not proven
+interior), unfinished or glitched. Keeping the count exact and the correction
+separate preserves smooth shading at a million iterations, where a single
+float could not.
 
-`make test` checks fixed Double-reference goldens, smooth samples, CLI errors,
-viewport maths and inertia. Headless Metal integration checks resumed computation
-against the full kernel byte-for-byte, actual shader blend weights, raw-texture
-reuse, a palette change leaving the cache untouched,
-parent coverage, coverage-pyramid root fallback, long zoom-out sentinel frames,
-constrained phone-shaped coverage pressure and non-extension, prefetch,
-cancellation, LRU budgets and deep anchor rebasing.
-Independent CPU Double product PNGs cover pixel-centre coordinates, fractional LOD,
-offset views and mip boundaries. The original endpoint-mapped lab fixtures remain
-fixed, with separate error budgets by precision and location. Injected allocation
-failures check retry limits; continuity tests compare pixels across iteration
-changes; unchanged-demand tests ensure 120 idle updates schedule no new work.
+Tiles hold only samples. The compositor colours as it draws: within a level
+it colours the four samples around each point and blends the colours, then
+blends levels, so filtering never interpolates escape counts (which would
+invent colours across the set's boundary). The palette, the colour mapping
+and the iteration cap's marking of capped pixels are all draw-time uniforms,
+so changing any of them never touches the cache. The seven palettes are 1D
+lookup textures built once (`Core/Colour/Palette.swift`).
 
-`Performance.md` records GPU timings and the meaning of each measurement. Build
-validation includes simulator and physical iOS targets. Actual 60 Hz/120 Hz frame
-pacing and touch feel on iPhone 11 Pro and iPhone 16 Pro still need device testing.
+By default colour follows depth deterministically
+(`Core/Colour/AutomaticColour.swift`): the same place always looks the same,
+whatever is cached and however it was reached, and a still camera never
+flickers. "Tune colours to this view" fits the visible counts once and pins
+the result; a movie with pinned colours plans its colours before it renders.
+
+Every renderer samples pixel `(x, y)` of a region at its centre,
+`left + (x + 0.5) * step`: the tiles, the full-frame GPU paths, perturbation
+and the lab renderers alike, so their outputs line up and the golden
+fixtures mean the same thing for all of them.
+
+## Precision
+
+Which renderer a view needs depends on how many coordinate bits one pixel
+takes (`Core/Precision/PrecisionPolicy.swift`):
+
+| Pixel spacing                                    | Renderer     | Where                                            |
+| ------------------------------------------------ | ------------ | ------------------------------------------------ |
+| Coarse enough for Float's unit in the last place | Float        | `renderSamples`, `resumeTile` (GPUCompute.metal) |
+| Up to about 40 bits                              | FloatFloat   | the same kernels, double-float arithmetic        |
+| Beyond                                           | Perturbation | `perturbTile` (Perturbation.metal)               |
+
+Metal has no double, so FloatFloat carries each value as the unevaluated sum
+of two floats (`Shaders/FloatFloat.h`, about 48 bits). Its error-free
+transforms depend on each operation rounding where written, so fast math is
+off and multiply-add contraction is disabled inside those functions only:
+the plain Float kernels keep their contractions.
+
+The camera itself switches to binary fixed point on the vendored BigInt
+before Double would lose a pixel, and stores zoom as a logarithm
+(`Core/Navigation/Viewport.swift`, `Core/Precision/DeepNumber.swift`), so
+navigation is exact to 2^13000, about 10^3913.
+
+**Perturbation** (`Rendering/PerturbationRenderer.swift`) iterates each
+pixel's difference from one reference orbit computed at full precision on
+the CPU (`Core/Precision/ReferenceOrbit.swift`). The differences are
+FloatFloat mantissas with exponents of their own, so they survive at 1e1000.
+Around it:
+
+- *References* are computed in cancellable background tasks, shared between
+  tiles through a budgeted cache that accepts a nearby orbit of enough
+  precision, and streamed: the GPU starts with the first 4,097 iterations and
+  pixels pause at the frontier while the orbit extends.
+- *Bilinear approximation* (`Core/Precision/BilinearApproximation.swift`)
+  lets a pixel skip up to thousands of iterations where the orbit is locally
+  linear. Coefficients and radii keep separate exponents even on the CPU, so
+  long jumps cannot overflow Double.
+- *Rebasing* restarts a pixel against the start of the reference whenever
+  its own value becomes smaller than its difference from the reference
+  (|Z + z| < |z|), which avoids most glitches; *Pauldelbrot detection* marks the rest, and later passes
+  recompute only those pixels from a new reference, sixteen at most.
+
+The algorithms follow Claude Heiland-Allen's
+[deep zoom theory and practice](https://mathr.co.uk/blog/2021-05-14_deep_zoom_theory_and_practice.html)
+and [its sequel](https://mathr.co.uk/blog/2022-02-21_deep_zoom_theory_and_practice_again.html);
+the equations were reimplemented, no code copied. BLA's validity radius keeps
+five guard bits per merge. A fixed five-bit margin per jump passes the
+isolated-jump tests but not the tiled minibrot image budget, so it remains an
+experiment behind `--bla-radius fixed`: a measured limit of the validation,
+not a proof that compounding is necessary.
 
 ## Iteration depth
 
-The GPU/product limit is 1,000,000 iterations. Settings and keyboard controls use
-one policy: an automatic starting estimate of `200 + 80*log2(scale)`, rounded up
-to 200-step bands, with a manual detail multiplier. Automatic increases require
-10% or 200 iterations of change; decreases use the same threshold and wait
-300 ms after motion/gestures stop. Returning to the base limit is always allowed.
-Manual mode accepts a direct count. The default CLI remains 200 for reproducibility.
-Legacy renderers and UInt16 export retain their 65,535 limit; the developer
-benchmark excludes those renderers when the requested count is larger.
+Automatic detail (`Core/Precision/IterationPolicy.swift`) starts from an
+estimate that grows with depth, `200 + 80·log2(scale)` rounded up to steps of
+200, scaled by the detail setting. Once every visible tile is complete, it
+lowers the limit to twice the highest escaped count in view, which is exact:
+nothing that escapes is lost. Changes need 10% or 200 iterations to take
+effect, and decreases wait until motion stops. Raising the limit from data
+needs interior detection -- a capped pixel may be inside the set or merely
+unresolved -- and belongs to plan 2.14.
 
-`--sample-records` exports little-endian UInt32 count + Float32 correction pairs,
-row-major, top to bottom. `--samples` remains the compatible, lossy Float32 export
-and requires a limit <=65,535. Output destinations must differ.
+A changed limit keeps the cache. A lower one only changes which counts the
+compositor marks as capped; a higher one copies each tile's escaped samples
+and recomputes only its capped pixels, and a tile with none satisfies any
+limit. The product ceiling is 1,000,000 iterations.
 
-Automatic depth is the depth estimate, capped by an observed ceiling: twice the
-highest escaped count once every visible tile is complete (`IterationPolicy.observe`).
-Raising from data, periodicity checking and selective extension of capped samples
-belong to 2.14.
-Extending capped tiles should preserve escaped samples, but retaining a full orbit
-buffer costs about 1 MiB per tile. Design bounded/selective state retention with
-2.3; storing coordinates alone only enables recomputation. Larger GPU batches and
-multi-tile commands remain measured follow-ups, not prerequisites for the corrected
-working-set policy. Do not assume a separate display queue guarantees preemption.
+## Memory
 
-### Deep coordinates and perturbation (2.2)
+The tile budget is 150 MiB on iOS and 500 MiB on the Mac, counted in Metal's
+allocated sizes. Deep views first reserve room for reference orbits, BLA
+tables and perturbation state; of the rest, a third is kept back for orbit
+state, frames in flight and headroom. Visible tiles and their two nearest
+ancestor levels are protected, the coverage pyramid has its own
+reservation, and everything else is evicted least recently used. If the
+protected set alone would not fit, the store samples at a coarser level
+rather than moving the camera. A 1e10 view keeps full detail on a phone's
+budget using 12 tiles.
 
-The camera promotes to fixed-point coordinates before Double navigation loses a
-pixel. Zoom is stored logarithmically; spans use a normalized Double mantissa
-and a separate binary exponent. Deep tile origins are fixed-point and tile
-indices remain local to the anchor. The compositor divides relative distances
-by extended spans before converting to screen-space floats. The current explicit
-resource limit is 2^13000 zoom (roughly 1e3913), with 128 guard bits, rather than
-an accidental FloatFloat or Double underflow limit.
+## Navigation, places, the companion and movies
 
-The automatic ladder selects perturbation when pixel spacing needs more than
-about 40 coordinate bits. Existing lab Float/FloatFloat renderers remain available.
-Reference orbits run in cancellable detached CPU tasks using MIT BigInt fixed
-point. Metal computes FloatFloat perturbations with an independent exponent for
-each real component. Critical-point rebasing precedes cancellation detection,
-counts avoided glitches, and handles exhausted reference orbits. With rebasing
-disabled for diagnostics, Pauldelbrot detection marks affected pixels and
-subsequent passes recompute only those pixels from a new reference. Sixteen reference attempts form
-a bounded failure, reported through the existing tile retry UI rather than
-publishing known-glitched samples. No per-pixel sample readback occurs in the viewer.
+- **Rotation** turns Double offsets from the screen centre, never the deep
+  centre itself, so it costs no precision (`Viewport.angle`).
+- **Motion**: inertia, the gentle-bounds springs, the compass return and the
+  snap to right angles all use the same analytic decay
+  (`ExplorerModel.advanceMotion`).
+- **Places** (`Core/Places/Location.swift`): a view as decimal strings --
+  centre, zoom, rotation, detail, palette -- is the one currency for
+  `mandelbrot://` links, bookmarks, history, the famous places and a movie's
+  ends. Going to a place travels there as a short movie would, unless Reduce
+  Motion is on.
+- **The Julia companion** (`Rendering/JuliaRenderer.swift`) is one small
+  whole-panel render per change, not a second tile cache: it is small, drawn
+  whole and never deep. It shares the sample format, palettes and colouring.
+- **Movies** (`Movies/MovieRenderer.swift`): `Journey` plans the route -- a
+  straight descent when one place lies inside the other, otherwise out to a
+  shared overview, across and in -- and paces it honestly. A descent renders
+  one keyframe per zoom level through an ordinary tile store, and composes
+  each output frame from the two keyframes that bracket it through an affine
+  map, so only two keyframes are ever resident. A route with travel renders
+  each frame directly. AVAssetWriter encodes straight from Metal textures.
 
-Algorithm sources (equations reimplemented here, no source code copied):
-[Claude Heiland-Allen, deep zoom theory and practice](https://mathr.co.uk/blog/2021-05-14_deep_zoom_theory_and_practice.html)
-and [rebasing and bilinear approximation](https://mathr.co.uk/blog/2022-02-21_deep_zoom_theory_and_practice_again.html).
+## Testing
 
-BLA builds 32-step leaves and a binary merge hierarchy. Coefficients and validity
-radii retain separate exponents during CPU construction as well as GPU use, so
-long jumps cannot overflow Double. The production policy retains five additional
-guard bits per merge. An isolated-jump GPU/Decimal test supports a fixed five-bit
-allowance per completed jump, but that candidate fails the existing tiled
-minibrot image budget. `--bla-radius fixed` reproduces this experiment; the
-default remains `compound`. This is a measured validation limitation, not a proof
-that compounding the margin is mathematically necessary.
-The kernel chooses the longest aligned valid jump. `--bla off`, `fixed`, and `on`
-compare ordinary perturbation, 32-step leaves, and the hierarchy respectively.
-Counters include the longest applied jump and a two-word skipped-iteration sum.
-CPU construction and GPU table storage are reserved in the tile memory budget.
+No CI: `make test` and `make apptests` run everything locally, and the plan
+asks for both before each commit.
 
-Tiles prefer a nearby cached reference within four tile spans of the viewport
-centre, independently of the grid anchor. The cache bands precision to 256 bits
-and accepts longer prefixes and completed escaped orbits. It keeps at most three
-references within one quarter of the device tile allowance (capped at 64 MiB),
-accounting for array capacity. Pending compatible requests share cancellable
-background work; cache hits do not wait behind unrelated misses. References save
-their final BigInt state and extend at the same precision rather than restarting.
-GPU work begins with at most 4,097 reference iterations. Pixels pause at an
-incomplete reference frontier; geometric, BLA-aligned extensions resume them
-without rebasing or resetting pixel state. Escaped references retain the existing
-rebase behaviour. Each worker
-reuses a private perturbation-state buffer.
+| Layer                       | Where                                         | What it checks                                                     |
+| --------------------------- | --------------------------------------------- | ------------------------------------------------------------------ |
+| Core unit tests             | `tests/core` (`swift test`)                   | geometry, precision, policies, places, paths                       |
+| App tests                   | `tests/app`, `tests/ui`                       | the model as the UI drives it, input, keyboard routes, movie sheet |
+| Integration, on the GPU     | `Mandelbrot/CLI/Diagnostics` (`--test-tiles`) | tiles, compositor, kernels, navigation, companion, movies          |
+| End to end, through the CLI | `tests/cli`                                   | exports, errors, goldens at every depth                            |
+| Independent references      | `tests/oracles`, `tests/fixtures`             | the numbers the goldens are compared with                          |
 
-The tile budget reserves reference/cache, GPU orbit, BLA construction/upload and
-state storage before transactional colour/display headroom. Same-anchor tile
-geometry uses integer keys; bounds are cached, and the compositor performs one
-precise camera transform per frame. Old-anchor fallback geometry still uses
-fixed-point arithmetic. Returning shallow restores the canonical shallow grid;
-after the old worker stops, deep references and spare state buffers are released.
-HUD CPU preparation timing is separate from GPU timing.
-Full-image benchmarks create fresh streamed references, so end-to-end results
-include the reference prefix actually needed, without cache hits. Iteration state retention and raising the limit
-from pixel data belong to 2.14.
+The goldens are never produced by the renderers they judge. The legacy
+fixtures are CPU Double counts; the tiled product images come from a
+Python float64 model of the compositor; the deep fixtures from Python
+`Decimal` direct iteration at 1e50, 1e200 and 1e1000 and a period-312
+minibrot at 1e100. Tolerances are per precision and per location, with the
+reasons in `tests/fixtures/README.md`.
 
-Settings → About → Acknowledgements displays the bundled BigInt MIT notice and
-algorithm credits. The existing licence resource is verified in built iOS apps.
-Boost remains benchmark-only; `benchmarks/reference-library/reproduce.py` fetches pinned
-revisions and rebuilds both arithmetic and saved-reference comparisons.
+## What is not yet validated
 
-## Navigation, locations, companion and movies (2.5–2.8)
-
-**Rotation.** `Viewport.angle` rotates the complex plane relative to the screen.
-Every conversion goes through two helpers: a screen offset in units of view
-width, then the same offset rotated into the plane. Rotation therefore applies
-to Double offsets from the screen centre, so precision is untouched at any
-depth, and tiles stay axis-aligned in the plane, so rotating invalidates
-nothing: `visible()` covers the rotated bounding box and the compositor turns
-each quad about its centre. The lab renderers stay axis-aligned and reject
-`--rotation`.
-
-**Motion.** `Motion` integrates exponential decay analytically for pan, zoom and
-rotation, and `Motion.approach` gives the same frame-rate independence to the
-gentle-bounds springs, the compass return and any future animation. The display
-keeps drawing while `ExplorerModel.isAnimating`, which covers inertia, the
-compass and a view outside its bounds.
-
-**Locations.** `Location` is the serialisable form of a view: centre as decimal
-strings, scale as a decimal string, rotation, iteration limit (nil for
-automatic) and palette. It is the single currency for links
-(`mandelbrot://view?…`), bookmarks in user defaults, the starter gallery,
-history entries and a movie's ends.
-
-**Julia companion.** A separate small render, not a second tile cache: one
-compute pass per change, float or double-float, sharing the sample format,
-palette kernel and draw pipeline. Its kernel walks out from the centre of the
-panel and turns the offset by the viewport's angle, so it rotates as the main view
-does. Gestures route to whichever view fills the main area — `mainViewport` —
-including rotation, the snap and the compass.
-
-**Zoom movies.** `ZoomPath` (in Core) defines the keyframe chain and the view at
-any moment; keyframes come from the ordinary tile store and compositor, and each
-output frame samples the two bracketing keyframes through an affine map built
-from the two viewports. AVAssetWriter encodes straight out of Metal textures
-backed by the writer's pixel buffers.
+Every measurement so far is from one Mac. Frame pacing at 60 and 120 Hz,
+touch feel, heat and memory on the target phones (iPhone 11 Pro and 16 Pro)
+are plan 2.15; the headless tests and simulator builds do not stand in for
+them. [Performance.md](Performance.md#not-yet-measured) lists what else is
+unmeasured.

@@ -29,7 +29,8 @@ def cells(line):
     for char in line.strip()[1:-1]:
         if char == "`":
             code = not code
-        if char == "|" and not code:
+        # An escaped pipe, \|, is text inside a cell, not a separator.
+        if char == "|" and not code and not current.endswith("\\"):
             parts.append(current.strip())
             current = ""
         else:
