@@ -18,8 +18,12 @@ import Foundation
   @Published private(set) var player: AVPlayer?
   @Published private(set) var isRendering = false
   @Published private(set) var error: String?
+  /// How far the preview has got, from its renderer: fast near the top of
+  /// the set, slow enough to want a bar on a deep journey.
+  @Published private(set) var progress = 0.0
 
   private var task: Task<Void, Never>?
+  private var progressObservation: AnyCancellable?
   private var request = 0
   private var url: URL?
 
@@ -29,6 +33,12 @@ import Foundation
     let request = request
     isRendering = true
     error = nil
+    progress = 0
+    let renderer = MovieRenderer()
+    renderer.showsStills = false
+    progressObservation = renderer.$progress.sink { [weak self] value in
+      MainActor.assumeIsolated { self?.progress = value }
+    }
     let destination = FileManager.default.temporaryDirectory
       .appendingPathComponent("Mandelbrot-journey-preview-\(UUID().uuidString).mov")
     var proxy = settings
@@ -40,7 +50,6 @@ import Foundation
       do {
         let store = TileStore(budgetBytes: Self.tileBudgetBytes)
         defer { store.cancel() }
-        let renderer = MovieRenderer()
         _ = try await renderer.render(
           journey: journey, settings: proxy, colouring: colouring, to: destination, store: store)
         guard !Task.isCancelled, request == self.request else {
@@ -67,6 +76,8 @@ import Foundation
     request &+= 1
     task?.cancel()
     task = nil
+    progressObservation = nil
+    progress = 0
     player?.pause()
     player = nil
     isRendering = false

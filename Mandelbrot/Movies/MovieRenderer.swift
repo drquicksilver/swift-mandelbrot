@@ -76,6 +76,13 @@ struct MovieCounts: Equatable, Sendable {
   @Published private(set) var counts = MovieCounts()
   @Published var error: String?
   @Published var output: URL?
+  /// A small picture of the frame most recently written, renewed about twice
+  /// a second, so a sheet can show the movie being made.
+  @Published private(set) var latestFrame: CGImage?
+  private var stillShownAt = -Double.infinity
+  /// Off for a renderer nobody watches frame by frame, as the preview's.
+  var showsStills = true
+  static let stillWidth = 640
   private var task: Task<Void, Never>?
   /// The store a render makes for itself, when it is not given one.  A phone
   /// renders beside the viewer's own live cache on a third of a Mac's memory, so
@@ -114,6 +121,37 @@ struct MovieCounts: Equatable, Sendable {
       origin, uv(CGPoint(x: size.width, y: 0)) - origin, uv(CGPoint(x: 0, y: size.height)) - origin
     )
   }
+  /// Draws the frame just written again, small, and publishes it, when the
+  /// last still is half a second old.  It is the same pass the frame took,
+  /// into a smaller target, so it costs a fraction of the frame.  A failure
+  /// only means the sheet keeps the still it has.
+  private func showStill(
+    first: MTLTexture, second: MTLTexture, uniforms: Uniforms, gpu: GPUContext, size: CGSize
+  ) async {
+    let now = ProcessInfo.processInfo.systemUptime
+    guard showsStills, now - stillShownAt >= 0.5 else { return }
+    stillShownAt = now
+    var uniforms = uniforms
+    let width = Self.stillWidth
+    let height = max(1, Int((Double(width) * size.height / max(1, size.width)).rounded()))
+    guard let target = try? gpu.texture(width: width, height: height, format: .bgra8Unorm),
+      let command = gpu.displayQueue.makeCommandBuffer()
+    else { return }
+    let descriptor = MTLRenderPassDescriptor()
+    descriptor.colorAttachments[0].texture = target
+    descriptor.colorAttachments[0].loadAction = .dontCare
+    descriptor.colorAttachments[0].storeAction = .store
+    guard let encoder = command.makeRenderCommandEncoder(descriptor: descriptor) else { return }
+    encoder.setRenderPipelineState(gpu.moviePipeline)
+    encoder.setFragmentBytes(&uniforms, length: MemoryLayout<Uniforms>.stride, index: 0)
+    encoder.setFragmentTexture(first, index: 0)
+    encoder.setFragmentTexture(second, index: 1)
+    encoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 6)
+    encoder.endEncoding()
+    guard (try? await gpu.submit(command)) != nil, let image = try? await gpu.image(target)
+    else { return }
+    latestFrame = image
+  }
   func cancel() {
     task?.cancel()
     task = nil
@@ -130,6 +168,8 @@ struct MovieCounts: Equatable, Sendable {
     startedAt = ProcessInfo.processInfo.systemUptime
     error = nil
     counts = MovieCounts()
+    latestFrame = nil
+    stillShownAt = -.infinity
     keyframeLimits = []
     defer {
       isRendering = false
@@ -278,6 +318,7 @@ struct MovieCounts: Equatable, Sendable {
       encoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 6)
       encoder.endEncoding()
       _ = try await gpu.submit(command)
+      await showStill(first: first, second: second, uniforms: uniforms, gpu: gpu, size: size)
       let stamp = CMTime(
         value: CMTimeValue(frame), timescale: CMTimeScale(settings.framesPerSecond))
       guard adaptor.append(buffer, withPresentationTime: stamp) else {
@@ -328,6 +369,8 @@ struct MovieCounts: Equatable, Sendable {
     startedAt = ProcessInfo.processInfo.systemUptime
     error = nil
     counts = MovieCounts()
+    latestFrame = nil
+    stillShownAt = -.infinity
     keyframeLimits = []
     defer {
       isRendering = false
@@ -427,6 +470,7 @@ struct MovieCounts: Equatable, Sendable {
         destinationSlice: 0, destinationLevel: 0, destinationOrigin: MTLOriginMake(0, 0, 0))
       blit.endEncoding()
       _ = try await gpu.submit(command)
+      await showStill(first: source, second: source, uniforms: Uniforms(), gpu: gpu, size: size)
       let stamp = CMTime(
         value: CMTimeValue(frame), timescale: CMTimeScale(settings.framesPerSecond))
       guard adaptor.append(buffer, withPresentationTime: stamp) else {
@@ -631,9 +675,10 @@ enum MovieFailure: Error, CustomStringConvertible {
     /// set it from outside; this stays beside it, in the same file, for that.
     static func posed(
       progress: Double? = nil, stage: String = "", counts: MovieCounts = MovieCounts(),
-      failure: String? = nil, output: URL? = nil
+      failure: String? = nil, output: URL? = nil, still: CGImage? = nil
     ) -> MovieRenderer {
       let renderer = MovieRenderer()
+      renderer.latestFrame = still
       if let progress {
         renderer.isRendering = true
         renderer.progress = progress

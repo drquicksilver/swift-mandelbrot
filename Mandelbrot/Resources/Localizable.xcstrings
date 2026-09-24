@@ -26,6 +26,9 @@
     "%@ · %lld²" : {
 
     },
+    "%@ %lld%%" : {
+
+    },
     "%@ iterations · maximum 1,000,000" : {
 
     },
@@ -35,9 +38,6 @@
     "%lld frames" : {
 
     },
-    "%lld frames · %lld seconds · %@" : {
-
-    },
     "%lld hits · %lld evictions" : {
 
     },
@@ -45,6 +45,9 @@
 
     },
     "%lld s" : {
+
+    },
+    "%lld seconds · %@ · saved to %@" : {
 
     },
     "%lld tiles · %lld MiB · %lld pending" : {
@@ -77,7 +80,7 @@
     "60 fps" : {
 
     },
-    "480 × 270 · 12 fps" : {
+    "A low-resolution preview of the exact journey. The movie uses the settings below." : {
 
     },
     "A notice appears when you reach the deepest zoom the app can draw." : {
@@ -189,9 +192,6 @@
 
     },
     "Clear Search" : {
-
-    },
-    "Close" : {
 
     },
     "Colour shift" : {
@@ -470,9 +470,6 @@
     "Movie" : {
 
     },
-    "Movie saved to %@" : {
-
-    },
     "My Bookmarks (%lld)" : {
 
     },
@@ -548,10 +545,7 @@
     "Places" : {
 
     },
-    "Play, pause and scrub this low-resolution version of the exact journey." : {
-
-    },
-    "Preparing preview movie…" : {
+    "Preparing the preview…" : {
 
     },
     "Preparing…" : {
@@ -578,22 +572,34 @@
     "Render a Zoom Movie" : {
 
     },
+    "Render Again" : {
+
+    },
     "Render an animated journey between two views of the Mandelbrot set." : {
 
     },
-    "Render Another Movie" : {
-
-    },
-    "Render complete" : {
-
-    },
     "Render Movie" : {
+
+    },
+    "Rendered" : {
+
+    },
+    "Rendered Movie" : {
+
+    },
+    "Rendered with the current settings." : {
 
     },
     "Rendering" : {
 
     },
     "Rendering frame %lld of %lld" : {
+
+    },
+    "Rendering Movie" : {
+
+    },
+    "Rendering the first frames…" : {
 
     },
     "Rendering zoom level %lld of %lld" : {
@@ -746,6 +752,9 @@
     "The movie ran out of memory. Try a lower resolution, then try again." : {
 
     },
+    "The movie so far, as it is written." : {
+
+    },
     "The movie will be saved as a QuickTime .mov file." : {
 
     },
@@ -843,6 +852,9 @@
 
     },
     "When you find a view worth keeping, bookmark it here or press ⌘D." : {
+
+    },
+    "Your last movie is saved as %@." : {
 
     },
     "Zoom" : {

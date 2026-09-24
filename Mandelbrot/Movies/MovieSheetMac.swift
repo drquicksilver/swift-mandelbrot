@@ -30,6 +30,9 @@
     var frames: Int
     var seconds: Int
     var size: String
+    var width: Int
+    var height: Int
+    var framesPerSecond: Int
   }
 
   struct MovieSheetMac: View {
@@ -44,11 +47,18 @@
     @StateObject private var preview = JourneyPreviewRenderer()
     @Environment(\.dismiss) private var dismiss
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    private static let completion = "completion"
+    private static let hero = "hero"
     static let unplannable = String(localized: "This journey can’t be planned.")
     @State private var startChoice: UUID?
     @State private var settings = MovieSettings()
     @State private var outcome: MovieOutcome?
+    /// The last movie made, once the settings have moved on from it: saved,
+    /// and still a click from Finder, while the player previews the new ones.
+    @State private var previous: MovieOutcome?
+    /// What the finished movie was made from, taken when it started, so the
+    /// sheet can tell when the settings no longer describe it.
+    @State private var renderedKey: String?
+    @State private var renderedSettings: MovieSettings?
     @State private var problem: String?
     @State private var player: AVPlayer?
     @State private var explaining = false
@@ -59,15 +69,17 @@
     @State private var suggestedOverviewLog: Double?
     @State private var maximumSheetHeight = MovieSheetSizePolicy.initialMaximumHeight
 
-    /// `movies`, `outcome` and `startingAt` are seams the previews pose a state
-    /// through; the app passes none of them.
+    /// `movies`, `outcome`, `previous` and `startingAt` are seams the previews
+    /// pose a state through; the app passes none of them.
     init(
       model: ExplorerModel, movies: MovieRenderer? = nil, outcome: MovieOutcome? = nil,
-      startingAt: Location? = nil
+      previous: MovieOutcome? = nil, startingAt: Location? = nil
     ) {
       _model = ObservedObject(wrappedValue: model)
       _movies = ObservedObject(wrappedValue: movies ?? model.movies)
       _outcome = State(initialValue: outcome)
+      _previous = State(initialValue: previous)
+      _player = State(initialValue: outcome.map { AVPlayer(url: $0.url) })
       // Never nil: an unmatched selection leaves the From popup blank.
       _startChoice = State(initialValue: (startingAt ?? Location.gallery[0]).id)
     }
@@ -91,8 +103,18 @@
     private var durationIsTooShort: Bool {
       journey != nil && settings.duration + 0.001 < requiredDuration
     }
+    /// The preview's picture changes with these, and only these.
     private var previewKey: String {
-      guard let journey, !isRendering, outcome == nil else { return "no-preview" }
+      guard !isRendering, outcome == nil else { return "no-preview" }
+      return journeyKey
+    }
+    /// The movie's picture changes with the preview's, and with its size and
+    /// pace, which the preview fixes at its own.
+    private var renderKey: String {
+      journeyKey + "|\(settings.width)x\(settings.height)@\(settings.framesPerSecond)"
+    }
+    private var journeyKey: String {
+      guard let journey else { return "no-journey" }
       let segments = journey.segments.map {
         "\($0.kind.rawValue)|\(LocationThumbnail.key($0.from))|\(LocationThumbnail.key($0.to))"
           + "|\($0.duration)|\($0.holdDuration)"
@@ -118,29 +140,22 @@
           ScrollView {
             VStack(alignment: .leading, spacing: 18) {
               section("Journey") { journeyCard }
-              section("Movie Settings") { settingsCard }
-              section("Output") { outputCard }
-              if case .complete(let outcome) = phase {
-                completionCard(outcome).id(Self.completion)
-              }
+              section("Movie Settings") { settingsCard.lockedWhile(isRendering) }
+              section("Output") { outputCard.lockedWhile(isRendering) }
             }
             .padding(.horizontal, 20)
             .padding(.bottom, 18)
           }
-          // The finished movie arrives below everything it was made from, so
-          // the sheet brings it into view rather than leaving it off the end.
+          // The finished movie arrives in the player the preview was in, so
+          // the sheet brings the player into view.
           .onChange(of: outcome) { _, finished in
             guard finished != nil else { return }
             withAnimation(reduceMotion ? nil : .default) {
-              scroller.scrollTo(Self.completion, anchor: .bottom)
+              scroller.scrollTo(Self.hero, anchor: .top)
             }
           }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .disabled(isRendering)
-        // A render dims what it is rendering from, so the settings stay
-        // readable without looking live.
-        .opacity(isRendering ? 0.45 : 1)
         Divider()
         footer
       }
@@ -156,6 +171,18 @@
         refreshJourney()
       }
       .onChange(of: startChoice) { _, _ in refreshJourney() }
+      // A change after a render makes a different movie: the one made is
+      // saved, so the player goes back to previewing the new one.
+      .onChange(of: renderKey) { _, key in
+        // Only against a fingerprint actually taken: the journey is planned
+        // as the sheet opens, which is not a change to anything rendered.
+        guard outcome != nil, let renderedKey, key != renderedKey else { return }
+        previous = outcome
+        player?.pause()
+        player = nil
+        outcome = nil
+        movies.output = nil
+      }
       .task(id: LocationThumbnail.key(start)) {
         await fromImage.render(start, width: 232, height: 140)
       }
@@ -234,49 +261,121 @@
           .frame(maxWidth: .infinity, alignment: .leading)
           thumbnail(toImage, caption: String(localized: "This view"))
         }
-        // The preview is for choosing; once a render starts it would be an
-        // empty box under a stale caption, so it steps aside.
-        if journey != nil, case .settings = phase {
-          DisclosureGroup("Journey Preview", isExpanded: $previewExpanded) {
-            journeyPreview
+        .lockedWhile(isRendering)
+        // One player throughout: the preview, then the movie as it is made,
+        // then the movie made.
+        if journey != nil || outcome != nil {
+          DisclosureGroup(isExpanded: $previewExpanded) {
+            hero
+          } label: {
+            heroLabel
           }
           .font(.callout)
+          .id(Self.hero)
         }
         if let journey, !journey.isDirectDescent {
           DisclosureGroup("Edit Journey", isExpanded: $editingJourney) {
             timeline(journey)
           }
           .font(.callout)
+          .lockedWhile(isRendering)
         }
       }
     }
 
-    private var journeyPreview: some View {
-      VStack(alignment: .leading, spacing: 7) {
-        HStack {
-          Spacer()
-          Text("480 × 270 · 12 fps")
-            .font(.caption.monospacedDigit()).foregroundStyle(.secondary)
+    private var heroLabel: some View {
+      HStack(spacing: 6) {
+        switch phase {
+        case .settings: Text("Journey Preview")
+        case .rendering: Text("Rendering Movie")
+        case .complete: Text("Rendered Movie")
         }
+        Spacer()
+        if case .complete(let outcome) = phase {
+          Label("Rendered", systemImage: "checkmark.circle.fill")
+            .labelStyle(.titleAndIcon)
+            .foregroundStyle(.green)
+            .font(.caption)
+          Text(verbatim: "\(outcome.width) × \(outcome.height) · \(outcome.framesPerSecond) fps")
+            .font(.caption.monospacedDigit()).foregroundStyle(.secondary)
+        } else if isRendering {
+          // Locked while it renders, so these are what it renders with.
+          Text(verbatim: "\(settings.width) × \(settings.height) · \(settings.framesPerSecond) fps")
+            .font(.caption.monospacedDigit()).foregroundStyle(.secondary)
+        } else {
+          Text(
+            verbatim:
+              "\(JourneyPreviewRenderer.width) × \(JourneyPreviewRenderer.height) · \(JourneyPreviewRenderer.framesPerSecond) fps"
+          )
+          .font(.caption.monospacedDigit()).foregroundStyle(.secondary)
+        }
+      }
+    }
+
+    private var hero: some View {
+      VStack(alignment: .leading, spacing: 7) {
         ZStack {
           RoundedRectangle(cornerRadius: 8).fill(.black)
-          if let player = preview.player {
-            VideoPlayer(player: player)
-          } else {
-            VStack(spacing: 8) {
-              if preview.isRendering { ProgressView().controlSize(.small) }
-              Text(preview.isRendering ? "Preparing preview movie…" : "Preview unavailable")
-                .font(.caption).foregroundStyle(.secondary)
-            }
-          }
+          heroPicture
         }
         .frame(maxWidth: .infinity)
         .aspectRatio(16.0 / 9.0, contentMode: .fit)
         .clipShape(RoundedRectangle(cornerRadius: 8))
+        heroCaption
+      }
+      .padding(.top, 6)
+    }
+
+    @ViewBuilder private var heroPicture: some View {
+      switch phase {
+      case .complete:
+        if let player { MoviePlayer(player: player) }
+      case .rendering:
+        if let still = movies.latestFrame {
+          Image(decorative: still, scale: 1).resizable().scaledToFit()
+        } else {
+          waiting(String(localized: "Rendering the first frames…"), progress: nil)
+        }
+      case .settings:
+        if let player = preview.player {
+          MoviePlayer(player: player)
+        } else if preview.isRendering {
+          waiting(String(localized: "Preparing the preview…"), progress: preview.progress)
+        } else {
+          Text("Preview unavailable").font(.caption).foregroundStyle(.secondary)
+        }
+      }
+    }
+
+    private func waiting(_ title: String, progress: Double?) -> some View {
+      VStack(spacing: 8) {
+        if let progress {
+          ProgressView(value: progress).frame(width: 220)
+          Text("\(title) \(Int((progress * 100).rounded()))%")
+        } else {
+          ProgressView().controlSize(.small)
+          Text(title)
+        }
+      }
+      .font(.caption.monospacedDigit())
+      .foregroundStyle(.secondary)
+      .environment(\.colorScheme, .dark)
+    }
+
+    @ViewBuilder private var heroCaption: some View {
+      switch phase {
+      case .complete(let outcome):
+        Text("\(outcome.seconds) seconds · \(outcome.size) · saved to \(outcome.path)")
+          .font(.caption).foregroundStyle(.secondary)
+          .textSelection(.enabled)
+      case .rendering:
+        Text("The movie so far, as it is written.")
+          .font(.caption).foregroundStyle(.secondary)
+      case .settings:
         if let error = preview.error {
           Text(error).font(.caption).foregroundStyle(.red)
         } else {
-          Text("Play, pause and scrub this low-resolution version of the exact journey.")
+          Text("A low-resolution preview of the exact journey. The movie uses the settings below.")
             .font(.caption).foregroundStyle(.secondary)
         }
       }
@@ -438,13 +537,26 @@
           TextField("", text: .constant(abbreviated(library.folder))).disabled(true)
           Button("Choose…") { library.choose() }
         }
-        if case .complete = phase {
-        } else {
-          Text("The movie will be saved as a QuickTime .mov file.")
-            .font(.caption)
-            .foregroundStyle(.secondary)
-            .padding(.leading, 62)
+        Group {
+          if case .complete = phase {
+            Label("Rendered with the current settings.", systemImage: "checkmark.circle.fill")
+              .foregroundStyle(.secondary)
+          } else {
+            Text("The movie will be saved as a QuickTime .mov file.")
+              .foregroundStyle(.secondary)
+            if let previous {
+              HStack(spacing: 6) {
+                Text("Your last movie is saved as \(previous.path).")
+                  .foregroundStyle(.secondary)
+                  .lineLimit(1).truncationMode(.middle)
+                Button("Reveal in Finder") { library.reveal(previous.url) }
+                  .buttonStyle(.link)
+              }
+            }
+          }
         }
+        .font(.caption)
+        .padding(.leading, 62)
       }
     }
 
@@ -465,35 +577,6 @@
       let path = url.resolvingSymlinksInPath().path
       guard path.hasPrefix(Self.home) else { return path }
       return "~" + path.dropFirst(Self.home.count)
-    }
-
-    // MARK: Finished
-
-    private func completionCard(_ outcome: MovieOutcome) -> some View {
-      HStack(alignment: .top, spacing: 12) {
-        Image(systemName: "checkmark.circle.fill")
-          .font(.title2)
-          .foregroundStyle(.white, .green)
-        VStack(alignment: .leading, spacing: 4) {
-          Text("Render complete").font(.headline)
-          Text("Movie saved to \(outcome.path)").font(.callout)
-          Text("\(outcome.frames) frames · \(outcome.seconds) seconds · \(outcome.size)")
-            .font(.caption)
-            .foregroundStyle(.secondary)
-          HStack(spacing: 8) {
-            Button("Reveal in Finder") { library.reveal(outcome.url) }
-            ShareLink(item: outcome.url) { Label("Share…", systemImage: "square.and.arrow.up") }
-          }
-          .padding(.top, 4)
-        }
-        Spacer(minLength: 0)
-        VideoPlayer(player: player)
-          .frame(width: 160, height: 96)
-          .clipShape(RoundedRectangle(cornerRadius: 6))
-      }
-      .padding(12)
-      .frame(maxWidth: .infinity, alignment: .leading)
-      .background(Color.primary.opacity(0.05), in: RoundedRectangle(cornerRadius: 10))
     }
 
     // MARK: Footer
@@ -548,13 +631,17 @@
             .help("About zoom movies")
             .popover(isPresented: $explaining, arrowEdge: .top) { explanation }
             Spacer()
-            if case .complete = phase {
-              Button("Close") { dismiss() }
-              Button("Render Another Movie") { reset() }.buttonStyle(.borderedProminent)
+            if case .complete(let outcome) = phase {
+              Button("Reveal in Finder") { library.reveal(outcome.url) }
+              ShareLink(item: outcome.url) { Label("Share…", systemImage: "square.and.arrow.up") }
+              Button("Done") { dismiss() }
+                .buttonStyle(.borderedProminent)
+                .keyboardShortcut(.defaultAction)
             } else {
               Button("Cancel") { dismiss() }
-              Button(movies.error == nil ? "Render Movie" : "Try Again") { render() }
+              Button(primaryTitle) { render() }
                 .buttonStyle(.borderedProminent)
+                .keyboardShortcut(.defaultAction)
                 .disabled(journey == nil || durationIsTooShort)
             }
           }
@@ -562,6 +649,12 @@
         .padding(.horizontal, 20)
         .padding(.vertical, 14)
       }
+    }
+
+    private var primaryTitle: String {
+      if movies.error != nil { return String(localized: "Try Again") }
+      return previous == nil
+        ? String(localized: "Render Movie") : String(localized: "Render Again")
     }
 
     /// The headline is whatever the render is doing now, and the quieter line
@@ -638,22 +731,14 @@
         // compositor resumes it on the first frame after the sheet closes.
         model.tiles.cancel()
         preview.cancel()
+        renderedKey = renderKey
+        renderedSettings = settings
         movies.start(
           journey: journey, settings: movieSettings, colouring: model.colouring,
           to: library.destination(named: MovieNaming.fileName()))
       } catch {
         problem = MovieRenderer.explain(error)
       }
-    }
-
-    /// Back to the settings, keeping them; the finished movie stays on disk.
-    private func reset() {
-      player?.pause()
-      player = nil
-      outcome = nil
-      movies.output = nil
-      movies.error = nil
-      problem = nil
     }
 
     /// What a finished render leaves behind, measured off the file itself.
@@ -666,10 +751,14 @@
       }
       player = AVPlayer(url: url)
       let bytes = (try? FileManager.default.attributesOfItem(atPath: url.path))?[.size] as? Int64
+      // What it was made with, not what the controls say now.
+      let made = renderedSettings ?? settings
       outcome = MovieOutcome(
-        url: url, path: abbreviated(url), frames: settings.frameCount,
-        seconds: Int(settings.duration),
-        size: bytes.map { ByteCountFormatter.string(fromByteCount: $0, countStyle: .file) } ?? "")
+        url: url, path: abbreviated(url), frames: made.frameCount,
+        seconds: Int(made.duration),
+        size: bytes.map { ByteCountFormatter.string(fromByteCount: $0, countStyle: .file) } ?? "",
+        width: made.width, height: made.height, framesPerSecond: made.framesPerSecond)
+      previous = nil
     }
 
     private func refreshJourney() {
@@ -871,7 +960,43 @@
     }
   }
 
+  extension View {
+    /// Dims and disables settings while a render reads them, so they stay
+    /// legible without looking live.  The player is left out: it shows the
+    /// movie being made.
+    func lockedWhile(_ locked: Bool) -> some View {
+      disabled(locked).opacity(locked ? 0.45 : 1)
+    }
+  }
+
+  /// AVKit's player, but a scroll wheel over it scrolls the sheet: the
+  /// player took every scroll for itself, and at this size it covers much of
+  /// the sheet.
+  struct MoviePlayer: NSViewRepresentable {
+    let player: AVPlayer
+    func makeNSView(context: Context) -> ScrollingPlayerView {
+      let view = ScrollingPlayerView()
+      view.controlsStyle = .inline
+      view.showsFullScreenToggleButton = true
+      view.player = player
+      return view
+    }
+    func updateNSView(_ view: ScrollingPlayerView, context: Context) {
+      if view.player !== player { view.player = player }
+    }
+    final class ScrollingPlayerView: AVPlayerView {
+      override func scrollWheel(with event: NSEvent) {
+        nextResponder?.scrollWheel(with: event)
+      }
+    }
+  }
+
   #if DEBUG
+    private let previewOutcome = MovieOutcome(
+      url: URL(fileURLWithPath: "/tmp/Mandelbrot zoom.mov"),
+      path: "~/Movies/Mandelbrot zoom 2026-09-18-175406.mov",
+      frames: 360, seconds: 12, size: "11.2 MB", width: 1920, height: 1080, framesPerSecond: 30)
+
     @MainActor private func previewModel() -> ExplorerModel {
       let model = ExplorerModel()
       model.apply(Location.gallery[1], record: false)
@@ -898,16 +1023,16 @@
         model: previewModel(),
         movies: .posed(
           progress: 0.39, stage: "Frame 142 of 360",
-          counts: MovieCounts(frame: 142, frames: 360, keyframe: 6, keyframes: 13)))
+          counts: MovieCounts(frame: 142, frames: 360, keyframe: 6, keyframes: 13),
+          still: NSImageOrUIImage.named("famous-1")))
     }
 
     #Preview("Complete") {
-      MovieSheetMac(
-        model: previewModel(), movies: .posed(),
-        outcome: MovieOutcome(
-          url: URL(fileURLWithPath: "/tmp/Mandelbrot zoom.mov"),
-          path: "~/Movies/Mandelbrot zoom 2026-09-18-175406.mov",
-          frames: 360, seconds: 12, size: "24.3 MB"))
+      MovieSheetMac(model: previewModel(), movies: .posed(), outcome: previewOutcome)
+    }
+
+    #Preview("Changed after a render") {
+      MovieSheetMac(model: previewModel(), movies: .posed(), previous: previewOutcome)
     }
   #endif
 #endif

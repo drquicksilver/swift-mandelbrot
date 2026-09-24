@@ -136,6 +136,10 @@ import Testing
     #expect(size > 0)
     #expect(movies.counts.frames == settings.frameCount)
     #expect(movies.counts.keyframes == path.keyframeLevels.count)
+    // The sheet's player shows the movie as it is made.
+    let still = try #require(movies.latestFrame, "A render showed no still")
+    #expect(still.width == MovieRenderer.stillWidth)
+    #expect(still.height == MovieRenderer.stillWidth * 180 / 320)
   }
 
   /// The sheet preview is deliberately a real, small movie rather than a
@@ -153,11 +157,16 @@ import Testing
     defer { preview.cancel() }
     // A deadline, not a delay: the iPad simulator, running this beside the
     // other render tests, has taken over ten seconds.
+    var progress: [Double] = []
     for _ in 0..<300 where preview.player == nil && preview.error == nil {
+      progress.append(preview.progress)
       try await Task.sleep(for: .milliseconds(100))
     }
     #expect(preview.error == nil)
     #expect(preview.player != nil)
+    // Its bar only moves forwards, and a finished preview is complete.
+    #expect(zip(progress, progress.dropFirst()).allSatisfy { $0 <= $1 })
+    #expect(preview.progress == 1)
   }
 
   /// A Seahorse start and a different deep destination used to be accepted as a
@@ -181,5 +190,6 @@ import Testing
     #expect(movies.output == url)
     #expect(movies.counts.frames == settings.frameCount)
     #expect(movies.counts.keyframes == settings.frameCount)
+    #expect(movies.latestFrame != nil, "A journey render showed no still")
   }
 }
