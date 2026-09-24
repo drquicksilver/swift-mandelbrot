@@ -1,4 +1,4 @@
-// Keeps Mandelbrot/Localizable.xcstrings in step with the code, the way Xcode does.
+// Keeps Mandelbrot/Resources/Localizable.xcstrings in step with the code, the way Xcode does.
 //
 // Xcode updates a string catalogue when it builds in the IDE; `xcodebuild`
 // extracts the strings but never writes them back.  This does that step from
@@ -20,7 +20,7 @@ import Foundation
 
 let catalogue = URL(fileURLWithPath: #filePath)
   .deletingLastPathComponent().deletingLastPathComponent()
-  .appendingPathComponent("Mandelbrot/Localizable.xcstrings")
+  .appendingPathComponent("Mandelbrot/Resources/Localizable.xcstrings")
 
 var arguments = Array(CommandLine.arguments.dropFirst())
 let checking = arguments.first == "--check"

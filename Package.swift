@@ -10,7 +10,7 @@ let package = Package(
       name: "MandelbrotCore", path: "Mandelbrot/Core",
       exclude: ["Vendor/BigInt/LICENSE.md", "Vendor/BigInt/PROVENANCE.md"]),
     .testTarget(
-      name: "MandelbrotCoreTests", dependencies: ["MandelbrotCore"], path: "tests/CoreTests"),
+      name: "MandelbrotCoreTests", dependencies: ["MandelbrotCore"], path: "tests/core"),
   ],
   swiftLanguageModes: [.v5]
 )

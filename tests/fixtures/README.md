@@ -18,7 +18,7 @@ reduced-precision renderers have measured bounded boundary differences.
 Reference PNG bytes are checked on this macOS toolchain; updating ImageIO may
 require a reviewed re-encode.
 
-To deliberately regenerate: `python3 tests/test_golden.py APP --record`.
+To deliberately regenerate: `python3 tests/cli/test_golden.py APP --record`.
 Never regenerate merely to make a failing renderer pass. Review counts and images.
 
 `product/` holds pixel-centred PNGs of the tiled compositor, written by the

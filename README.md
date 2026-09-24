@@ -52,7 +52,7 @@ Export the same tiled compositor without opening a window:
   --scale 10000000 --iterations 2000 --palette blue-gold --output deep.png
 ```
 
-![Deep tiled rendering](evidence/product/tiles-deep.png)
+![Deep tiled rendering](docs/evidence/gpu-pipeline/tiles-deep.png)
 
 The user has reported smooth navigation on a phone and Mac. The review fixes add
 bounded retries, a small deep working set, iteration-change continuity and idle
@@ -60,7 +60,7 @@ sleeping. Physical frame pacing and the revised full-screen touch layout still
 need device verification. The [implementation record](Implementation.md) tracks
 completed work and the remaining validation. Independent CPU product-image
 references run as part of `make test`; regenerate deliberately with
-`python3 tests/test_product_golden.py --record`.
+`python3 tests/cli/test_product_golden.py --record`.
 
 Deep export and a controlled BLA benchmark (no window):
 
@@ -79,28 +79,28 @@ Use `--bla off` for no approximation, `--bla fixed` for 32-step blocks, or
 preparation; end-to-end timing includes it. JSON preserves decimal coordinate and
 scale strings, and omits the numeric scale when it exceeds Double range.
 
-![GPU perturbation at 1e1000](evidence/deep/gpu-1e1000.png)
+![GPU perturbation at 1e1000](docs/evidence/perturbation/2.2/gpu-1e1000.png)
 
 The 1e50, 1e200 and 1e1000 sample and PNG goldens come from independent Python
 Decimal direct iteration. Reproduce them deliberately with
-`python3 tests/precision/oracle.py` followed by
-`python3 tests/precision/colour_goldens.py`. The renderer comparison and evidence
-capture script is `python3 tests/precision/measure.py "$APP"`.
+`python3 tests/oracles/deep_oracle.py` followed by
+`python3 tests/oracles/deep_colour.py`. The renderer comparison and evidence
+capture script is `python3 benchmarks/measure_bla.py "$APP"`.
 
 The review adds a non-flat period-312 minibrot golden at 1e100 with orbits above
 20,000 iterations, including an independent tiled PNG. Final measurements and
-[rendered evidence](evidence/review-deep/final-gpu.png) are in
+[rendered evidence](docs/evidence/perturbation/review/final-gpu.png) are in
 [Performance.md](Performance.md). `--sample-records PATH` exports exact UInt32
 counts with separate Float32 corrections for high iteration limits; legacy
 UInt16 counts and combined `--samples` exports remain limited to 65,535.
 Reproduce the benchmark-only Boost comparison with
-`python3 tests/precision/reproduce.py`.
+`python3 benchmarks/reference-library/reproduce.py`.
 
 Iteration limits now preserve cached samples: decreasing the limit recolours;
 increasing it refines only capped pixels. References grow on demand, so the
 automatic limit no longer forces full reference preparation before the first tile.
 `"$APP" --benchmark-reference` measures a cold automatic-depth 1e1000 view.
-`python3 tests/precision/measure_followup.py "$APP"` records that measurement and
+`python3 benchmarks/measure_deep_followup.py "$APP"` records that measurement and
 the BLA radius experiment. The production radius remains `compound`;
 `--bla-radius fixed` is experimental and currently fails the tiled minibrot
 image budget despite passing isolated-jump accuracy tests.

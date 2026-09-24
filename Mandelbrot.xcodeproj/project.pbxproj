@@ -42,12 +42,14 @@
 		};
 		849187E32F1ECE53005E293A /* MandelbrotTests */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
-			path = MandelbrotTests;
+			name = MandelbrotTests;
+			path = tests/app;
 			sourceTree = "<group>";
 		};
 		849187ED2F1ECE53005E293A /* MandelbrotUITests */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
-			path = MandelbrotUITests;
+			name = MandelbrotUITests;
+			path = tests/ui;
 			sourceTree = "<group>";
 		};
 /* End PBXFileSystemSynchronizedRootGroup section */
