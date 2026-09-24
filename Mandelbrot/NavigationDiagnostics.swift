@@ -116,12 +116,14 @@
       let model = ExplorerModel(bookmarks: store)
       model.resize(CGSize(width: 800, height: 500), displayScale: 2)
 
-      // Opening a shared link moves the view, its rotation, palette and detail.
-      guard let deep = Location.gallery.first(where: { $0.scale == "1e100" }) else {
-        throw GPUFailure("The gallery lost its deep location")
-      }
+      // Opening a shared link moves the view, its rotation, palette and detail:
+      // a deep one, with a fixed limit and a palette of its own.
+      let deep = Location(
+        real: "-0.743643887037158704752191506114774",
+        imag: "0.131825904205311970493132056385139", scale: "1e100", iterations: 60_000,
+        palette: .ink, density: 512)
       model.open(deep.url)
-      try require(model.locationError == nil, "A gallery link failed to open")
+      try require(model.locationError == nil, "A deep link failed to open")
       let deepView = try deep.viewport()
       try require(
         abs(model.viewport.logScale - deepView.logScale) < 1e-9
