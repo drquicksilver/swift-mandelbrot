@@ -132,11 +132,8 @@ struct Journey: Sendable {
       entryView.deepCenter = to.preciseCenter
       entryView.deepLogScale = overview.logScale
     }
-    let preciseExit = Location(
-      viewport: exitView, iterations: start.iterations, colouring: start.colouring, name: "Overview"
-    )
-    let preciseEntry = Location(
-      viewport: entryView, iterations: end.iterations, colouring: end.colouring, name: "Overview")
+    let preciseExit = overviewPlace(start, at: exitView)
+    let preciseEntry = overviewPlace(end, at: entryView)
     return Journey(
       start: start, end: end,
       segments: [
@@ -144,6 +141,23 @@ struct Journey: Sendable {
         travel(from: preciseExit, to: preciseEntry, aspectRatio: aspectRatio),
         zoom(from: preciseEntry, to: end),
       ])
+  }
+
+  /// A place seen from the overview, coloured as the viewer would colour it
+  /// there: depth colouring follows the new scale, and a pinned or historic
+  /// colouring keeps its numbers.
+  private static func overviewPlace(_ place: Location, at view: Viewport) -> Location {
+    var colouring = place.colouring
+    if place.automaticColour == false {
+      colouring = DepthColouring.resolve(
+        viewport: view, contrast: Float(place.densityAdjustment ?? 1),
+        offsetAdjustment: Float(place.offsetAdjustment ?? 0), palette: place.palette,
+        smooth: colouring.smooth)
+    }
+    return Location(
+      viewport: view, iterations: place.iterations, colouring: colouring, name: "Overview",
+      automaticColour: place.automaticColour, densityAdjustment: place.densityAdjustment,
+      offsetAdjustment: place.offsetAdjustment)
   }
 
   /// A view at normalised journey time.  The zoom and travel channels have

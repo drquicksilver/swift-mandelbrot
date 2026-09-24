@@ -303,6 +303,22 @@ import Testing
   let wider = try Journey.planned(
     start: seahorse, end: unrelated, overviewLogScale: overview - 2)
   #expect(wider.minimumDuration > routed.minimumDuration)
+  // The overview keeps each end's kind of colouring, and depth colouring is
+  // resolved for the overview's own scale.
+  var depthStart = seahorse
+  depthStart.automaticColour = false
+  depthStart.densityAdjustment = 1.5
+  var pinnedEnd = unrelated
+  pinnedEnd.automaticColour = true
+  let coloured = try Journey.planned(start: depthStart, end: pinnedEnd)
+  let travel = try #require(coloured.segments.first { $0.kind == .travel })
+  #expect(travel.from.automaticColour == false && travel.from.densityAdjustment == 1.5)
+  let resolved = DepthColouring.resolve(
+    viewport: try travel.from.viewport(), contrast: 1.5, palette: seahorse.palette)
+  #expect(travel.from.colouring.logarithmic && travel.from.colouring.palette == seahorse.palette)
+  #expect(abs(travel.from.colouring.density / resolved.density - 1) < 1e-4)
+  #expect(abs(travel.from.colouring.offset - resolved.offset) < 1e-3)
+  #expect(travel.to.automaticColour == true && travel.to.colouring == pinnedEnd.colouring)
   let first = try routed.viewport(at: 0, duration: routed.minimumDuration)
   let last = try routed.viewport(at: 1, duration: routed.minimumDuration)
   let expectedFirst = try seahorse.viewport()
