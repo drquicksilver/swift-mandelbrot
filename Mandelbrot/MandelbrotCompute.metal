@@ -50,8 +50,8 @@ kernel void mandelbrotIterations(
     float realMin = params.centerX - realSpan * 0.5f;
     float imagMax = params.centerY + imagSpan * 0.5f;
 
-    float real = realMin + (float(gid.x) / float(max(1u, params.width - 1))) * realSpan;
-    float imag = imagMax - (float(gid.y) / float(max(1u, params.height - 1))) * imagSpan;
+    float real = realMin + ((float(gid.x) + 0.5f) / float(params.width)) * realSpan;
+    float imag = imagMax - ((float(gid.y) + 0.5f) / float(params.height)) * imagSpan;
 
     float zr = 0.0f;
     float zi = 0.0f;
@@ -84,10 +84,9 @@ kernel void mandelbrotIterationsDouble(
     float2 realMin = dd_sub(params.centerX, dd_mul_float(realSpan, 0.5f));
     float2 imagMax = dd_add(params.centerY, dd_mul_float(imagSpan, 0.5f));
 
-    float denomX = float(max(1u, params.width - 1));
-    float denomY = float(max(1u, params.height - 1));
-    float2 normXdd = dd_div(float2(float(gid.x), 0.0f), float2(denomX, 0.0f));
-    float2 normYdd = dd_div(float2(float(gid.y), 0.0f), float2(denomY, 0.0f));
+    // Pixel centres: (x + 0.5) / width of the way across, exact in a float.
+    float2 normXdd = dd_div(float2(float(gid.x) + 0.5f, 0.0f), float2(float(params.width), 0.0f));
+    float2 normYdd = dd_div(float2(float(gid.y) + 0.5f, 0.0f), float2(float(params.height), 0.0f));
     float2 real = dd_add(realMin, dd_mul(realSpan, normXdd));
     float2 imag = dd_sub(imagMax, dd_mul(imagSpan, normYdd));
 

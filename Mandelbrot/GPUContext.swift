@@ -9,6 +9,10 @@ struct GPUFailure: Error, CustomStringConvertible, LocalizedError {
   /// as, rather than "Mandelbrot.GPUFailure error 1".
   var errorDescription: String? { description }
 }
+/// What every compute kernel needs to place a pixel, in double-float halves.
+/// `realMin` and `imagMax` are the centre of pixel (0, 0), and the steps are
+/// one pixel: the kernels sample `realMin + x * stepX`, so each pixel is
+/// sampled at its centre, as the tiles are.
 struct GPUParameters {
   var realMin, imagMax, stepX, stepY: SIMD2<Float>
   var width, height, maxIterations, precision: UInt32
@@ -18,11 +22,11 @@ struct GPUParameters {
   var padding: UInt32 = 0
   init(viewport: Viewport, width: Int, height: Int, iterations: Int, renderer: RendererID) {
     let span = viewport.span
-    let imaginarySpan = span * Double(height) / Double(width)
-    realMin = Self.split(viewport.center.x - span / 2)
-    imagMax = Self.split(viewport.center.y + imaginarySpan / 2)
-    stepX = Self.split(span / Double(max(1, width - 1)))
-    stepY = Self.split(imaginarySpan / Double(max(1, height - 1)))
+    let step = span / Double(width)
+    realMin = Self.split(viewport.center.x - span / 2 + step / 2)
+    imagMax = Self.split(viewport.center.y + step * Double(height) / 2 - step / 2)
+    stepX = Self.split(step)
+    stepY = stepX
     self.width = UInt32(width)
     self.height = UInt32(height)
     maxIterations = UInt32(iterations)
@@ -180,16 +184,9 @@ final class GPUContext: @unchecked Sendable {
     }
     let width = samples.width
     let height = samples.height
-    // Pixel centres, as the tiles use; the kernel adds the half step.
-    let span = viewport.span
-    let imaginarySpan = span * Double(height) / Double(width)
     var image = GPUParameters(
       viewport: viewport, width: width, height: height, iterations: iterations,
       renderer: viewport.logScale > 18 ? .metalDouble : .metal)
-    image.realMin = GPUParameters.split(viewport.center.x - span / 2)
-    image.imagMax = GPUParameters.split(viewport.center.y + imaginarySpan / 2)
-    image.stepX = GPUParameters.split(span / Double(width))
-    image.stepY = GPUParameters.split(imaginarySpan / Double(height))
     image.smooth = 1
     // The kernel walks out from the centre so that it can rotate the offset, and
     // scales both axes by stepX, which square pixels make equal to stepY.

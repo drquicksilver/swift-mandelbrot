@@ -15,9 +15,9 @@ class SmoothTests(unittest.TestCase):
         width,height,limit=64,48,200
         reference=[]
         for y in range(height):
-            ci=3*height/width/2-y/(height-1)*(3*height/width)
+            ci=3*height/width/2-(y+.5)/height*(3*height/width)
             for x in range(width):
-                cr=-2+x/(width-1)*3
+                cr=-2+(x+.5)/width*3
                 zr=zi=0.;n=0
                 while zr*zr+zi*zi <= 256**2 and n < limit:
                     zr,zi=zr*zr-zi*zi+cr,2*zr*zi+ci;n+=1

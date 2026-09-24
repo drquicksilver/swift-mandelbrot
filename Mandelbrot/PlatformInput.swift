@@ -24,10 +24,7 @@ import SwiftUI
   struct PlatformInput: NSViewRepresentable {
     var model: ExplorerModel
     func makeNSView(context: Context) -> MacInputView { MacInputView(model: model) }
-    func updateNSView(_ view: MacInputView, context: Context) {
-      view.model = model
-      view.updateMotionClock()
-    }
+    func updateNSView(_ view: MacInputView, context: Context) { view.model = model }
   }
   @MainActor final class MacInputView: NSView {
     var model: ExplorerModel
@@ -41,7 +38,6 @@ import SwiftUI
     private var draggingMarker = false
     private var markerMoved = false
     private var clicks = DoubleClick()
-    private var timer: Timer?
     override var isFlipped: Bool { true }
     override var acceptsFirstResponder: Bool { true }
     init(model: ExplorerModel) {
@@ -68,7 +64,6 @@ import SwiftUI
         // The keys are the canvas's from the start, not only after a click.
         window?.makeFirstResponder(self)
       }
-      updateMotionClock()
     }
     /// Shift turns a drag into framing a region, so the pointer says so.
     override func flagsChanged(with event: NSEvent) {
@@ -80,22 +75,6 @@ import SwiftUI
       let point = convert(window.mouseLocationOutsideOfEventStream, from: nil)
       guard bounds.contains(point) else { return }
       (flags.contains(.shift) ? NSCursor.crosshair : NSCursor.arrow).set()
-    }
-    func updateMotionClock() {
-      guard window != nil, model.isActive, !model.renderer.isGPU, model.isAnimating else {
-        timer?.invalidate()
-        timer = nil
-        return
-      }
-      guard timer == nil else { return }
-      timer = Timer(timeInterval: 1 / 60, repeats: true) { [weak self] _ in
-        Task { @MainActor [weak self] in
-          guard let self else { return }
-          self.model.advanceMotion(now: ProcessInfo.processInfo.systemUptime)
-          self.updateMotionClock()
-        }
-      }
-      RunLoop.main.add(timer!, forMode: .common)
     }
     override func mouseDown(with event: NSEvent) {
       model.interactionActive = true
@@ -273,17 +252,13 @@ import SwiftUI
   struct PlatformInput: UIViewRepresentable {
     var model: ExplorerModel
     func makeUIView(context: Context) -> TouchInputView { TouchInputView(model: model) }
-    func updateUIView(_ view: TouchInputView, context: Context) {
-      view.model = model
-      view.updateMotionClock()
-    }
+    func updateUIView(_ view: TouchInputView, context: Context) { view.model = model }
   }
   /// One gesture solves pan, zoom and rotation together from the touches
   /// themselves, so the point under each finger stays pinned.  Three separately
   /// updating recognisers could not agree on a single transform.
   @MainActor final class TouchInputView: UIView, UIGestureRecognizerDelegate {
     var model: ExplorerModel
-    private var displayLink: CADisplayLink?
     private var tracked: [UITouch] = []
     private var previous: [CGPoint] = []
     private var previousTime = 0.0
@@ -313,28 +288,10 @@ import SwiftUI
     }
     required init?(coder: NSCoder) { fatalError("init(coder:) is not supported") }
     override func didMoveToWindow() {
-      displayLink?.invalidate()
-      displayLink = nil
-      if window != nil {
-        displayLink = CADisplayLink(target: self, selector: #selector(tick))
-        displayLink?.preferredFrameRateRange = CAFrameRateRange(
-          minimum: 30, maximum: Float(window?.screen.maximumFramesPerSecond ?? 60),
-          preferred: Float(window?.screen.maximumFramesPerSecond ?? 60))
-        displayLink?.add(to: .main, forMode: .common)
-        updateMotionClock()
-      } else {
-        model.interactionActive = false
-        endTracking(cancelled: true)
-        model.stopMotion()
-      }
-    }
-    func updateMotionClock() {
-      displayLink?.isPaused =
-        !(window != nil && model.isActive && !model.renderer.isGPU && model.isAnimating)
-    }
-    @objc private func tick() {
-      if !model.renderer.isGPU { model.advanceMotion(now: ProcessInfo.processInfo.systemUptime) }
-      updateMotionClock()
+      guard window == nil else { return }
+      model.interactionActive = false
+      endTracking(cancelled: true)
+      model.stopMotion()
     }
     func gestureRecognizer(
       _ a: UIGestureRecognizer, shouldRecognizeSimultaneouslyWith b: UIGestureRecognizer

@@ -434,9 +434,9 @@
           var samples: [Double] = []
           for run in 0..<(options.warmup + options.runs) {
             let start = DispatchTime.now().uptimeNanoseconds
-            let image = await RenderWorker.shared.renderImage(
-              variant: variant, width: width, height: height,
-              center: options.center, scale: options.scale, blockSize: 1,
+            let image = await LabRenderer.shared.image(
+              RendererID(rawValue: variant)!, width: width, height: height,
+              center: options.center, scale: options.scale,
               configuration: MandelbrotConfiguration(maxIterations: options.iterations)
             )
             let elapsed = Double(DispatchTime.now().uptimeNanoseconds - start) / 1_000_000_000
@@ -681,9 +681,9 @@
     private static func renderPNG(_ options: Options) async -> Int32 {
       let (width, height) = options.size
       guard
-        let iterations = await RenderWorker.shared.renderIterations(
-          variant: options.renderer, width: width, height: height,
-          center: options.center, scale: options.scale, blockSize: 1,
+        let iterations = await LabRenderer.shared.iterations(
+          RendererID(rawValue: options.renderer)!, width: width, height: height,
+          center: options.center, scale: options.scale,
           configuration: MandelbrotConfiguration(maxIterations: options.iterations)
         ), let image = MandelbrotColorizer.image(from: iterations)
       else {

@@ -9,5 +9,5 @@
     200,
     1000
   ],
-  "oracle": "Python Decimal direct iteration, depth + 80 decimal digits; endpoint sampling"
+  "oracle": "Python Decimal direct iteration, depth + 80 decimal digits; pixel-centre sampling"
 }

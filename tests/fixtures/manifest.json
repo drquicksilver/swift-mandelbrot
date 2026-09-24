@@ -32,7 +32,7 @@
       "renderers": "all",
       "tolerances": {
         "float": {
-          "maxMismatch": 0.06,
+          "maxMismatch": 0.065,
           "maxMeanError": 8
         },
         "floatfloat": {

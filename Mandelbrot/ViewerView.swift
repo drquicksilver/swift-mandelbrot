@@ -5,50 +5,41 @@ struct ViewerView: View {
   /// The main area shows the companion when the two are swapped; gestures always
   /// belong to whichever view fills it.
   var body: some View {
-    GeometryReader { geometry in
-      let imageCenter = model.viewport.screen(for: model.imageViewport.center, in: geometry.size)
-      ZStack {
-        Color.black
-        if model.juliaSwapped {
-          JuliaCanvas(model: model)
-        } else if model.renderer.isGPU {
-          GPUCanvas(model: model)
-        } else if let image = model.image {
-          Image(decorative: image, scale: 1).resizable().interpolation(.none)
-            .scaleEffect(model.viewport.scale / model.imageViewport.scale)
-            .offset(
-              x: imageCenter.x - geometry.size.width / 2,
-              y: imageCenter.y - geometry.size.height / 2)
-        }
-        PlatformInput(model: model)
-          .accessibilityElement()
-          .accessibilityIdentifier("viewerCanvas")
-          .accessibilityLabel(model.juliaSwapped ? Text("Julia set") : Text("Mandelbrot set"))
-          .accessibilityValue(model.location.suggestedName)
-          .accessibilityHint(Text("Swipe up or down to zoom in or out."))
-          .accessibilityAddTraits(.allowsDirectInteraction)
-          .accessibilityAdjustableAction { direction in
-            switch direction {
-            case .increment: model.perform(.zoomIn)
-            case .decrement: model.perform(.zoomOut)
-            @unknown default: break
-            }
+    ZStack {
+      Color.black
+      if model.juliaSwapped {
+        JuliaCanvas(model: model)
+      } else {
+        GPUCanvas(model: model)
+      }
+      PlatformInput(model: model)
+        .accessibilityElement()
+        .accessibilityIdentifier("viewerCanvas")
+        .accessibilityLabel(model.juliaSwapped ? Text("Julia set") : Text("Mandelbrot set"))
+        .accessibilityValue(model.location.suggestedName)
+        .accessibilityHint(Text("Swipe up or down to zoom in or out."))
+        .accessibilityAddTraits(.allowsDirectInteraction)
+        .accessibilityAdjustableAction { direction in
+          switch direction {
+          case .increment: model.perform(.zoomIn)
+          case .decrement: model.perform(.zoomOut)
+          @unknown default: break
           }
-          .accessibilityAction(named: Text("Move left")) { model.perform(.left) }
-          .accessibilityAction(named: Text("Move right")) { model.perform(.right) }
-          .accessibilityAction(named: Text("Move up")) { model.perform(.up) }
-          .accessibilityAction(named: Text("Move down")) { model.perform(.down) }
-          .accessibilityAction(named: Text("Reset view")) { model.perform(.reset) }
-        // The crosshair sits above the input surface but takes no hits: the
-        // input view owns the pointer, and grabs the marker itself.
-        JuliaMarker(model: model)
-        if let rect = model.selection {
-          Rectangle().stroke(.white, style: StrokeStyle(lineWidth: 1.5, dash: [5, 4]))
-            .frame(width: rect.width, height: rect.height).position(x: rect.midX, y: rect.midY)
-            .allowsHitTesting(false)
         }
-      }.clipped()
-    }
+        .accessibilityAction(named: Text("Move left")) { model.perform(.left) }
+        .accessibilityAction(named: Text("Move right")) { model.perform(.right) }
+        .accessibilityAction(named: Text("Move up")) { model.perform(.up) }
+        .accessibilityAction(named: Text("Move down")) { model.perform(.down) }
+        .accessibilityAction(named: Text("Reset view")) { model.perform(.reset) }
+      // The crosshair sits above the input surface but takes no hits: the
+      // input view owns the pointer, and grabs the marker itself.
+      JuliaMarker(model: model)
+      if let rect = model.selection {
+        Rectangle().stroke(.white, style: StrokeStyle(lineWidth: 1.5, dash: [5, 4]))
+          .frame(width: rect.width, height: rect.height).position(x: rect.midX, y: rect.midY)
+          .allowsHitTesting(false)
+      }
+    }.clipped()
   }
 }
 

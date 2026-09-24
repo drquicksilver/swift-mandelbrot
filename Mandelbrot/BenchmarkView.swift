@@ -54,9 +54,9 @@ struct BenchmarkMeasurement: Identifiable {
                 success = true
               }
             } else {
-              let image = await RenderWorker.shared.renderImage(
-                variant: renderer.rawValue, width: size, height: size,
-                center: viewport.center, scale: viewport.scale, blockSize: 1,
+              let image = await LabRenderer.shared.image(
+                renderer, width: size, height: size,
+                center: viewport.center, scale: viewport.scale,
                 configuration: MandelbrotConfiguration(maxIterations: iterations))
               success = image != nil
             }

@@ -11,14 +11,11 @@ struct DeveloperPanel: View {
         Section("Rendering") {
           Picker("Override", selection: $model.rendererOverride) {
             Text("Automatic").tag(nil as RendererID?)
-            ForEach(RendererID.allCases) { Text($0.title).tag(Optional($0)) }
+            ForEach(RendererID.allCases.filter(\.isGPU)) { Text($0.title).tag(Optional($0)) }
           }
           if let requested = model.rendererOverride, requested != model.renderer {
             Text("Deep views require perturbation; other overrides resume when you zoom out.").font(
               .caption)
-          }
-          if !model.renderer.isGPU {
-            Text("Legacy CPU renderers use at most 65,535 iterations.").font(.caption)
           }
           Toggle("Show performance HUD", isOn: $model.showHUD)
           Toggle("Tile borders and levels", isOn: $model.showTileOverlay)

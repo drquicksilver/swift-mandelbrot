@@ -51,7 +51,8 @@ def main():
     w,h=16,12;values=[]
     for y in range(h):
         for x in range(w):
-            values.append(orbit(cr-span/2+span*x/(w-1),ci+span*h/w/2-span*h/w*y/(h-1)))
+            # Pixel centres, as every renderer in the app samples.
+            values.append(orbit(cr-span/2+span*(x+D('.5'))/w,ci+span*h/w/2-span*(y+D('.5'))/w))
         print('row',y,'range',min(values),max(values),flush=True)
     (ROOT/'minibrot.f32').write_bytes(struct.pack('<'+'f'*len(values),*values))
     write_png(ROOT/'minibrot.png',w,h,bytes(v for n in values for v in (*colour(n),255)))

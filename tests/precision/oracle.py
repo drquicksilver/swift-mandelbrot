@@ -12,8 +12,9 @@ for depth in [50,200,1000]:
     values=[]
     for y in range(h):
         for x in range(w):
-            c=cr-span/2+span*x/(w-1)
-            d=ci+span*h/w/2-span*h/w*y/(h-1)
+            # Pixel centres, as every renderer in the app samples.
+            c=cr-span/2+span*(x+D('.5'))/w
+            d=ci+span*h/w/2-span*(y+D('.5'))/w
             a,b=D(0),D(0)
             for n in range(cap):
                 aa,bb=a*a,b*b
@@ -24,4 +25,4 @@ for depth in [50,200,1000]:
             values.append(v)
     (root/f'i-{depth}.f32').write_bytes(struct.pack('<'+'f'*len(values),*values))
     print(depth,min(values),max(values),len(set(round(v,2) for v in values)),flush=True)
-(root/'manifest.json').write_text(json.dumps(dict(width=32,height=24,centerReal='0',centerImag='1',iterations=5000,depths=[50,200,1000],oracle='Python Decimal direct iteration, depth + 80 decimal digits; endpoint sampling'),indent=2)+'\n')
+(root/'manifest.json').write_text(json.dumps(dict(width=32,height=24,centerReal='0',centerImag='1',iterations=5000,depths=[50,200,1000],oracle='Python Decimal direct iteration, depth + 80 decimal digits; pixel-centre sampling'),indent=2)+'\n')

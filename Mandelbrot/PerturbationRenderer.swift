@@ -20,6 +20,8 @@ struct PerturbationMetrics: Codable, Sendable {
   var longestBLASkip = 0
   var longestBatchMS = 0.0
 }
+/// The pixels one perturbation pass covers: the centre of the top-left pixel
+/// and the step to the next, in deep coordinates.
 struct PerturbationRegion: Sendable {
   var preferredReference: DeepPoint? = nil
   let topLeft: DeepPoint
@@ -32,9 +34,11 @@ struct PerturbationRegion: Sendable {
     self.width = width
     self.height = height
     bits = viewport.precisionBits
-    topLeft = viewport.preciseComplex(at: .zero, in: CGSize(width: width, height: height))
-    stepX = viewport.wideSpan * (1 / Double(max(1, width - 1)))
-    stepY = viewport.wideSpan * (Double(height) / Double(width) / Double(max(1, height - 1)))
+    // Pixel centres, as the tiles and every other GPU path sample.
+    topLeft = viewport.preciseComplex(
+      at: CGPoint(x: 0.5, y: 0.5), in: CGSize(width: width, height: height))
+    stepX = viewport.wideSpan * (1 / Double(width))
+    stepY = stepX
   }
   init(topLeft: DeepPoint, step: WideReal, width: Int, height: Int, bits: Int) {
     self.topLeft = topLeft

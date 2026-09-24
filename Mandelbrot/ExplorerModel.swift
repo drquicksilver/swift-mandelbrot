@@ -64,7 +64,6 @@ import SwiftUI
       stopMotion()
       interactionActive = false
       depthTask?.cancel()
-      renderTask?.cancel()
       tiles.cancel()
     }
   }
@@ -139,7 +138,7 @@ import SwiftUI
   /// The observed ceiling on the automatic limit; see `IterationPolicy.observe`.
   private(set) var ceiling: IterationPolicy.Ceiling?
   func observeDepth() {
-    guard automaticIterations, isActive, renderer.isGPU, !interactionActive, !motionActive,
+    guard automaticIterations, isActive, !interactionActive, !motionActive,
       tiles.iterations == iterations, let maximum = tiles.visibleMaximumEscaped
     else { return }
     let next = IterationPolicy.observe(
@@ -150,12 +149,11 @@ import SwiftUI
   }
   private func updateDepth(force: Bool = false) {
     depthTask?.cancel()
-    let requested =
+    let target =
       automaticIterations
       ? IterationPolicy.target(
         logScale: viewport.logScale, multiplier: detailMultiplier, ceiling: ceiling)
       : max(1, min(IterationPolicy.maximum, manualIterations))
-    let target = renderer.isGPU ? requested : min(65535, requested)
     if force || !automaticIterations {
       if iterations != target { iterations = target }
     } else if IterationPolicy.shouldRaise(current: iterations, target: target) {
@@ -180,16 +178,9 @@ import SwiftUI
           Int(min(Double(IterationPolicy.maximum), max(1, Double(manualIterations) * factor)))))
     }
   }
-  @Published var rendererOverride: RendererID? {
-    didSet {
-      updateDepth(force: true)
-      requestRender()
-    }
-  }
-  @Published var image: CGImage?
-  @Published var imageViewport = Viewport()
-  @Published var duration = 0.0
-  @Published var progress = 0.0
+  /// A developer override of the automatic precision ladder: one of the GPU
+  /// renderers, which deep views still overrule with perturbation.
+  @Published var rendererOverride: RendererID? { didSet { requestRender() } }
   @Published var error: String?
   @Published var showHelp = false
   @Published var showBenchmark = false
@@ -800,7 +791,6 @@ import SwiftUI
   }
   var size = CGSize(width: 900, height: 600)
   var displayScale = 1.0
-  private var renderTask: Task<Void, Never>?
   var pixelWidth: Double { size.width * displayScale }
   var renderer: RendererID {
     PrecisionPolicy.renderer(
@@ -902,48 +892,16 @@ import SwiftUI
     case .help: showHelp = true
     }
   }
+  /// The tiles draw themselves from the canvas's next frame; all a change
+  /// needs is that frame, and a notice if there is no GPU to draw it.
   func requestRender() {
-    renderTask?.cancel()
     guard isActive else { return }
     requestRedraw()
-    if renderer.isGPU {
-      error =
-        GPUContext.shared == nil
-        ? String(
-          localized: "This device’s graphics processor isn’t available, so the set can’t be drawn.")
-        : nil
-      return
-    }
-    tiles.cancel()
-    let view = viewport
-    let renderer = renderer
-    let iterations = min(65535, iterations)
-    let width = max(1, Int(size.width * displayScale))
-    let height = max(1, Int(size.height * displayScale))
-    renderTask = Task { [weak self] in
-      let start = ContinuousClock.now
-      for block in [32, 8, 2, 1] {
-        guard !Task.isCancelled else { return }
-        let image = await RenderWorker.shared.renderImage(
-          variant: renderer.rawValue,
-          width: width,
-          height: height,
-          center: view.center, scale: view.scale, blockSize: block,
-          configuration: MandelbrotConfiguration(maxIterations: iterations))
-        guard !Task.isCancelled, let self else { return }
-        if let image {
-          self.image = image
-          self.imageViewport = view
-          self.error = nil
-        } else {
-          self.error = String(
-            localized: "The set couldn’t be drawn. Try again, or restart the app.")
-        }
-        self.progress = block == 1 ? 1 : 0.5
-      }
-      let elapsed = start.duration(to: .now).components
-      self?.duration = Double(elapsed.seconds) + Double(elapsed.attoseconds) / 1e18
-    }
+    error =
+      GPUContext.shared == nil
+      ? String(
+        localized: "This device’s graphics processor isn’t available, so the set can’t be drawn.")
+      : nil
   }
 }
 

@@ -29,12 +29,14 @@ with tempfile.TemporaryDirectory() as tmp:
             assert pixel_error <= 3, (depth, bla, pixel_error)
             print(f'1e{depth}, BLA {bla}: max sample error {max(errors):.7f}; PNG error {pixel_error}/255')
 
-    # Exact c=0 lies among these samples, away from the initial reference.
+    # Exact c=0 is the centre of pixel (4, 2), away from the initial reference
+    # at the centre pixel (3, 2): half-pixel steps of 0.5 from -2 + 0.25.
+    glitchy = ['--sizes', '6x5', '--center-real', '-0.75']
     report = json.loads(subprocess.check_output([app, '--benchmark', '--pipeline', 'gpu',
-        '--variants', 'perturbation', '--sizes', '7x5', '--runs', '1', '--warmup', '0', '--format', 'json']))
+        '--variants', 'perturbation', *glitchy, '--runs', '1', '--warmup', '0', '--format', 'json']))
     m = report['results'][0]['perturbation'][0]
     assert m['glitches'] == 0 and m['references'] == 1 and m['avoidedGlitches'] > 0, m
-    recovery=json.loads(subprocess.check_output([app,'--benchmark','--pipeline','gpu','--variants','perturbation','--sizes','7x5','--runs','1','--warmup','0','--format','json','--rebasing','off']))['results'][0]['perturbation'][0]
+    recovery=json.loads(subprocess.check_output([app,'--benchmark','--pipeline','gpu','--variants','perturbation',*glitchy,'--runs','1','--warmup','0','--format','json','--rebasing','off']))['results'][0]['perturbation'][0]
     assert recovery['glitches']>0 and recovery['references']>1,recovery
     print('Pauldelbrot re-referencing:', m['glitches'], 'glitches,', m['references'], 'references')
     for bla in ['off', 'on']:
