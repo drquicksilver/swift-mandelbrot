@@ -166,6 +166,10 @@ import Testing
   let depth = Location(viewport: Viewport(), automaticColour: false)
   let restoredDepth = try Location(url: depth.url)
   #expect(restoredDepth.automaticColour == false)
+  // Both kinds of new colouring count in octaves; a historic link counts
+  // iterations, as it always did.
+  #expect(restoredDepth.colouring.logarithmic && restoredAutomatic.colouring.logarithmic)
+  #expect(!historic.colouring.logarithmic)
   // A universal-link form parses the same way.
   let web = try Location(
     url: URL(string: "https://example.com/mandelbrot/view?re=-0.5&im=0&zoom=1e6&rot=90")!)

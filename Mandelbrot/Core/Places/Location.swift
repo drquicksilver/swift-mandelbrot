@@ -74,8 +74,12 @@ struct Location: Codable, Equatable, Sendable, Identifiable {
     view.angle = Viewport.normalised(rotationDegrees * .pi / 180)
     return view
   }
+  /// Depth and auto-contrast colouring both count in octaves; only a historic
+  /// location, which has neither, counts linearly in iterations.
   var colouring: ColourSettings {
-    ColourSettings(palette: palette, density: Float(density), offset: Float(offset), smooth: true)
+    ColourSettings(
+      palette: palette, density: Float(density), offset: Float(offset), smooth: true,
+      logarithmic: automaticColour != nil)
   }
   /// A link anyone can open: `mandelbrot://view?re=...&im=...&zoom=...`.
   var url: URL {

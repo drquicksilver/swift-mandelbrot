@@ -32,6 +32,7 @@ import SwiftUI
   static func key(_ location: Location) -> String {
     "\(location.real)|\(location.imag)|\(location.scale)|\(location.rotationDegrees)"
       + "|\(location.palette.rawValue)|\(location.density)|\(location.offset)"
+      + "|\(location.automaticColour.map(String.init) ?? "historic")"
   }
 
   func render(_ location: Location, width: Int, height: Int) async {
@@ -48,9 +49,7 @@ import SwiftUI
       let size = CGSize(width: width, height: height)
       let store = store ?? TileStore(budgetBytes: Self.budgetBytes)
       self.store = store
-      let colouring = ColourSettings(
-        palette: location.palette, density: Float(location.density),
-        offset: Float(location.offset))
+      let colouring = location.colouring
       let limit =
         location.iterations ?? IterationPolicy.estimate(logScale: view.logScale)
       store.update(

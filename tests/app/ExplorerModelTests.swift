@@ -89,6 +89,18 @@ final class MemoryDefaults: UserDefaults, @unchecked Sendable {
     #expect(!model.canGoBack)
   }
 
+  @Test func aPinnedColourComesBackCountingOctaves() {
+    // An auto-contrast snapshot is not recomputed on arrival, so the location
+    // itself has to say its density is in octaves, not iterations.
+    let model = model()
+    var pinned = seahorse
+    pinned.density = 0.9
+    pinned.automaticColour = true
+    model.apply(pinned)
+    #expect(model.colouring.logarithmic)
+    #expect(model.colouring.density == 0.9)
+  }
+
   @Test func aGestureStopsTravelWhereItIs() throws {
     let model = model()
     model.travel(to: seahorse)
