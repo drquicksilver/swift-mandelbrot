@@ -1,4 +1,7 @@
-"""Cold automatic-depth latency and reproducible BLA radius candidate images."""
+"""Cold automatic-depth latency at 1e1000 and the two BLA radius candidates'
+minibrot images, into docs/evidence/perturbation/followup.
+Usage: python3 benchmarks/measure_deep_followup.py APP
+"""
 import json,pathlib,re,subprocess,sys
 root=pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0,str(root/'tests/oracles'))

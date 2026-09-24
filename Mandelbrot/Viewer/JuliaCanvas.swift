@@ -1,3 +1,7 @@
+// The Metal view for the Julia companion.  Unlike the tiled main view it draws
+// one whole-panel texture from `JuliaRenderer`, re-rendered only when the point,
+// the view, the detail or the colours change.
+
 import MetalKit
 import SwiftUI
 
@@ -65,16 +69,6 @@ private struct JuliaSurface {
     encoder.endEncoding()
     command.present(drawable)
     command.commit()
-  }
-}
-
-extension MTKView {
-  func setNeedsDisplayCompat() {
-    #if os(macOS)
-      needsDisplay = true
-    #else
-      setNeedsDisplay()
-    #endif
   }
 }
 

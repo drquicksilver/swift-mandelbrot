@@ -1,3 +1,9 @@
+// Deep zoom's kernel: numbers with a FloatFloat mantissa and an exponent of
+// their own (so tiny differences survive at 1e1000), and `perturbTile`, which
+// iterates each pixel's difference from a reference orbit with BLA jumps,
+// rebasing and glitch detection.  Driven by Rendering/PerturbationRenderer.swift.
+// `measureBLA` is the diagnostic behind --test-bla (tests/cli/test_bla.py).
+
 #include <metal_stdlib>
 #include "FloatFloat.h"
 #include "SampleRecord.h"

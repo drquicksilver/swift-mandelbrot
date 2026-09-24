@@ -1,3 +1,6 @@
+// The arithmetic half of the reference-library spike in Boost's cpp_bin_float,
+// the counterpart of spike.swift; README.md explains, reproduce.py builds it.
+
 #define BOOST_MP_STANDALONE
 #include <boost/multiprecision/cpp_bin_float.hpp>
 #include <chrono>

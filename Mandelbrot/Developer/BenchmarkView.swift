@@ -1,3 +1,8 @@
+// The in-app benchmark: times every renderer that can draw the current view --
+// the GPU paths and the CPU lab renderers -- at two sizes, and shares the table
+// as Markdown with the device and viewport attached.  The command line's
+// --benchmark measures the same renderers with more control.
+
 import Combine
 import SwiftUI
 

@@ -1,3 +1,10 @@
+// Pointer, trackpad, touch and keyboard input for the main view and the
+// companion panel, as native AppKit and UIKit views under SwiftUI, so gestures
+// see each event's own timestamp, the trackpad's momentum phases and every
+// touch at once: one solve pins both fingers of a pinch.  Each view turns
+// events into `ExplorerModel` calls and keeps no navigation state beyond the
+// gesture in progress.
+
 import SwiftUI
 
 #if os(macOS)

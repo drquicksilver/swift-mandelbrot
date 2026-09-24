@@ -1,3 +1,7 @@
+// The keyframes of a descent, one zoom level apart, and the view at any moment
+// between them -- the geometry the movie renderer's two-keyframe compositor
+// relies on.
+
 import CoreGraphics
 import Foundation
 
@@ -87,7 +91,7 @@ struct ZoomPath: Sendable {
   /// the destination and otherwise follows the automatic depth estimate.
   ///
   /// Bounding this by what an earlier keyframe observed, as the viewer's ceiling
-  /// does, was measured and removed: see Performance.md 2.8.  Where the estimate
+  /// does, was measured and removed: see docs/Performance-history.md, 2.8.  Where the estimate
   /// overshoots it gave back 59% of the summed limit for about 6% of the time,
   /// and on a descent into a minibrot -- the slow case -- it never engaged at
   /// all, because such a view always holds counts close to its limit.

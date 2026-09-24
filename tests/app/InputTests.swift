@@ -1,3 +1,5 @@
+// The Mac's double-click rule: two clicks, in place, and no more.
+
 import CoreGraphics
 import Testing
 

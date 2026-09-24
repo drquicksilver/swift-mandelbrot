@@ -1,4 +1,5 @@
-"""CPU-authored, pixel-centred PNG references for the actual tile compositor.
+"""The tiled compositor's PNGs against independent, pixel-centred CPU references
+(tests/oracles/product_reference.py).  Run by `make product`.
 
 Generate deliberately with: python3 tests/cli/test_product_golden.py --record
 Run normally with: python3 tests/cli/test_product_golden.py APP

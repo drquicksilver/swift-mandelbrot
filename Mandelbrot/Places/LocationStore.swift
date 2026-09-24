@@ -1,3 +1,7 @@
+// The user's bookmarks, kept as JSON in user defaults: add, rename, reorder,
+// delete.  The famous places are `Location.gallery` in Core, compiled in and
+// never stored, so they can change with the app.
+
 import Combine
 import Foundation
 

@@ -1,3 +1,7 @@
+// The arithmetic half of the reference-library spike: ten 1,000-step orbits in
+// the vendored BigInt's fixed point, at 100 and 1,000 digits.  spike.cpp does
+// the same in Boost; README.md explains, reproduce.py builds and runs both.
+
 import Foundation
 
 @main struct Spike {

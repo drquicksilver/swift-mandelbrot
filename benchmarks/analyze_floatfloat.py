@@ -1,4 +1,6 @@
-"""Summarize raw iteration-count evidence; no image-processing dependencies.
+"""Summarises the 1.2 FloatFloat experiment's raw counts (accuracy against the
+CPU reference, and the banding a lost low word leaves); no image-processing
+dependencies.
 
 Usage: python3 benchmarks/analyze_floatfloat.py docs/evidence/floatfloat
 """

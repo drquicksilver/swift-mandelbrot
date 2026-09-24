@@ -1,4 +1,5 @@
-"""Isolated BLA jumps versus GPU recurrence and independent Decimal recurrence.
+"""Isolated BLA jumps versus GPU recurrence and independent Decimal recurrence,
+from the app's --test-bla report.  Run by `make bla`.
 
 Normalise by the sum of the linear output terms, avoiding misleading relative
 errors when the two terms cancel. No escaped-count or image tolerance is used.

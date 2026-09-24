@@ -1,3 +1,7 @@
+// How many iterations a view gets when detail is automatic: an estimate from
+// depth, lowered once the view has settled and its escaped counts are known,
+// and the hysteresis that stops it changing on every frame.
+
 import Foundation
 
 /// Automatic iteration depth.  A depth-based first estimate, lowered from the

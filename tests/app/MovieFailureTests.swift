@@ -1,3 +1,6 @@
+// What a person is told when a movie fails: sentences written for people pass
+// through, anything else is replaced, and writer failures name their cause.
+
 import AVFoundation
 import Foundation
 import Testing

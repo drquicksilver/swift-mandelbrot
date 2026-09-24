@@ -1,3 +1,6 @@
+// `--test-tiles` checks for the help: every toolbar button has an icon and an
+// explanation, and each gesture is its own line.
+
 #if os(macOS)
   import Foundation
 

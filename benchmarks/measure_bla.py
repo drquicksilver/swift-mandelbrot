@@ -1,4 +1,7 @@
-"""Controlled BLA on/off comparison; each app run includes one warmup."""
+"""Deep-zoom timings with BLA off and on at 1e50, 1e200 and 1e1000, and the
+full-size PNGs, into docs/evidence/perturbation/2.2.  Each app run includes
+one warmup.  Usage: python3 benchmarks/measure_bla.py APP
+"""
 import json,pathlib,statistics,subprocess,sys
 app=sys.argv[1]
 root=pathlib.Path(__file__).resolve().parents[1]/'docs/evidence/perturbation/2.2'

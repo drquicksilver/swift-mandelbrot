@@ -1,9 +1,8 @@
-//
-//  MandelbrotApp.swift
-//  Mandelbrot
-//
-//  Created by Jules Bean on 19/01/2026.
-//
+// The entry point.  On the Mac a command-line flag (--render, --benchmark,
+// --movie, --test-tiles and the other diagnostics) runs a headless tool and
+// exits before SwiftUI starts, which is how `make test` and the benchmarks drive
+// the real renderers.  Otherwise it opens explorer windows, their menu commands
+// and, on the Mac, the developer window.
 
 import Darwin
 import SwiftUI

@@ -1,3 +1,8 @@
+// Where the camera is: centre, zoom and rotation, with every conversion between
+// screen points and the complex plane, anchored zoom and pan, and gentle
+// bounds.  Past Double's reach the centre and zoom switch to fixed-point and
+// logarithmic forms, so navigation stays exact to 2^13000.
+
 import CoreGraphics
 import Foundation
 

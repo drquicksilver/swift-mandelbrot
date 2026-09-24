@@ -1,3 +1,8 @@
+// Where finished movies are written and what they are called.  On the Mac the
+// user chooses a folder, kept as a security-scoped bookmark; MovieView on iOS
+// hands its render to the share sheet instead, so the library is Mac-only.
+// The file name is shared by both.
+
 import Combine
 import Foundation
 

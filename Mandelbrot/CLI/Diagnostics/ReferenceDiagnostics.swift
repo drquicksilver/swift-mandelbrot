@@ -1,3 +1,6 @@
+// Reference orbits streamed in prefixes: a `--test-tiles` check, and
+// `--benchmark-reference`, which times a cold automatic-depth view at 1e1000.
+
 #if os(macOS)
   import Foundation
   import CoreGraphics

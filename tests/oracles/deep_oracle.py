@@ -1,4 +1,8 @@
-"""Independent Decimal direct iteration. No perturbation, fixed point, or app code."""
+"""Independent Decimal direct iteration at c = i, zoomed 1e50, 1e200 and 1e1000,
+for tests/cli/test_deep.py: no perturbation, fixed point or app code.  Writes
+tests/fixtures/deep/i-*.f32 and the manifest; about a minute and a half.
+python3 tests/oracles/deep_oracle.py, then deep_colour.py.
+"""
 import decimal, math, struct, json, pathlib, sys
 root=pathlib.Path(__file__).resolve().parents[2]/'tests/fixtures/deep'
 root.mkdir(parents=True,exist_ok=True)

@@ -1,3 +1,8 @@
+// Every keyboard command, defined once: its title, key and modifiers, where the
+// key is heard, and the Explore menu built from them, so the menus, the Mac
+// canvas's key handling and the help cannot disagree.  Also the Debug menu that
+// Option (or a defaults flag) reveals on the Mac.
+
 import SwiftUI
 
 enum ExplorerCommand: String, CaseIterable, Identifiable {

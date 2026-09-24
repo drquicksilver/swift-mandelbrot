@@ -1,3 +1,8 @@
+// The movie sheet on the Mac, as one dialog: the journey and its preview, the
+// settings, the render's progress over the settings it came from, and the
+// finished movie.  Forked from the iOS form so each platform gets the shape
+// that suits it.
+
 #if os(macOS)
   import AppKit
   import AVKit

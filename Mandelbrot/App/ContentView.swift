@@ -1,3 +1,9 @@
+// One explorer window: the viewer, the Julia companion beside it or inset on a
+// phone, the toolbar (Mac) or floating buttons (iPhone and iPad), the notices
+// that float over the view, and every sheet.  It owns the window's
+// `ExplorerModel` and forwards the environment -- scene phase, display scale,
+// Reduce Motion, undo -- into it.
+
 import SwiftUI
 
 struct ContentView: View {
@@ -255,7 +261,7 @@ struct ContentView: View {
         MovieView(model: model)
       #endif
     }
-    .sheet(isPresented: $model.showSettings) { AppearanceView(model: model) }
+    .sheet(isPresented: $model.showSettings) { SettingsView(model: model) }
     .sheet(isPresented: $model.showHelp) { HelpView() }
     .focusedSceneValue(\.explorer, model)
     .focusedSceneValue(\.explorerMenu, model.menuState)

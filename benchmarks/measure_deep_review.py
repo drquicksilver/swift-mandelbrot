@@ -1,4 +1,7 @@
-"""Comparable c=i and long-orbit minibrot measurements for each review stage."""
+"""Comparable c = i and minibrot timings with every BLA mode, one file per stage
+of the deep-zoom review, into docs/evidence/perturbation/review.
+Usage: python3 benchmarks/measure_deep_review.py APP STAGE
+"""
 import json,pathlib,subprocess,sys
 app,stage=sys.argv[1:];root=pathlib.Path(__file__).resolve().parents[1]
 f=json.loads((root/'tests/fixtures/deep/minibrot.json').read_text())

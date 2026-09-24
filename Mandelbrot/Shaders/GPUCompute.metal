@@ -1,3 +1,9 @@
+// Everything on the GPU except perturbation and the lab kernels: Float and
+// FloatFloat sample renders (whole frames, and tiles in resumable batches), a
+// finished tile's statistics, colouring, the Julia companion, the tile
+// compositor's shaders and the movie frame blender.  Swift drives them from
+// Rendering/.
+
 #include <metal_stdlib>
 #include "FloatFloat.h"
 #include "SampleRecord.h"

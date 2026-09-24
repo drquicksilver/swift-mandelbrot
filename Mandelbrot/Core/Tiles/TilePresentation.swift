@@ -1,3 +1,6 @@
+// The timing of new detail: how far a refinement has faded in, and the weight
+// of the finer level at a fractional level of detail.
+
 import Foundation
 
 struct TilePresentation {

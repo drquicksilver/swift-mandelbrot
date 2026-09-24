@@ -1,3 +1,10 @@
+// Deep zoom on the GPU: perturbation against a high-precision reference orbit,
+// accelerated by bilinear approximation, with rebasing and Pauldelbrot glitch
+// detection.  One routine serves both a tile and a full frame: it prepares or
+// borrows a reference, streams it to the GPU in extending prefixes, runs the
+// `perturbTile` kernel in resumable batches, and re-references only the pixels
+// that glitched.  The CPU mathematics is in Core/Precision.
+
 import CoreGraphics
 import Foundation
 import Metal

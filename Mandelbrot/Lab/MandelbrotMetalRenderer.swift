@@ -1,9 +1,6 @@
-//
-//  MandelbrotMetalRenderer.swift
-//  Mandelbrot
-//
-//  Created by Jules Bean on 23/01/2026.
-//
+// Runs the lab's first Metal kernels (Shaders/MandelbrotCompute.metal) for a
+// whole frame and reads the counts back, synchronously: the simplest GPU path,
+// kept as a benchmark subject and a golden-test variant.
 
 import CoreGraphics
 import Metal

@@ -1,3 +1,7 @@
+// The one UI test, on an iPad with a hardware keyboard, where menu shortcuts are
+// the only route keys have: bare keys reach the canvas, and a text field in a
+// sheet still gets its arrows.  `make apptests` runs it.
+
 import XCTest
 
 #if os(iOS)

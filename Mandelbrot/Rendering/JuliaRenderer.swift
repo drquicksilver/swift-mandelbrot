@@ -1,3 +1,7 @@
+// The Julia companion's renderer, which Viewer/JuliaCanvas.swift draws from.
+// Its kernel, `renderJulia`, sits in Shaders/GPUCompute.metal beside the
+// tiles' own, and shares their sample format and palettes.
+
 import CoreGraphics
 import Foundation
 import Metal

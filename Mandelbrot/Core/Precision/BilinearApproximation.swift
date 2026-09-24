@@ -1,3 +1,7 @@
+// Bilinear approximation (BLA): tables that let perturbation skip up to
+// thousands of iterations in one step where the orbit is locally linear, built
+// on the CPU from the reference orbit with exponents kept separate throughout.
+
 import Foundation
 
 /// Metal ABI: delta' = A*delta + B*deltaC within radius. All values retain their

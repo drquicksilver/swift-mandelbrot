@@ -1,3 +1,6 @@
+// How the app writes zooms, points and a view's name for people to read, in
+// the words docs/Glossary.md settles.
+
 import Foundation
 
 /// The one way the app prints a zoom for people to read.  Grouped digits while

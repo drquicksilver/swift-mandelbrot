@@ -1,3 +1,7 @@
+// Places on iPhone and iPad: a grouped list of the famous places and the
+// bookmarks, each opening with a flight to it and offering a link to share.
+// The Mac has its own library, PlacesSheetMac.swift.
+
 import SwiftUI
 
 /// The starter gallery and the user's bookmarks, each with a link to share.

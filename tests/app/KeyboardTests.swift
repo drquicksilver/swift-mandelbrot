@@ -1,3 +1,5 @@
+// Every shortcut the help lists reaches its command on this platform.
+
 import SwiftUI
 import Testing
 

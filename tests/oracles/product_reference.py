@@ -1,4 +1,5 @@
-"""Independent float64 CPU oracle for the settled tiled product image.
+"""Independent float64 CPU oracle for the settled tiled product image, and the
+dependency-free PNG reader and writer the tests share.
 
 No app invocation or recorded GPU output participates in reference generation.
 Pixel centres, palette sampling and colour filtering are expressed here

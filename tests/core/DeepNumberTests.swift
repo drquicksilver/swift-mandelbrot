@@ -1,3 +1,7 @@
+// Fixed-point and wide numbers: sub-Double offsets survive, signs and precision
+// behave, deep navigation covers the right tiles, and deep coordinates print
+// without passing through Double.
+
 import Foundation
 import Testing
 

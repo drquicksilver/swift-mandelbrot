@@ -1,3 +1,4 @@
+# Build output goes to /tmp (see Makefile); these are what tools leave behind.
 Mandelbrot.xcodeproj/xcshareddata/
 Mandelbrot.xcodeproj/xcuserdata/
 *.profraw

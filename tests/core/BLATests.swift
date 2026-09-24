@@ -1,3 +1,6 @@
+// Bilinear approximation tables: coefficients beyond Double's range stay exact
+// in wide form, and the merge hierarchy is well formed.
+
 import Foundation
 import Testing
 

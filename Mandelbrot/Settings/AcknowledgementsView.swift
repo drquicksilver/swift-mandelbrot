@@ -1,3 +1,7 @@
+// The credits the licences ask for: the vendored BigInt's MIT notice, read from
+// the copy bundled with the app, and the published algorithms the deep zoom
+// reimplements.
+
 import SwiftUI
 
 struct AcknowledgementsView: View {

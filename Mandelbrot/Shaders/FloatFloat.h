@@ -1,3 +1,8 @@
+// Double-float ("FloatFloat") arithmetic for Metal, which has no double: a
+// value is the unevaluated sum of two floats, about 48 bits of mantissa.  The
+// shallow kernels use it past Float's range, and perturbation builds its
+// extended-exponent numbers on it.
+
 #pragma once
 #include <metal_stdlib>
 using namespace metal;

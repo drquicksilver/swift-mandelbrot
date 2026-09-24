@@ -1,3 +1,6 @@
+// `--test-tiles` checks for automatic detail: raising and lowering the limit
+// reuses cached samples, and a settled view lowers the limit to what it shows.
+
 #if os(macOS)
   import Foundation
   import CoreGraphics

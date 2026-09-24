@@ -1,3 +1,9 @@
+// `--test-tiles`: the headless integration suite for everything a unit test
+// cannot reach -- the tile store, the compositor, the Metal kernels, the model's
+// navigation, the companion and movies -- run against the real GPU.  `run`
+// lists every check; the other Diagnostics files add checks for one area each.
+// Also `--benchmark-compositor`.
+
 #if os(macOS)
   import AppKit
   import Foundation
@@ -1125,7 +1131,7 @@
           String(
             decoding: try JSONSerialization.data(
               withJSONObject: report, options: [.prettyPrinted, .sortedKeys]), as: UTF8.self))
-        print("Tile integration passed in \(elapsed) seconds")
+        print("Tile integration passed; the closing whole-set trace took \(elapsed) seconds")
         return 0
       } catch {
         FileHandle.standardError.write(Data(("Tile test failed: \(error)\n").utf8))

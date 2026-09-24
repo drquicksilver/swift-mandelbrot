@@ -1,3 +1,7 @@
+// The reference orbit perturbation measures every pixel against: computed in
+// BigInt fixed point, stored as extended-exponent FloatFloat values in the
+// layout Shaders/Perturbation.metal reads, and extendable from where it stopped.
+
 import Foundation
 
 /// ABI shared with Perturbation.metal: each real has a FloatFloat mantissa and

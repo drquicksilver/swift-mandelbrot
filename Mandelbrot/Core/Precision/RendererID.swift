@@ -1,3 +1,6 @@
+// The names of every renderer, lab and product: what the command line accepts,
+// what the developer override offers, and what benchmarks report.
+
 import Foundation
 
 enum RendererID: String, CaseIterable, Identifiable, Sendable {

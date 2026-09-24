@@ -1,3 +1,8 @@
+// The seven palettes and the colour settings that map an escape count onto
+// one: density, offset, smooth or banded, linear or logarithmic.  Each palette
+// becomes a 1,024-entry lookup table that Rendering/GPUContext.swift uploads
+// once and every colouring pass shares.
+
 import Foundation
 
 struct ColourSettings: Equatable, Sendable {

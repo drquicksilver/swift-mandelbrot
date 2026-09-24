@@ -1,3 +1,7 @@
+// The saved-reference half of the library spike: the app's own ReferenceOrbit
+// at the period-312 minibrot, 60,000 iterations, at two precisions.
+// reference_spike.cpp does the same in Boost; reproduce.py builds and runs both.
+
 import Foundation
 
 @main struct ReferenceSpike {

@@ -1,4 +1,7 @@
-"""Record separate compute and full GPU pipeline timings at the 1e7 reference."""
+"""Kernel-only and end-to-end GPU timings at the 1e7 reference view, into
+docs/evidence/gpu-pipeline/STAGE.json.
+Usage: python3 benchmarks/measure_product.py APP STAGE
+"""
 import json
 from pathlib import Path
 import subprocess

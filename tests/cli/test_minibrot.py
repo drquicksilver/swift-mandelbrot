@@ -1,4 +1,7 @@
-"""Long-orbit independent goldens, including the actual tiled product path."""
+"""The period-312 minibrot at 1e100: long orbits against independent Decimal
+samples, with every BLA mode, and the tiled product image against its own
+oracle.  Run by `make deep`.
+"""
 import json,pathlib,struct,subprocess,sys,tempfile
 sys.path.insert(0,str(pathlib.Path(__file__).resolve().parents[1]/'oracles'))
 from product_reference import read_png

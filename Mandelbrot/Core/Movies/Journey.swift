@@ -1,3 +1,8 @@
+// A movie's camera route between two places: a straight descent when one lies
+// inside the other, otherwise out to a shared overview, across and back in,
+// with holds.  Also what a journey is called in the sheets.  It gives the view
+// at any moment; MovieRenderer turns that into frames.
+
 import CoreGraphics
 import Foundation
 

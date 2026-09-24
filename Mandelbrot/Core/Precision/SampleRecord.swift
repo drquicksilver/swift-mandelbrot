@@ -1,3 +1,6 @@
+// The eight-byte sample every GPU path writes, as Swift sees it when a sample
+// texture is read back.  Mirrors Shaders/SampleRecord.h.
+
 import Foundation
 
 /// RG32Uint ABI: exact UInt32 escape iteration plus Float32 correction bits.

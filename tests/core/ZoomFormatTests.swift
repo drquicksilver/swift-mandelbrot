@@ -1,3 +1,6 @@
+// How zooms, bookmarks and journeys read: digits then exponents, the locale,
+// and the names given to unnamed places.
+
 import Foundation
 import Testing
 

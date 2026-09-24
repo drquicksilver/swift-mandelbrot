@@ -1,3 +1,7 @@
+// The words of the help, kept as data: each toolbar button's icon, title and
+// explanation (also its tooltip), and the gestures, written per platform as
+// whole sentences so each translates cleanly (see docs/Glossary.md).
+
 import SwiftUI
 
 /// The toolbar's buttons, defined once: the button itself, its tooltip, and its

@@ -1,3 +1,6 @@
+// The error type for sentences meant for people, and the rule that goes with
+// it: only these reach the screen as they are.
+
 import Foundation
 
 /// An error whose text is written for people: a sentence to show as it is.

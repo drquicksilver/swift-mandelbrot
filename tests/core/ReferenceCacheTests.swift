@@ -1,3 +1,7 @@
+// Reference orbits: the cache's precision bands, prefixes and shared requests,
+// extension matching a one-shot computation, and the precision policy agreeing
+// between a viewport and its tiles.
+
 import Foundation
 import Testing
 

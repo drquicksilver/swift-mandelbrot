@@ -1,3 +1,7 @@
+// The camera and the things built on it: conversions, anchored zoom and
+// rotation, locations and links, the gallery, zoom paths and journeys, and the
+// automatic colour mappings.
+
 import Foundation
 import Testing
 

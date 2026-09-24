@@ -1,3 +1,9 @@
+// The command line (macOS only): --render writes a PNG and optional raw
+// samples, --benchmark times renderers, --movie renders a zoom movie, each
+// through the same renderers the app uses and without opening a window.
+// `--help` lists the options; the tests in tests/cli and the scripts in
+// benchmarks/ are its main callers.
+
 #if os(macOS)
   import Foundation
   import CoreGraphics

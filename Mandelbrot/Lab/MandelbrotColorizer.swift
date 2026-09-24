@@ -1,9 +1,7 @@
-//
-//  MandelbrotColorizer.swift
-//  Mandelbrot
-//
-//  Created by Jules Bean on 20/01/2026.
-//
+// The original escape-time colouring, on the CPU: a polynomial ramp over 200
+// iterations, then a hue shift per doubling.  The legacy pipeline's PNGs and the
+// golden fixtures are coloured with it; the product palettes are in
+// Core/Colour.
 
 import CoreGraphics
 import Foundation

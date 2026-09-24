@@ -1,3 +1,6 @@
+// `--test-tiles` checks for the Julia companion, against the mathematics and
+// through the panel's own gestures and redraws.
+
 #if os(macOS)
   import CoreGraphics
   import Foundation

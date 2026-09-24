@@ -1,3 +1,7 @@
+// A place as data: everything needed to show a view again, in a form that
+// survives a mandelbrot:// link, a bookmark and a movie's ends.  Also the
+// famous places the app ships with (`gallery`).
+
 import CoreGraphics
 import Foundation
 

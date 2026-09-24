@@ -1,3 +1,11 @@
+// The tile cache behind the viewer: which tiles the view needs, which to keep,
+// and a worker that refines them on the GPU in bounded batches between frames.
+// It decides demand (the visible level and two ancestors, prefetch, the
+// zoom-out coverage pyramid), budgets memory by allocated bytes, evicts by LRU,
+// retries failures, and hands the compositor the best record for each cell.
+// docs/Architecture.md explains the policy; the numbers behind it are in
+// docs/Performance.md.
+
 import Combine
 import CoreGraphics
 import Foundation

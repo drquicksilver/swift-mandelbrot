@@ -1,3 +1,7 @@
+// The hidden developer tools: a renderer override, the performance HUD, tile
+// borders, and the in-app benchmarks.  A sheet on iPhone and iPad, a window of
+// its own beside the view on the Mac.
+
 import Combine
 import SwiftUI
 

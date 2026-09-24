@@ -1,4 +1,7 @@
-"""Repeat the current headless tile integration trace and retain raw measurements."""
+"""Runs --test-tiles five times and keeps its statistics and closing-trace
+timings, into docs/evidence/gpu-pipeline/STAGE.json.
+Usage: python3 benchmarks/measure_tiles.py APP STAGE
+"""
 import json
 from pathlib import Path
 import re
@@ -10,7 +13,7 @@ runs=[]
 for _ in range(5):
     text=subprocess.check_output([app,'--test-tiles'],text=True)
     result=json.loads(text.split('Tile integration')[0])
-    result['elapsedSeconds']=float(re.search(r'passed in ([0-9.]+)',text)[1]);runs.append(result)
+    result['elapsedSeconds']=float(re.search(r'trace took ([0-9.]+)',text)[1]);runs.append(result)
 Path(__file__).resolve().parents[1].joinpath('docs/evidence/gpu-pipeline',stage+'.json').write_text(json.dumps(runs,indent=2)+'\n')
 print(stage,'median trace ms',statistics.median(r['elapsedSeconds'] for r in runs)*1000,
       'maximum GPU batch ms',max(r['longestBatchMS'] for r in runs))

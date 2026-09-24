@@ -1,3 +1,6 @@
+// The Mac's bookmark flight, frame by frame: where it starts and ends, that it
+// only shrinks, and that its path is smooth across phases.
+
 import CoreGraphics
 import Testing
 

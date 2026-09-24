@@ -1,3 +1,6 @@
+// The lab renderers' dispatcher.  Their code lives in Core/Lab (the CPU
+// variants) and MandelbrotMetalRenderer.swift (the first Metal kernels).
+
 import CoreGraphics
 
 /// Runs one of the lab renderers -- the CPU experiments and the first,

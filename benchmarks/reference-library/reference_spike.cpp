@@ -1,3 +1,7 @@
+// The saved-reference half of the library spike in Boost, including the orbit
+// storage and FloatFloat conversion the app's reference does; the counterpart
+// of reference_spike.swift.
+
 #define BOOST_MP_STANDALONE
 #include <boost/multiprecision/cpp_bin_float.hpp>
 #include <chrono>

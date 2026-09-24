@@ -1,3 +1,9 @@
+// The Metal view the tiles are drawn into.  It draws only when asked --
+// `ExplorerModel.requestRedraw` is the one route -- and runs on its display
+// timer only while something moves or fades, so a still view costs nothing.
+// Each frame advances the model's motion, updates the tile store's demand and
+// encodes the compositor.
+
 import MetalKit
 import SwiftUI
 
@@ -139,4 +145,16 @@ import SwiftUI
       screenChanged?()
     }
   #endif
+}
+
+/// Marks a paused, on-demand view for one more frame, whichever platform's
+/// spelling that takes.
+extension MTKView {
+  func setNeedsDisplayCompat() {
+    #if os(macOS)
+      needsDisplay = true
+    #else
+      setNeedsDisplay()
+    #endif
+  }
 }

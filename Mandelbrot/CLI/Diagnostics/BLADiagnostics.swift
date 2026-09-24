@@ -1,3 +1,7 @@
+// `--test-bla`: isolated bilinear-approximation jumps measured on the GPU from
+// identical starting states, written as JSON for tests/cli/test_bla.py to check
+// against an independent Decimal recurrence.
+
 #if os(macOS)
   import Foundation
   import Metal

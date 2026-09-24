@@ -1,4 +1,7 @@
-"""Colour the independent Decimal samples; never invokes the app."""
+"""Colours the Decimal samples deep_oracle.py wrote into the 1e50-1e1000 PNG
+goldens, with the ink palette written out independently; never invokes the
+app.  Run it after deep_oracle.py: python3 tests/oracles/deep_colour.py
+"""
 import math,pathlib,struct,sys
 from product_reference import write_png
 root=pathlib.Path(__file__).resolve().parents[1]/'fixtures/deep'

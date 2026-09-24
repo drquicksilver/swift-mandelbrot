@@ -1,14 +1,18 @@
+// Pictures of places without a window: the Mac's Places library and the movie
+// sheet's two ends are drawn by these, each through a small tile store of its
+// own and the same compositor as the viewer.
+
 import Combine
 import CoreGraphics
 import Foundation
 import SwiftUI
 
-/// Renders a small still of one location, for the ends of a zoom movie.
+/// Renders a small still of one location.
 ///
 /// It is the movie renderer's keyframe in miniature: a store of its own, one
 /// update, and a composited snapshot.  The store is kept between renders so
-/// changing the starting place redraws from whatever is already cached, and its
-/// budget is small because two of these are alive beside the viewer's own cache.
+/// changing the place redraws from whatever is already cached, and its budget
+/// is small because several of these are alive beside the viewer's own cache.
 @MainActor final class LocationThumbnail: ObservableObject {
   @Published private(set) var image: CGImage?
   @Published private(set) var isRendering = false

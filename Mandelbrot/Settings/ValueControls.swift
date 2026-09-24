@@ -1,3 +1,6 @@
+// The labelled slider and stepper that every numeric setting uses, in Settings
+// and in both movie sheets, so no control in the app is an unlabelled track.
+
 import SwiftUI
 
 /// A slider that says what it sets, what it is set to and how far it goes:

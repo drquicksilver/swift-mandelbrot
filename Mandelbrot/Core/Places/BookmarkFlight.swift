@@ -1,3 +1,7 @@
+// The geometry of the Mac's bookmark flight, as a pure function of time, so
+// Places/BookmarkFeedback.swift can draw any frame and the tests can check
+// every one.
+
 import CoreGraphics
 import Foundation
 

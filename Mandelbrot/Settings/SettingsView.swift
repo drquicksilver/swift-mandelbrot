@@ -1,6 +1,10 @@
+// The Settings sheet: palette and colour spacing, detail, how the Julia
+// companion's crosshair behaves, and About -- where seven taps on the version
+// unlock the developer tools.
+
 import SwiftUI
 
-struct AppearanceView: View {
+struct SettingsView: View {
   @ObservedObject var model: ExplorerModel
   @State private var versionTaps = 0
   @State private var showDeveloper = false

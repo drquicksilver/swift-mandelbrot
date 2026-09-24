@@ -1,4 +1,7 @@
-"""Independent smooth-iteration oracle and palette/sample invariants."""
+"""Smooth colouring against an independent smooth-count oracle, palette changes
+leaving samples untouched, high-iteration raw records and GPU timing reports.
+Run by `make smooth`.
+"""
 import array
 import json
 import math

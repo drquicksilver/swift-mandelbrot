@@ -1,8 +1,7 @@
-//  MandelbrotCompute.metal
-//  Mandelbrot
-//
-//  Created by Jules Bean on 23/01/2026.
-//
+// The lab's first Metal kernels: whole-frame UInt16 escape counts in Float and
+// FloatFloat, with the original escape radius of 2.  They are benchmark subjects
+// and golden-test variants (`metal` and `metal-double` on the legacy pipeline,
+// run by Lab/); the viewer's kernels are in GPUCompute.metal.
 
 #include <metal_stdlib>
 #include "FloatFloat.h"

@@ -1,3 +1,8 @@
+// Choosing colours without a person: the deterministic mapping that follows
+// zoom depth ("match colour to zoom"), the one-shot fit to the escaped counts
+// in view ("tune colours to this view"), and the schedule a movie plans before
+// it renders so its colours do not flicker.
+
 import Foundation
 
 /// A logarithmic histogram of escaped iteration counts. It deliberately contains

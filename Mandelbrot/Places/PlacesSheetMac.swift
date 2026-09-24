@@ -1,3 +1,7 @@
+// Places on the Mac: a searchable library of rendered thumbnails -- this view,
+// the bookmarks (which drag to reorder), then the famous places.  Forked from
+// the iOS list so each platform gets the shape that suits it.
+
 #if os(macOS)
   import SwiftUI
   import UniformTypeIdentifiers

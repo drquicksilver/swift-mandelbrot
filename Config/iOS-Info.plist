@@ -1,5 +1,8 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- The keys Xcode cannot generate from build settings, merged with the ones
+     it does: the mandelbrot:// link scheme, and the opt-in to 120 Hz on
+     ProMotion iPhones.  `make ios` checks both reach the built app. -->
 <plist version="1.0">
 <dict>
     <key>CADisableMinimumFrameDurationOnPhone</key>

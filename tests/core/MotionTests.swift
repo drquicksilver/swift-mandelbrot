@@ -1,3 +1,5 @@
+// Inertia and springs travel the same distance whatever the refresh rate.
+
 import Foundation
 import Testing
 

@@ -1,3 +1,6 @@
+// Inertia and springs, integrated analytically so they travel the same distance
+// at 60 Hz, 120 Hz or a dropped frame.
+
 import CoreGraphics
 import Foundation
 

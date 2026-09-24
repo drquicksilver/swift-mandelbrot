@@ -1,3 +1,7 @@
+// The movie sheet on iPhone and iPad, as a grouped form: pick where the journey
+// starts, set duration and size, render with progress, then play and share the
+// result.  The Mac has its own dialog, MovieSheetMac.swift.
+
 import AVKit
 import SwiftUI
 

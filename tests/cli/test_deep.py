@@ -1,4 +1,6 @@
-"""Independent Decimal goldens, BLA equivalence and actual glitch recovery."""
+"""Deep zoom against independent Decimal goldens at 1e50, 1e200 and 1e1000, with
+BLA on and off, plus rebasing and real glitch recovery.  Run by `make deep`.
+"""
 import json
 import pathlib
 import struct

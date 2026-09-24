@@ -1,3 +1,7 @@
+// Shares reference orbits between tiles within a memory budget: a nearby cached
+// orbit of enough precision serves a new tile, and concurrent requests for the
+// same orbit wait on one computation.
+
 import Foundation
 
 /// Caches reference values within an explicit caller-owned memory budget.

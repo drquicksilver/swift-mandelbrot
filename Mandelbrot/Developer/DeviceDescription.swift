@@ -1,3 +1,5 @@
+// The hardware and OS a benchmark ran on, as one line for its report.
+
 import Darwin
 import Foundation
 import Metal

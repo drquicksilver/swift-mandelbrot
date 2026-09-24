@@ -1,3 +1,7 @@
+// The Controls sheet: gestures, then a row per toolbar button, then keyboard
+// shortcuts where there is a keyboard, all drawn from HelpContent and
+// ExplorerCommand so the help cannot drift from what the app does.
+
 import SwiftUI
 
 #if os(iOS)

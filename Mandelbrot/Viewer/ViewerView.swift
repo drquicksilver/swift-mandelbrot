@@ -1,3 +1,8 @@
+// The main area of the window: the Mandelbrot canvas (or the Julia companion,
+// when the two are swapped), the input surface over it with its accessibility
+// actions, the crosshair and the framing rectangle.  Also the companion panel
+// itself and the live Mandelbrot thumbnail it shows while swapped.
+
 import SwiftUI
 
 struct ViewerView: View {

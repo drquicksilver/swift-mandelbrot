@@ -1,3 +1,6 @@
+// Arithmetic and comparison for `WideReal`, and `WideComplex`, as the BLA
+// construction needs them without ever leaving the extended exponent range.
+
 import Foundation
 
 extension WideReal: Comparable {

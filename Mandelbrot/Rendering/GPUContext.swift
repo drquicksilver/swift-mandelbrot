@@ -1,3 +1,10 @@
+// The app's one Metal device, its queues and pipelines, and the GPU operations
+// everything else composes: full-frame sample renders, resumable tile batches,
+// sample statistics, colouring, readback and PNG-ready images.  Kernels live in
+// Shaders/; the structs here that mirror a kernel's parameters say so.  Nothing
+// on the viewer's path waits on the CPU for the GPU: every command completes
+// through `submit`'s continuation.
+
 import CoreGraphics
 import Foundation
 import Metal

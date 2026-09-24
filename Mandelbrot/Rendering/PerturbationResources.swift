@@ -1,3 +1,7 @@
+// What one tile worker keeps between perturbation tiles: its reference-orbit
+// cache and a spare per-pixel state buffer, so consecutive deep tiles neither
+// recompute a nearby reference nor reallocate megabytes of GPU state.
+
 import Foundation
 import Metal
 

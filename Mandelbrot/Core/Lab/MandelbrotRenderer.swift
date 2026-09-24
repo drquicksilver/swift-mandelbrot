@@ -1,3 +1,7 @@
+// The CPU lab renderers.  They sit in Core so the package's unit tests can run
+// them; Mandelbrot/Lab dispatches them for the command line and the in-app
+// benchmark.
+
 import CoreGraphics
 import Dispatch
 import simd

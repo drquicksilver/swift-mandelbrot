@@ -1,3 +1,7 @@
+// `--test-tiles` checks for zoom movies: a short movie read back frame by frame,
+// a render on a phone-sized budget, and what the movie sheet relies on -- the
+// renderer's published progress and the folder a render is written to.
+
 #if os(macOS)
   import AVFoundation
   import Combine
@@ -190,7 +194,7 @@
           + "\(String(format: "%.1f", worstWhole))/255")
 
       // Every keyframe's depth is recorded, and is the automatic estimate for its
-      // level: what a movie's iteration budget actually is, for Performance.md.
+      // level: what a movie's iteration budget actually is, for the performance history.
       let limits = renderer.keyframeLimits
       try require(
         limits.count == path.keyframeLevels.count,

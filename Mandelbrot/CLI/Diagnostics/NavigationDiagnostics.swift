@@ -1,3 +1,7 @@
+// `--test-tiles` checks for navigation through `ExplorerModel`, as the UI drives
+// it: redraw routing, the resting scale, links and history, rotation and gentle
+// bounds, and a long zoom there and back.
+
 #if os(macOS)
   import Foundation
   import CoreGraphics

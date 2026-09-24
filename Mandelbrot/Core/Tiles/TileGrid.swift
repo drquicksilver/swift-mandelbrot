@@ -1,3 +1,7 @@
+// The quadtree the tile cache is keyed on: 256-sample tiles with a one-sample
+// gutter, levels a factor of two apart, indices relative to an anchor that is
+// rebased when they grow large, and which tiles cover a (possibly rotated) view.
+
 import CoreGraphics
 import Foundation
 

@@ -1,3 +1,6 @@
+// The tile quadtree: parents and children across negative indices, coverage of
+// a view, the zoom-out projection at any depth, and fade weights.
+
 import Foundation
 import Testing
 

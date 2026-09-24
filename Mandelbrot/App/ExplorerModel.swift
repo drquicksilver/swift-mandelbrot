@@ -1,3 +1,10 @@
+// The state of one explorer window and every way it changes: the camera and its
+// motion (inertia, springs, rotation snaps, travel to a place), detail and
+// colour, history and bookmarks, the Julia companion, and which sheet is up.
+// Views and input call into it; the canvas asks it for each frame and hands the
+// view to the tile store, which draws it.  The mathematics it leans on lives in
+// Core, the drawing in Rendering.
+
 import Combine
 import SwiftUI
 

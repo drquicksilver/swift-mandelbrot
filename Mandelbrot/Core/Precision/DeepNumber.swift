@@ -1,3 +1,8 @@
+// Numbers past Double's reach.  `DeepNumber` is binary fixed point on the
+// vendored BigInt, for camera coordinates and reference orbits; `WideReal` is a
+// Double mantissa with an unbounded exponent, for spans too small for Double;
+// `DeepPoint` pairs two DeepNumbers.
+
 import CoreGraphics
 import Foundation
 

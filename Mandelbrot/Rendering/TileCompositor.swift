@@ -1,3 +1,9 @@
+// Turns the tile store's records into a frame.  For each visible cell it picks
+// the coarse, base and fine records and their fade, as a plan headless checks
+// can inspect, then encodes one quad per cell; the fragment shader colours the
+// samples as it draws.  `snapshot` renders the same plan offscreen for exports,
+// thumbnails and movie keyframes.
+
 import CoreGraphics
 import Foundation
 import Metal

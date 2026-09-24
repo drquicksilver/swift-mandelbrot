@@ -1,7 +1,10 @@
-"""Independent Decimal direct-orbit oracle near a period-312 minibrot.
+"""Independent Decimal direct-orbit oracle near a period-312 minibrot at 1e100,
+for tests/cli/test_minibrot.py.
 
 Refine z_936(c)=z_624(c) with complex Newton iteration. No app code or
-perturbation is used, either to find the location or compute the golden samples.
+perturbation is used, either to find the location or compute the golden
+samples.  Writes the full-frame samples and PNG and the tiled-product PNG in
+tests/fixtures/deep: python3 tests/oracles/minibrot_oracle.py
 """
 from decimal import Decimal as D, getcontext
 from pathlib import Path

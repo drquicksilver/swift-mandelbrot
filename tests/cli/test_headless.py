@@ -1,4 +1,8 @@
-"""Integration checks: python3 tests/cli/test_headless.py /path/to/Mandelbrot"""
+"""The command line itself: usage errors and exit codes, the lab and GPU
+renderers' PNG and count exports, benchmark reports, and Float and FloatFloat
+accuracy at their edges.  Run by `make cli`:
+python3 tests/cli/test_headless.py /path/to/Mandelbrot
+"""
 
 import json
 import array

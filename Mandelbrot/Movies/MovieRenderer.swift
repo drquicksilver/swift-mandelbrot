@@ -1,3 +1,9 @@
+// Zoom movies, from journey to file: settings and progress for the sheets, the
+// keyframes rendered through an ordinary tile store and compositor, frames
+// composed between them on the GPU, colour chosen ahead of time from sampled
+// views, and HEVC or H.264 written with AVAssetWriter straight from Metal
+// textures.  The camera path itself is Core/Movies (Journey, ZoomPath).
+
 import AVFoundation
 import Combine
 import CoreGraphics

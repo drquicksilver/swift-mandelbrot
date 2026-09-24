@@ -1,3 +1,7 @@
+// ExplorerModel as the UI drives it: history, menus behind a sheet, travel to
+// a place, remembering where the window was, and bookmarks.  Runs in the app's
+// test host, with in-memory defaults so it never touches real preferences.
+
 import Foundation
 import Testing
 

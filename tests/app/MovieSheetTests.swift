@@ -1,3 +1,7 @@
+// The movie sheets' supporting pieces: thumbnails, the file-size estimate, how
+// zooms read, the movie folder, AVKit's player, and short real renders of a
+// descent, a journey and a preview.
+
 import AVKit
 import CoreGraphics
 import Foundation

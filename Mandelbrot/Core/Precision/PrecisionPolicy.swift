@@ -1,3 +1,6 @@
+// The precision ladder: which renderer a view needs -- Float, FloatFloat or
+// perturbation -- from how many coordinate bits one pixel takes.
+
 import CoreGraphics
 import Foundation
 

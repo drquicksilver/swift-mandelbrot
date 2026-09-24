@@ -1,4 +1,7 @@
 // swift-tools-version: 6.2
+// Mandelbrot/Core as a Swift package, so its platform-independent mathematics
+// can be unit tested with `swift test` (tests/core) without building the app.
+// The app compiles the same files directly; this package is not a dependency.
 import PackageDescription
 
 let package = Package(

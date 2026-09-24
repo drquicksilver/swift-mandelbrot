@@ -1,3 +1,7 @@
+// The sample record every compute kernel writes (RG32Uint): an exact escape
+// count and a float smooth correction, with three reserved counts for status.
+// Mirrors Core/Precision/SampleRecord.swift.
+
 #pragma once
 #include <metal_stdlib>
 using namespace metal;

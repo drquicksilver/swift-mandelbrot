@@ -1,3 +1,7 @@
+// How the app answers a bookmark: the notice at the foot of the window, with
+// Undo and a way to name it, and on the Mac a still of the view flying into
+// the Places button.  The flight's geometry is Core/Places/BookmarkFlight.swift.
+
 import Combine
 import SwiftUI
 

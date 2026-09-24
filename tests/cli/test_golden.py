@@ -1,4 +1,6 @@
-"""Fixed CPU-Double escape-count and PNG fixtures. Refresh only deliberately.
+"""The legacy escape-count fixtures: every lab renderer and the full-frame GPU
+path against CPU Double counts and PNGs.  Run by `make golden`; see
+tests/fixtures/README.md.  Refresh only deliberately:
 python3 tests/cli/test_golden.py APP [--record]
 """
 import array

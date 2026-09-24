@@ -1,3 +1,5 @@
+// Every palette is finite, opaque and cyclic.
+
 import Foundation
 import Testing
 

@@ -1,4 +1,7 @@
-"""Validate generated app metadata, not merely the source build settings."""
+"""Checks a built iOS app's generated Info.plist and bundled licence, not merely
+the build settings that should produce them.  Run by `make ios` and
+`make ios-device`: python3 tests/cli/test_app_bundle.py PATH/Info.plist
+"""
 import plistlib
 import sys
 from pathlib import Path

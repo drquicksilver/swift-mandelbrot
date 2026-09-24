@@ -1,3 +1,7 @@
+// The movie sheet's quick look at a journey: a small, low-frame-rate movie made
+// by the real movie renderer, so the preview follows exactly the camera path
+// the finished movie will.
+
 import AVFoundation
 import Combine
 import Foundation

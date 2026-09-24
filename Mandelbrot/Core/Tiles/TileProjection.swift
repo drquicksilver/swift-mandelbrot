@@ -1,3 +1,6 @@
+// Screen positions of tiles for one frame, from a single high-precision camera
+// conversion, so the compositor never repeats deep arithmetic per tile.
+
 import CoreGraphics
 
 /// One high-precision camera conversion per frame, relative to a nearby visible

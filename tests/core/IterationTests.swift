@@ -1,3 +1,6 @@
+// Escape counts from the CPU lab renderer, the automatic-detail policy and its
+// hysteresis, and the sample record's layout.
+
 import Foundation
 import Testing
 
